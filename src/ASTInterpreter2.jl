@@ -4,6 +4,10 @@ module ASTInterpreter2
 using DebuggerFramework
 using DebuggerFramework: FileLocInfo, BufferLocInfo
 using Base.Meta
+using Base: LineEdit
+import Base: +
+
+export @enter
 
 include("linearize.jl")
 include("interpret.jl")
@@ -11,6 +15,7 @@ include("interpret.jl")
 struct JuliaProgramCounter
     next_stmt::Int
 end
++(x::JuliaProgramCounter, y::Integer) = JuliaProgramCounter(x.next_stmt+y)
 
 struct JuliaStackFrame
     meth::Method
@@ -22,10 +27,11 @@ struct JuliaStackFrame
     # A vector from names to the slotnumber of that name
     # for which a reference was last encountered.
     last_reference::Dict{Symbol, Int}
+    wrapper::Bool
 end
-function JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter)
+function JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter; wrapper = false)
     JuliaStackFrame(frame.meth, frame.code, frame.locals,
-                    frame.ssavalues, frame.sparams, pc, frame.last_reference)
+                    frame.ssavalues, frame.sparams, pc, frame.last_reference, wrapper)
 end
 
 is_loc_meta(expr, kind) = isexpr(expr, :meta) && length(expr.args) >= 1 && expr.args[1] === kind
@@ -82,6 +88,23 @@ function DebuggerFramework.locdesc(frame::JuliaStackFrame, specslottypes = false
     end
 end
 
+function DebuggerFramework.print_locals(io::IO, frame::JuliaStackFrame)
+    for i = 1:length(frame.locals)
+        if !isnull(frame.locals[i])
+            # #self# is only interesting if it has values inside of it. We already know
+            # which function we're in otherwise.
+            if frame.code.slotnames[i] == Symbol("#self#") && sizeof(get(frame.locals[i])) == 0
+                continue
+            end
+            DebuggerFramework.print_var(io, frame.code.slotnames[i], frame.locals[i], nothing)
+        end
+    end
+    for i = 1:length(frame.sparams)
+        DebuggerFramework.print_var(io, frame.meth.sparam_syms[i], Nullable{Any}(frame.sparams[i]), nothing)
+    end
+end
+
+
 const SEARCH_PATH = []
 __init__() = append!(SEARCH_PATH,[joinpath(JULIA_HOME,"../share/julia/base/"),
     joinpath(JULIA_HOME,"../include/")])
@@ -107,10 +130,109 @@ function DebuggerFramework.locinfo(frame::JuliaStackFrame)
     loc_for_fname(file, line, frame.meth.line)
 end
 
+function lookup_var_if_var(frame, x)
+    if isa(x, Union{SSAValue, GlobalRef, SlotNumber}) || isexpr(x, :static_parameter)
+        return lookup_var(frame, x)
+    end
+    x
+end
+
+function DebuggerFramework.eval_code(state, frame::JuliaStackFrame, command)
+    expr = Base.parse_input_line(command)
+    local_vars = Any[]
+    local_vals = Any[]
+    for i = 1:length(frame.locals)
+        if !isnull(frame.locals[i])
+            push!(local_vars, frame.code.slotnames[i])
+            push!(local_vals, get(frame.locals[i]))
+        end
+    end
+    for i = 1:length(frame.sparams)
+        push!(local_vars, frame.meth.sparam_syms[i])
+        push!(local_vals, frame.sparams[i])
+    end
+    res = gensym()
+    eval_expr = Expr(:let, Expr(:block,
+        Expr(:(=), res, expr),
+        Expr(:tuple, res, Expr(:tuple, local_vars...))), 
+    map(x->Expr(:(=), x...), zip(local_vars, local_vals))...)
+    eval_res, res = eval(frame.meth.module, eval_expr)
+    j = 1
+    for i = 1:length(frame.locals)
+        if !isnull(frame.locals[i])
+            frame.locals[i] = Nullable{Any}(res[j])
+            j += 1
+        end
+    end
+    for i = 1:length(frame.sparams)
+        frame.sparams[i] = res[j]
+        j += 1
+    end
+    eval_res
+end
+
+function DebuggerFramework.print_next_state(io::IO, state, frame::JuliaStackFrame)
+    print(io, "About to run: ")
+    expr = pc_expr(frame, frame.pc)
+    isa(expr, Expr) && (expr = copy(expr))
+    if isexpr(expr, :(=))
+        expr = expr.args[2]
+    end
+    if isexpr(expr, :call) || isexpr(expr, :return)
+        expr.args = map(var->lookup_var_if_var(frame, var), expr.args)
+    end
+    print(io, expr)
+    println(io)
+end
+
+const all_commands = ("q", "s", "si", "finish", "bt", "loc", "ind", "shadow",
+    "up", "down", "ns", "nc", "n", "se")
+
+function DebuggerFramework.language_specific_prompt(state, frame::JuliaStackFrame)
+    if haskey(state.language_modes, :julia)
+        return state.language_modes[:julia]
+    end
+    julia_prompt = LineEdit.Prompt(DebuggerFramework.promptname(state.level, "julia");
+        # Copy colors from the prompt object
+        prompt_prefix = state.repl.prompt_color,
+        prompt_suffix = (state.repl.envcolors ? Base.input_color : repl.input_color),
+        complete = Base.REPL.REPLCompletionProvider(),
+        on_enter = Base.REPL.return_callback)
+
+   state.main_mode.hist.mode_mapping[:julia] = julia_prompt
+
+   julia_prompt.on_done = (s,buf,ok)->begin
+        if !ok
+            LineEdit.transition(s, :abort)
+            return false
+        end
+        xbuf = copy(buf)
+        command = String(take!(buf))        
+        ok, result = DebuggerFramework.eval_code(state, command)
+        if ok
+            display(result)
+            println(); println()
+        else
+            Base.display_error(STDERR, result...)
+            # Convenience hack. We'll see if this is more useful or annoying
+            for c in all_commands
+                !startswith(command, c) && continue
+                LineEdit.transition(s, state.main_mode)
+                LineEdit.state(s, state.main_mode).input_buffer = xbuf
+                break
+            end
+        end
+        LineEdit.reset_state(s)
+    end
+    julia_prompt.keymap_dict = LineEdit.keymap([Base.REPL.mode_keymap(state.main_mode);state.standard_keymap])
+    state.language_modes[:julia] = julia_prompt
+    return julia_prompt
+end
+
 function JuliaStackFrame(meth::Method)
     JuliaStackFrame(meth, Vector{Nullable{Any}}(),
         Vector{Any}(), Vector{Any}(), Vector{Any}(),
-        Dict{Symbol, Int}())
+        Dict{Symbol, Int}(), false)
 end
 
 function DebuggerFramework.debug(meth::Method, args...)
@@ -135,7 +257,7 @@ function is_function_def(ex)
     isexpr(ex,:function)
 end
 
-function determine_method_for_expr(interp, expr; enter_generated = false)
+function determine_method_for_expr(expr; enter_generated = false)
     f = to_function(expr.args[1])
     allargs = expr.args
     # Extract keyword args
@@ -215,12 +337,12 @@ function prepare_locals(meth, code, argvals = ())
     for i = (meth.nargs+1):length(code.slotnames)
         locals[i] = Nullable{Any}()
     end
-    JuliaStackFrame(meth, code, locals, ssavalues, sparams, JuliaProgramCounter(2), Dict{Symbol,Int}())
+    JuliaStackFrame(meth, code, locals, ssavalues, sparams, JuliaProgramCounter(2), Dict{Symbol,Int}(), false)
 end
 
 
-function enter_call_expr(interp, expr; enter_generated = false)
-    r = determine_method_for_expr(interp, expr; enter_generated = enter_generated)
+function enter_call_expr(expr; enter_generated = false)
+    r = determine_method_for_expr(expr; enter_generated = enter_generated)
     if r !== nothing
         code, method, args, lenv = r
         frame = prepare_locals(method, code, args)
@@ -231,6 +353,24 @@ function enter_call_expr(interp, expr; enter_generated = false)
         return frame
     end
     nothing
+end
+
+function maybe_step_through_wrapper!(stack)
+    last = stack[1].code.code[end-1]
+    isexpr(last, :(=)) && (last = last.args[2])
+    if isexpr(last, :call) && any(x->x==SlotNumber(1), last.args)
+        # If the last expr calls #self# or passes it to an implemetnation method,
+        # this is a wrapper function that we might want to step though
+        frame = stack[1]
+        pc = frame.pc
+        while pc != JuliaProgramCounter(length(frame.code.code)-1)
+            pc = next_call!(frame, pc)
+        end
+        stack[1] = JuliaStackFrame(frame, pc; wrapper=true)
+        unshift!(stack, enter_call_expr(Expr(:call, map(x->lookup_var_if_var(frame, x), last.args)...)))
+        return maybe_step_through_wrapper!(stack)
+    end
+    stack
 end
 
 macro enter(arg)
@@ -249,8 +389,10 @@ macro enter(arg)
     end
     quote
         theargs = $(esc(args))
-        frame = ASTInterpreter2.enter_call_expr(nothing,Expr(:call,theargs...))
-        DebuggerFramework.RunDebugger([frame])
+        stack = [ASTInterpreter2.enter_call_expr(Expr(:call,theargs...))]
+        ASTInterpreter2.maybe_step_through_wrapper!(stack)
+        stack[1] = ASTInterpreter2.JuliaStackFrame(stack[1], ASTInterpreter2.maybe_next_call!(stack[1]))
+        DebuggerFramework.RunDebugger(stack)
     end
 end
 

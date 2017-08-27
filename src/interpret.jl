@@ -8,6 +8,15 @@ function lookup_var(frame, e::Expr)
     frame.sparams[e.args[1]]
 end
 
+function finish!(frame)
+    pc = frame.pc
+    while true
+        new_pc = _step_expr(frame, pc)
+        new_pc == nothing && return pc
+        pc = new_pc
+    end
+end
+
 function evaluate_call(frame, call_expr)
     # Don't go through eval since this may have unqouted, symbols and
     # exprs
@@ -18,14 +27,7 @@ function evaluate_call(frame, call_expr)
         args[i] = isa(arg, Union{SSAValue, GlobalRef, Slot}) ? lookup_var(frame, arg) :
             arg
     end
-    if isa(f, Core.IntrinsicFunction)
-        # Special handling to quote any literal symbols that may still
-        # be in here, so we can pass it into eval
-        args = map(args) do arg
-            isa(arg, Union{Symbol, GlobalRef}) ? QuoteNode(node.args[i]) : arg
-        end
-        ret = eval(node)
-    elseif isa(f, CodeInfo)
+    if isa(f, CodeInfo)
         ret = finish!(enter_call_expr(frame, call_expr))
     else
         # Don't go through eval since this may have unqouted, symbols and
@@ -33,6 +35,18 @@ function evaluate_call(frame, call_expr)
         ret = f(args...)
     end
     return ret
+end
+
+function do_assignment!(frame, lhs, rhs)
+    if isa(lhs, SSAValue)
+        frame.ssavalues[lhs.id+1] = rhs
+    elseif isa(lhs, Slot)
+        frame.locals[lhs.id] = Nullable{Any}(rhs)
+        frame.last_reference[frame.code.slotnames[lhs.id]] =
+            lhs.id
+    elseif isa(lhs, GlobalRef)
+        eval(lhs.mod,:($(lhs.name) = $(QuoteNode(rhs))))
+    end
 end
 
 function _step_expr(frame, pc)
@@ -44,15 +58,7 @@ function _step_expr(frame, pc)
                 lhs = node.args[1]
                 rhs = isexpr(node.args[2], :call) ? evaluate_call(frame, node.args[2]) :
                     lookup_var(frame, node.args[2])
-                if isa(lhs, SSAValue)
-                    frame.ssavalues[lhs.id+1] = rhs
-                elseif isa(lhs, Slot)
-                    frame.locals[lhs.id] = Nullable{Any}(rhs)
-                    frame.last_reference[frame.code.slotnames[lhs.id]] =
-                        lhs.id
-                elseif isa(lhs, GlobalRef)
-                    eval(lhs.mod,:($(lhs.name) = $(QuoteNode(rhs))))
-                end
+                do_assignment!(frame, lhs, rhs)
                 # Special case hack for readability.
                 # ret = rhs
                 ret = node
@@ -114,15 +120,18 @@ function next_statement!(interp)
     return false
 end
 
-function next_until!(f,interp)
-    ind, node = interp.next_expr
-    while step_expr(interp)
-        ind, node = interp.next_expr
-        f(node) && return true
-    end
-    return false
+function is_call(node)
+    isexpr(node, :call) || 
+    (isexpr(node, :(=)) && isexpr(node.args[2], :call))
 end
-next_call!(interp) = next_until!(node->isexpr(node,:call)||isexpr(node,:return), interp)
+
+function next_until!(f, frame, pc=frame.pc)
+    while (pc = _step_expr(frame, pc)) != nothing
+        f(pc_expr(frame, pc)) && return pc
+    end
+    return nothing
+end
+next_call!(frame, pc=frame.pc) = next_until!(node->is_call(node)||isexpr(node,:return), frame, pc)
 
 function changed_line!(expr, line, fls)
     if length(fls) == 1 && isa(expr, LineNumberNode)
@@ -162,6 +171,15 @@ function iswrappercall(interp, expr)
 end
 
 pc_expr(frame, pc) = frame.code.code[pc.next_stmt]
+pc_expr(frame) = pc_expr(frame, frame.pc)
+
+function maybe_next_call!(frame, pc)
+    call_or_return(node) = is_call(node) || isexpr(node, :return)
+    call_or_return(pc_expr(frame, pc)) ||
+        (pc = next_until!(call_or_return, frame, pc))
+    pc
+end
+maybe_next_call!(frame) = maybe_next_call!(frame, frame.pc)
 
 function next_line!(frame; state = nothing)
     didchangeline = false
@@ -191,11 +209,7 @@ function next_line!(frame; state = nothing)
             pc == nothing && return nothing
         end
     end
-    # Ok, we stepped to the next line. Now step through to the next call
-    # call_or_assignment(node) = isexpr(node,:call) || isexpr(node,:(=)) || isexpr(node, :return)
-    # call_or_assignment(interp.next_expr[2]) ||
-    #    next_until!(call_or_assignment, interp)
-    pc
+    maybe_next_call!(frame, pc)
 end
 
 function advance_to_line(interp, line)
