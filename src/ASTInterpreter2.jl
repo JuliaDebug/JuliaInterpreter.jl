@@ -28,10 +28,11 @@ struct JuliaStackFrame
     # for which a reference was last encountered.
     last_reference::Dict{Symbol, Int}
     wrapper::Bool
+    generator::Bool
 end
-function JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter; wrapper = false)
+function JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter; wrapper = frame.wrapper, generator=frame.generator)
     JuliaStackFrame(frame.meth, frame.code, frame.locals,
-                    frame.ssavalues, frame.sparams, pc, frame.last_reference, wrapper)
+                    frame.ssavalues, frame.sparams, pc, frame.last_reference, wrapper, generator)
 end
 
 is_loc_meta(expr, kind) = isexpr(expr, :meta) && length(expr.args) >= 1 && expr.args[1] === kind
@@ -59,7 +60,7 @@ function determine_line_and_file(frame, highlight::Int=0)
                 npops = 1
                 while npops >= 1
                     i -= 1
-                    expr = exprtree.args[i]
+                    expr = frame.code.code[i]
                     is_loc_meta(expr, :pop_loc) && (npops += 1)
                     is_loc_meta(expr, :push_loc) && (npops -= 1)
                 end
@@ -232,7 +233,7 @@ end
 function JuliaStackFrame(meth::Method)
     JuliaStackFrame(meth, Vector{Nullable{Any}}(),
         Vector{Any}(), Vector{Any}(), Vector{Any}(),
-        Dict{Symbol, Int}(), false)
+        Dict{Symbol, Int}(), false, false)
 end
 
 function DebuggerFramework.debug(meth::Method, args...)
@@ -298,7 +299,7 @@ function determine_method_for_expr(expr; enter_generated = false)
             # If we're stepping into a staged function, we need to use
             # the specialization, rather than stepping thorugh the
             # unspecialized method.
-            code = Core.Inference.specialize_method(method, argtypes, lenv, false)
+            code = Core.Inference.get_staged(Core.Inference.code_for_method(method, argtypes, lenv, typemax(UInt), false))
         else
             if method.isstaged
                 args = map(_Typeof, args)
@@ -317,7 +318,7 @@ function get_source(meth)
     end
 end
 
-function prepare_locals(meth, code, argvals = ())
+function prepare_locals(meth, code, argvals = (), generator = false)
     code = deepcopy(code)
     linearize!(code)
     # Construct the environment from the arguments
@@ -337,7 +338,7 @@ function prepare_locals(meth, code, argvals = ())
     for i = (meth.nargs+1):length(code.slotnames)
         locals[i] = Nullable{Any}()
     end
-    JuliaStackFrame(meth, code, locals, ssavalues, sparams, JuliaProgramCounter(2), Dict{Symbol,Int}(), false)
+    JuliaStackFrame(meth, code, locals, ssavalues, sparams, JuliaProgramCounter(2), Dict{Symbol,Int}(), false, generator)
 end
 
 
@@ -345,7 +346,7 @@ function enter_call_expr(expr; enter_generated = false)
     r = determine_method_for_expr(expr; enter_generated = enter_generated)
     if r !== nothing
         code, method, args, lenv = r
-        frame = prepare_locals(method, code, args)
+        frame = prepare_locals(method, code, args, enter_generated)
         # Add static parameters to environment
         for i = 1:length(lenv)
             frame.sparams[i] = lenv[i]

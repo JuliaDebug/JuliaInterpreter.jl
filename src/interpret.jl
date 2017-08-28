@@ -17,22 +17,45 @@ function finish!(frame)
     end
 end
 
+instantiate_type_in_env(arg, spsig, spvals) =
+    ccall(:jl_instantiate_type_in_env, Any, (Any, Any, Ptr{Any}), arg, spsig, spvals)
+
 function evaluate_call(frame, call_expr)
+    args = Array{Any}(length(call_expr.args))
+    for i = 1:length(args)
+        arg = call_expr.args[i]
+        if isa(arg, QuoteNode)
+            args[i] = arg.value
+        elseif isa(arg, Union{SSAValue, GlobalRef, Slot})
+            args[i] = lookup_var(frame, arg)
+        elseif isexpr(arg, :&)
+            args[i] = Expr(:&, lookup_var(frame, arg.args[1]))
+        else
+            args[i] = arg
+        end
+    end
     # Don't go through eval since this may have unqouted, symbols and
     # exprs
-    f = to_function(lookup_var(frame, call_expr.args[1]))
-    args = Array{Any}(length(call_expr.args)-1)
-    for i = 1:length(args)
-        arg = call_expr.args[i+1]
-        args[i] = isa(arg, Union{SSAValue, GlobalRef, Slot}) ? lookup_var(frame, arg) :
-            arg
-    end
-    if isa(f, CodeInfo)
-        ret = finish!(enter_call_expr(frame, call_expr))
+    if isexpr(call_expr, :foreigncall)
+        args = map(args) do arg
+            isa(arg, Symbol) ? QuoteNode(arg) : arg
+        end
+        if !isempty(frame.sparams)
+            args[2] = instantiate_type_in_env(args[2], frame.meth.sig, frame.sparams)
+            args[3] = Core.svec(map(args[3]) do arg
+                instantiate_type_in_env(arg, frame.meth.sig, frame.sparams)
+            end...)
+        end
+        ret = eval(frame.meth.module, Expr(:foreigncall, args...))
     else
-        # Don't go through eval since this may have unqouted, symbols and
-        # exprs
-        ret = f(args...)
+        f = to_function(args[1])
+        if isa(f, CodeInfo)
+            ret = finish!(enter_call_expr(frame, call_expr))
+        else
+            # Don't go through eval since this may have unqouted, symbols and
+            # exprs
+            ret = f(args[2:end]...)
+        end
     end
     return ret
 end
@@ -56,8 +79,13 @@ function _step_expr(frame, pc)
         if isa(node, Expr)
             if node.head == :(=)
                 lhs = node.args[1]
-                rhs = isexpr(node.args[2], :call) ? evaluate_call(frame, node.args[2]) :
-                    lookup_var(frame, node.args[2])
+                if isexpr(node.args[2], :new)
+                    new_expr = Expr(:new, map(x->lookup_var_if_var(frame, x), node.args[2].args)...)
+                    rhs = eval(frame.meth.module, new_expr)
+                else
+                    rhs = (isexpr(node.args[2], :call) || isexpr(node.args[2], :foreigncall)) ? evaluate_call(frame, node.args[2]) :
+                        lookup_var_if_var(frame, node.args[2])
+                end
                 do_assignment!(frame, lhs, rhs)
                 # Special case hack for readability.
                 # ret = rhs
@@ -66,19 +94,19 @@ function _step_expr(frame, pc)
                 ret = node
             elseif node.head == :gotoifnot
                 ret = node
-                arg = lookup_var(frame, node.args[1])
+                arg = node.args[1]
+                arg = isa(arg, Bool) ? arg : lookup_var(frame, arg)
                 if !isa(arg, Bool)
                     throw(TypeError(frame.meth.name, "if", Bool, node.args[1]))
                 end
                 if !arg
                     return JuliaProgramCounter(node.args[2])
                 end
-            elseif node.head == :call
+            elseif node.head == :call || node.head == :foreigncall
                 evaluate_call(frame, node)
             elseif node.head == :static_typeof
                 ret = Any
-            elseif node.head == :type_goto
-                ret = nothing
+            elseif node.head == :type_goto || node.head == :inbounds
             elseif node.head == :enter
                 push!(interp.exception_frames, node.args[1])
                 ret = node
@@ -95,7 +123,7 @@ function _step_expr(frame, pc)
                 ret = eval(node)
             end
         elseif isa(node, GotoNode)
-            return JuliaProgramCounter(node.args[1])
+            return JuliaProgramCounter(node.label)
         elseif isa(node, QuoteNode)
             ret = node.value
         else
@@ -154,20 +182,9 @@ isgotonode(node) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
 Determine whether we are calling a function for which the current function
 is a wrapper (either because of optional arguments or becaue of keyword arguments).
 """
-function iswrappercall(interp, expr)
-    !isexpr(expr, :call) && return false
-    r = determine_method_for_expr(interp, expr; enter_generated = false)
-    if r !== nothing
-        linfo, method, args, _ = r
-        ours, theirs = interp.linfo.def, method
-        # Check if this a method of the same function that shares a definition line/file.
-        # If so, we're likely in an automatically generated wrapper.
-        if ours.sig.parameters[1] == theirs.sig.parameters[1] &&
-            ours.line == theirs.line && ours.file == theirs.file
-            return true
-        end
-    end
-    return false
+function iswrappercall(expr)
+    isexpr(expr, :(=)) && (expr = expr.args[2])
+    isexpr(expr, :call) && any(x->x==SlotNumber(1), expr.args)
 end
 
 pc_expr(frame, pc) = frame.code.code[pc.next_stmt]
@@ -181,7 +198,7 @@ function maybe_next_call!(frame, pc)
 end
 maybe_next_call!(frame) = maybe_next_call!(frame, frame.pc)
 
-function next_line!(frame; state = nothing)
+function next_line!(frame, stack = nothing)
     didchangeline = false
     fls = determine_line_and_file(frame, frame.pc.next_stmt)
     line = fls[1][2]
@@ -198,9 +215,13 @@ function next_line!(frame; state = nothing)
             pc == nothing && return nothing
             fls = determine_line_and_file(frame, pc.next_stmt)
             didchangeline = line != fls[1][2]
-        elseif iswrappercall(frame, pc_expr(frame, pc))
-            interp.did_wrappercall = true
-            frame = enter_call_expr(frame, pc_expr(frame, pc))
+        elseif stack !== nothing && iswrappercall(pc_expr(frame, pc))
+            stack[1] = JuliaStackFrame(frame, pc; wrapper = true)
+            call_expr = pc_expr(frame, pc)
+            isexpr(call_expr, :(=)) && (call_expr = call_expr.args[2])
+            frame = enter_call_expr(Expr(:call, map(x->lookup_var_if_var(frame, x), call_expr.args)...))
+            unshift!(stack, frame)
+            pc = frame.pc
         elseif isa(pc_expr(frame, pc), LineNumberNode)
             line != pc_expr(frame, pc).line && break
             pc = _step_expr(frame, pc)

@@ -5,19 +5,29 @@ function perform_return!(state)
         returning_expr = pc_expr(returning_frame)
         @assert isexpr(returning_expr, :return)
         val = lookup_var_if_var(returning_frame, returning_expr.args[1])
-        do_assignment!(calling_frame, pc_expr(calling_frame).args[1], val)
-        state.stack[2] = JuliaStackFrame(calling_frame, maybe_next_call!(calling_frame,
-            calling_frame.pc + 1))
+        if returning_frame.generator
+            # Don't do anything here, just return us to where we were
+        else
+            if isexpr(pc_expr(calling_frame), :(=))
+                do_assignment!(calling_frame, pc_expr(calling_frame).args[1], val)
+            end
+            state.stack[2] = JuliaStackFrame(calling_frame, maybe_next_call!(calling_frame,
+                calling_frame.pc + 1))
+        end
     end
     shift!(state.stack)
+    if !isempty(state.stack) && state.stack[1].wrapper
+        state.stack[1] = JuliaStackFrame(state.stack[1], finish!(state.stack[1]))
+        perform_return!(state)
+    end
 end
 
 function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, ::Union{Val{:ns},Val{:nc},Val{:n},Val{:se}}, command)
     if (pc = command == "ns" ? next_statement!(frame) :
            command == "nc" ? next_call!(frame) :
-           command == "n" ? next_line!(frame; state = state) :
+           command == "n" ? next_line!(frame, state.stack) :
             !step_expr(frame)) != nothing #= command == "se" =#
-        state.stack[1] = JuliaStackFrame(frame, pc)
+        state.stack[1] = JuliaStackFrame(state.stack[1], pc)
         return true
     end
     perform_return!(state)
@@ -33,16 +43,25 @@ function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, cmd::U
             if is_call(expr)
                 isexpr(expr, :(=)) && (expr = expr.args[2])
                 expr = Expr(:call, map(x->lookup_var_if_var(frame, x), expr.args)...)
+                ok = true
                 if !isa(expr.args[1], Union{Core.Builtin, Core.IntrinsicFunction})
                     new_frame = enter_call_expr(expr;
                         enter_generated = command == "sg")
                     if (cmd == Val{:s}() || cmd == Val{:sg}())
                         new_frame = JuliaStackFrame(new_frame, maybe_next_call!(new_frame))
                     end
-                    state.stack[1] = JuliaStackFrame(frame, pc)                
-                    unshift!(state.stack, new_frame)
-                    return true
+                    # Don't step into Core.Inference
+                    if new_frame.meth.module == Core.Inference
+                        ok = false
+                    else
+                        state.stack[1] = JuliaStackFrame(frame, pc)
+                        unshift!(state.stack, new_frame)
+                        return true
+                    end
                 else
+                    ok = false
+                end
+                if !ok
                     # It's confusing if we step into the next call, so just go there
                     # and then return
                     state.stack[1] = JuliaStackFrame(frame, next_call!(frame, pc))
