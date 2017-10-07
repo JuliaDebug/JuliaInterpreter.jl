@@ -26,7 +26,7 @@ if is_unix()
     include(Pkg.dir("VT100","test","TerminalRegressionTests.jl"))
 
     const thisdir = dirname(@__FILE__)
-    TerminalRegressionTests.create_automated_test(
+    TerminalRegressionTests.automated_test(
                     joinpath(thisdir,"ui/history.multiout"),
                 ["n\n","`", "a\n", "\e[A", "\e[A", "\x3", "\x4"]) do emuterm
         repl = Base.REPL.LineEditREPL(emuterm, true)
