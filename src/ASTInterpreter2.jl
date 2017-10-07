@@ -155,7 +155,7 @@ function DebuggerFramework.eval_code(state, frame::JuliaStackFrame, command)
     res = gensym()
     eval_expr = Expr(:let, Expr(:block,
         Expr(:(=), res, expr),
-        Expr(:tuple, res, Expr(:tuple, local_vars...))), 
+        Expr(:tuple, res, Expr(:tuple, local_vars...))),
     map(x->Expr(:(=), x...), zip(local_vars, local_vals))...)
     eval_res, res = eval(frame.meth.module, eval_expr)
     j = 1
@@ -199,22 +199,21 @@ function DebuggerFramework.language_specific_prompt(state, frame::JuliaStackFram
         prompt_suffix = (state.repl.envcolors ? Base.input_color : repl.input_color),
         complete = Base.REPL.REPLCompletionProvider(),
         on_enter = Base.REPL.return_callback)
+    julia_prompt.hist = state.main_mode.hist
+    julia_prompt.hist.mode_mapping[:julia] = julia_prompt
 
-   state.main_mode.hist.mode_mapping[:julia] = julia_prompt
-
-   julia_prompt.on_done = (s,buf,ok)->begin
+    julia_prompt.on_done = (s,buf,ok)->begin
         if !ok
             LineEdit.transition(s, :abort)
             return false
         end
         xbuf = copy(buf)
-        command = String(take!(buf))        
+        command = String(take!(buf))
         ok, result = DebuggerFramework.eval_code(state, command)
-        if ok
-            display(result)
-            println(); println()
-        else
-            Base.display_error(STDERR, result...)
+        Base.REPL.print_response(state.repl, ok ? result : result[1], ok ? nothing : result[2], true, true)
+        println(state.repl.t)
+
+        if !ok
             # Convenience hack. We'll see if this is more useful or annoying
             for c in all_commands
                 !startswith(command, c) && continue
@@ -374,7 +373,7 @@ function maybe_step_through_wrapper!(stack)
     stack
 end
 
-macro enter(arg)
+function _make_stack(arg)
     arg = expand(arg)
     @assert isa(arg, Expr) && arg.head == :call
     kws = collect(filter(x->isexpr(x,:kw),arg.args))
@@ -393,7 +392,19 @@ macro enter(arg)
         stack = [ASTInterpreter2.enter_call_expr(Expr(:call,theargs...))]
         ASTInterpreter2.maybe_step_through_wrapper!(stack)
         stack[1] = ASTInterpreter2.JuliaStackFrame(stack[1], ASTInterpreter2.maybe_next_call!(stack[1]))
-        DebuggerFramework.RunDebugger(stack)
+        stack
+    end
+end
+
+macro make_stack(arg)
+    _make_stack(arg)
+end
+
+macro enter(arg)
+    quote
+        let stack = $(_make_stack(arg))
+            DebuggerFramework.RunDebugger(stack)
+        end
     end
 end
 

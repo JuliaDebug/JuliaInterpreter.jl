@@ -1,0 +1,252 @@
+++++++++++++++++++++++++++++++++++++++++++++++++++
+|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|5     a == 0 && return abs(b)
+|6     b == 0 && return abs(a)
+|7     za = trailing_zeros(a)
+|
+|About to run: (==)(10, 0)
+|1|debug > 
+--------------------------------------------------
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|
+|AAAAAAAAAAAAAAAAAAAAAAAAA
+|BBBBBBBBBB
+++++++++++++++++++++++++++++++++++++++++++++++++++
+|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|5     a == 0 && return abs(b)
+|6     b == 0 && return abs(a)
+|7     za = trailing_zeros(a)
+|
+|About to run: (==)(10, 0)
+|1|debug > n
+|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|5     a == 0 && return abs(b)
+|6     b == 0 && return abs(a)
+|7     za = trailing_zeros(a)
+|8     zb = trailing_zeros(b)
+|
+|About to run: (==)(20, 0)
+|1|debug > 
+--------------------------------------------------
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|
+|AAAAAAAAAAAAAAAAAAAAAAAAA
+|BBBBBBBBBBC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|
+|CCCCCCCCCCCCCCCCCCCCCCCCC
+|BBBBBBBBBB
+++++++++++++++++++++++++++++++++++++++++++++++++++
+|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|5     a == 0 && return abs(b)
+|6     b == 0 && return abs(a)
+|7     za = trailing_zeros(a)
+|
+|About to run: (==)(10, 0)
+|1|debug > n
+|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|5     a == 0 && return abs(b)
+|6     b == 0 && return abs(a)
+|7     za = trailing_zeros(a)
+|8     zb = trailing_zeros(b)
+|
+|About to run: (==)(20, 0)
+|1|julia > 
+--------------------------------------------------
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|
+|AAAAAAAAAAAAAAAAAAAAAAAAA
+|BBBBBBBBBBC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|
+|CCCCCCCCCCCCCCCCCCCCCCCCC
+|DDDDDDDDDD
+++++++++++++++++++++++++++++++++++++++++++++++++++
+|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|5     a == 0 && return abs(b)
+|6     b == 0 && return abs(a)
+|7     za = trailing_zeros(a)
+|
+|About to run: (==)(10, 0)
+|1|debug > n
+|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|5     a == 0 && return abs(b)
+|6     b == 0 && return abs(a)
+|7     za = trailing_zeros(a)
+|8     zb = trailing_zeros(b)
+|
+|About to run: (==)(20, 0)
+|1|julia > a
+|Error showing value of type Int64:
+|ERROR: MethodError: objects of type Base.REPL.REPLDisplay{Base.REPL.LineEditREPL
+|} are not callable
+|
+|1|julia > 
+--------------------------------------------------
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|
+|AAAAAAAAAAAAAAAAAAAAAAAAA
+|BBBBBBBBBBC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|
+|CCCCCCCCCCCCCCCCCCCCCCCCC
+|DDDDDDDDDDE
+|EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
+|EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
+|EEEEEEEEEEEEEEEEEE
+|
+|DDDDDDDDDD
+++++++++++++++++++++++++++++++++++++++++++++++++++
+|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|5     a == 0 && return abs(b)
+|6     b == 0 && return abs(a)
+|7     za = trailing_zeros(a)
+|
+|About to run: (==)(10, 0)
+|1|debug > n
+|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|5     a == 0 && return abs(b)
+|6     b == 0 && return abs(a)
+|7     za = trailing_zeros(a)
+|8     zb = trailing_zeros(b)
+|
+|About to run: (==)(20, 0)
+|1|julia > a
+|Error showing value of type Int64:
+|ERROR: MethodError: objects of type Base.REPL.REPLDisplay{Base.REPL.LineEditREPL
+|} are not callable
+|
+|1|julia > a
+--------------------------------------------------
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|
+|AAAAAAAAAAAAAAAAAAAAAAAAA
+|BBBBBBBBBBC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|
+|CCCCCCCCCCCCCCCCCCCCCCCCC
+|DDDDDDDDDDE
+|EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
+|EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
+|EEEEEEEEEEEEEEEEEE
+|
+|DDDDDDDDDDE
+++++++++++++++++++++++++++++++++++++++++++++++++++
+|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|5     a == 0 && return abs(b)
+|6     b == 0 && return abs(a)
+|7     za = trailing_zeros(a)
+|
+|About to run: (==)(10, 0)
+|1|debug > n
+|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|5     a == 0 && return abs(b)
+|6     b == 0 && return abs(a)
+|7     za = trailing_zeros(a)
+|8     zb = trailing_zeros(b)
+|
+|About to run: (==)(20, 0)
+|1|julia > a
+|Error showing value of type Int64:
+|ERROR: MethodError: objects of type Base.REPL.REPLDisplay{Base.REPL.LineEditREPL
+|} are not callable
+|
+|1|debug > n
+--------------------------------------------------
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|
+|AAAAAAAAAAAAAAAAAAAAAAAAA
+|BBBBBBBBBBC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|
+|CCCCCCCCCCCCCCCCCCCCCCCCC
+|DDDDDDDDDDE
+|EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
+|EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
+|EEEEEEEEEEEEEEEEEE
+|
+|BBBBBBBBBBC
+++++++++++++++++++++++++++++++++++++++++++++++++++
+|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|5     a == 0 && return abs(b)
+|6     b == 0 && return abs(a)
+|7     za = trailing_zeros(a)
+|
+|About to run: (==)(10, 0)
+|1|debug > n
+|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|5     a == 0 && return abs(b)
+|6     b == 0 && return abs(a)
+|7     za = trailing_zeros(a)
+|8     zb = trailing_zeros(b)
+|
+|About to run: (==)(20, 0)
+|1|julia > a
+|Error showing value of type Int64:
+|ERROR: MethodError: objects of type Base.REPL.REPLDisplay{Base.REPL.LineEditREPL
+|} are not callable
+|
+|1|debug > n^C
+|
+|1|debug > 
+--------------------------------------------------
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|
+|AAAAAAAAAAAAAAAAAAAAAAAAA
+|BBBBBBBBBBC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|CCCCCCCCCCCCCCCCCCCCCCCCCCCC
+|
+|CCCCCCCCCCCCCCCCCCCCCCCCC
+|DDDDDDDDDDE
+|EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
+|EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
+|EEEEEEEEEEEEEEEEEE
+|
+|BBBBBBBBBBCCC
+|
+|BBBBBBBBBB
