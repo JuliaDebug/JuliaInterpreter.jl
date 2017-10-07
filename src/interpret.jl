@@ -134,7 +134,7 @@ function _step_expr(frame, pc)
     end
     return JuliaProgramCounter(pc.next_stmt + 1)
 end
-step_expr(interp) = (r = _step_expr(interp); done!(interp); r)
+step_expr(frame) = _step_expr(frame, frame.pc)
 
 function next_statement!(interp)
     ind, node = interp.next_expr
@@ -149,7 +149,7 @@ function next_statement!(interp)
 end
 
 function is_call(node)
-    isexpr(node, :call) || 
+    isexpr(node, :call) ||
     (isexpr(node, :(=)) && isexpr(node.args[2], :call))
 end
 

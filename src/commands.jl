@@ -26,7 +26,7 @@ function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, ::Unio
     if (pc = command == "ns" ? next_statement!(frame) :
            command == "nc" ? next_call!(frame) :
            command == "n" ? next_line!(frame, state.stack) :
-            !step_expr(frame)) != nothing #= command == "se" =#
+           #= command == "se" =# step_expr(frame)) != nothing
         state.stack[1] = JuliaStackFrame(state.stack[1], pc)
         return true
     end
@@ -68,7 +68,7 @@ function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, cmd::U
                     return true
                 end
             elseif !first && isexpr(expr, :return)
-                state.stack[1] = JuliaStackFrame(frame, pc)                
+                state.stack[1] = JuliaStackFrame(frame, pc)
                 return true
             end
         end
@@ -77,7 +77,7 @@ function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, cmd::U
         new_pc = _step_expr(frame, pc)
         if new_pc == nothing
             state.stack[1] = JuliaStackFrame(frame, pc)
-            perform_return!(state)            
+            perform_return!(state)
             return true
         else
             pc = new_pc
