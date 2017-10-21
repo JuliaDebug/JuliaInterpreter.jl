@@ -193,7 +193,7 @@ function DebuggerFramework.print_next_state(io::IO, state, frame::JuliaStackFram
 end
 
 const all_commands = ("q", "s", "si", "finish", "bt", "loc", "ind", "shadow",
-    "up", "down", "ns", "nc", "n", "se")
+    "up", "down", "nc", "n", "se")
 
 function DebuggerFramework.language_specific_prompt(state, frame::JuliaStackFrame)
     if haskey(state.language_modes, :julia)

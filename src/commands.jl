@@ -22,9 +22,8 @@ function perform_return!(state)
     end
 end
 
-function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, ::Union{Val{:ns},Val{:nc},Val{:n},Val{:se}}, command)
-    if (pc = command == "ns" ? next_statement!(frame) :
-           command == "nc" ? next_call!(frame) :
+function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, ::Union{Val{:nc},Val{:n},Val{:se}}, command)
+    if (pc = command == "nc" ? next_call!(frame) :
            command == "n" ? next_line!(frame, state.stack) :
            #= command == "se" =# step_expr(frame)) != nothing
         state.stack[1] = JuliaStackFrame(state.stack[1], pc)
@@ -106,7 +105,6 @@ function DebuggerFramework.execute_command(state, frane::JuliaStackFrame, ::Val{
     - `f n` where `n` is an integer, will go to the `n`-th frame.\\
     Advanced commands:\\
     - `nc` steps to the next call\\
-    - `ns` steps to the next statement\\
     - `se` does one expression step\\
     - `si` does the same but steps into a call if a call is the next expression\\
     - `sg` steps into a generated function\\
