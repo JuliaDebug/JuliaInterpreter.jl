@@ -169,3 +169,18 @@ execute_command(state, state.stack[1], Val{:finish}(), "finish")
 execute_command(state, state.stack[1], Val{:finish}(), "finish")
 @assert isempty(state.stack)
 @assert state.overall_result == f_symbol()
+
+# Test that we can step through varargs
+f_va_inner(x) = x + 1
+f_va_outer(args...) = f_va_inner(args...)
+
+stack = @make_stack f_va_outer(1)
+state = dummy_state(stack)
+
+execute_command(state, state.stack[1], Val{:s}(), "s")
+execute_command(state, state.stack[1], Val{:n}(), "n")
+@assert !isempty(state.stack)
+execute_command(state, state.stack[1], Val{:finish}(), "finish")
+execute_command(state, state.stack[1], Val{:finish}(), "finish")
+@assert isempty(state.stack)
+@assert state.overall_result == 2

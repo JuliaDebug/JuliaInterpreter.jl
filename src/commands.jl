@@ -70,8 +70,9 @@ function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, cmd::U
                 args = map(x->isa(x, QuoteNode) ? x.value :
                     lookup_var_if_var(frame, x), expr.args)
                 expr = Expr(:call, args...)
+                f = (expr.args[1] == Core._apply) ? expr.args[2] : expr.args[1]
                 ok = true
-                if !isa(expr.args[1], Union{Core.Builtin, Core.IntrinsicFunction})
+                if !isa(f, Union{Core.Builtin, Core.IntrinsicFunction})
                     new_frame = enter_call_expr(expr;
                         enter_generated = command == "sg")
                     if (cmd == Val{:s}() || cmd == Val{:sg}())
