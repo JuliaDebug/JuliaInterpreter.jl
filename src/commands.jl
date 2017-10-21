@@ -25,10 +25,33 @@ function perform_return!(state)
     end
 end
 
+function propagate_exception!(state, exc)
+    while !isempty(state.stack)
+        shift!(state.stack)
+        if isa(state.stack[1], JuliaStackFrame)
+            if !isempty(state.stack[1].exception_frames)
+                # Exception caught
+                state.stack[1] = JuliaStackFrame(state.stack[1],
+                    JuliaProgramCounter(state.stack[1].exception_frames[end]))
+                state.stack[1].last_exception[] = exc
+                return true
+            end
+        end
+    end
+    rethrow(exc)
+end
+
 function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, ::Union{Val{:nc},Val{:n},Val{:se}}, command)
-    if (pc = command == "nc" ? next_call!(frame) :
-           command == "n" ? next_line!(frame, state.stack) :
-           #= command == "se" =# step_expr(frame)) != nothing
+    pc = try
+        command == "nc" ? next_call!(frame) :
+        command == "n" ? next_line!(frame, state.stack) :
+        #= command == "se" =# step_expr(frame)
+    catch err
+        propagate_exception!(state, err)
+        state.stack[1] = JuliaStackFrame(frame, next_call!(frame, pc))
+        return true
+    end
+    if pc != nothing
         state.stack[1] = JuliaStackFrame(state.stack[1], pc)
         return true
     end
@@ -76,7 +99,13 @@ function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, cmd::U
         end
         first = false
         command == "si" && break
-        new_pc = _step_expr(frame, pc)
+        new_pc = try
+            _step_expr(frame, pc)
+        catch err
+            propagate_exception!(state, err)
+            state.stack[1] = JuliaStackFrame(frame, next_call!(frame, pc))
+            return true
+        end
         if new_pc == nothing
             state.stack[1] = JuliaStackFrame(frame, pc)
             perform_return!(state)

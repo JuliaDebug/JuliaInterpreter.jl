@@ -186,10 +186,12 @@ function DebuggerFramework.print_next_state(io::IO, state, frame::JuliaStackFram
     if isexpr(expr, :call) || isexpr(expr, :return)
         expr.args = map(var->lookup_var_if_var(frame, var), expr.args)
     end
-    for (i, arg) in enumerate(expr.args)
-        nbytes = length(repr(arg))
-        if nbytes > max(40, div(200, length(expr.args)))
-            expr.args[i] = Suppressed("$nbytes bytes of output")
+    if isa(expr, Expr)
+        for (i, arg) in enumerate(expr.args)
+            nbytes = length(repr(arg))
+            if nbytes > max(40, div(200, length(expr.args)))
+                expr.args[i] = Suppressed("$nbytes bytes of output")
+            end
         end
     end
     print(io, expr)

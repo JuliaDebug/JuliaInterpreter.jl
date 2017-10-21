@@ -135,3 +135,25 @@ execute_command(state, state.stack[1], Val{:n}(), "n")
 execute_command(state, state.stack[1], Val{:n}(), "n")
 @assert isempty(state.stack)
 @assert state.overall_result isa ErrorException
+
+# Test throwing exception across frames
+function f_exc_inner()
+    error()
+end
+
+function f_exc_outer()
+    try
+        f_exc_inner()
+    catch err
+        return err
+    end
+end
+
+stack = @make_stack f_exc_outer()
+state = dummy_state(stack)
+
+execute_command(state, state.stack[1], Val{:n}(), "s")
+execute_command(state, state.stack[1], Val{:n}(), "n")
+execute_command(state, state.stack[1], Val{:n}(), "n")
+@assert isempty(state.stack)
+@assert state.overall_result isa ErrorException
