@@ -2,7 +2,7 @@ __precompile__()
 module ASTInterpreter2
 
 using DebuggerFramework
-using DebuggerFramework: FileLocInfo, BufferLocInfo
+using DebuggerFramework: FileLocInfo, BufferLocInfo, Suppressed
 using Base.Meta
 using Base: LineEdit
 import Base: +
@@ -181,6 +181,12 @@ function DebuggerFramework.print_next_state(io::IO, state, frame::JuliaStackFram
     end
     if isexpr(expr, :call) || isexpr(expr, :return)
         expr.args = map(var->lookup_var_if_var(frame, var), expr.args)
+    end
+    for (i, arg) in enumerate(expr.args)
+        nbytes = length(repr(arg))
+        if nbytes > max(40, div(200, length(expr.args)))
+            expr.args[i] = Suppressed("$nbytes bytes of output")
+        end
     end
     print(io, expr)
     println(io)
