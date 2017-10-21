@@ -152,8 +152,20 @@ end
 stack = @make_stack f_exc_outer()
 state = dummy_state(stack)
 
-execute_command(state, state.stack[1], Val{:n}(), "s")
+execute_command(state, state.stack[1], Val{:s}(), "s")
 execute_command(state, state.stack[1], Val{:n}(), "n")
 execute_command(state, state.stack[1], Val{:n}(), "n")
 @assert isempty(state.stack)
 @assert state.overall_result isa ErrorException
+
+# Test that symbols don't get an extra QuoteNode
+f_symbol() = :limit => true
+
+stack = @make_stack f_symbol()
+state = dummy_state(stack)
+
+execute_command(state, state.stack[1], Val{:s}(), "s")
+execute_command(state, state.stack[1], Val{:finish}(), "finish")
+execute_command(state, state.stack[1], Val{:finish}(), "finish")
+@assert isempty(state.stack)
+@assert state.overall_result == f_symbol()

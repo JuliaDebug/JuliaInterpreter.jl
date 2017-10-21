@@ -48,7 +48,7 @@ function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, ::Unio
         #= command == "se" =# step_expr(frame)
     catch err
         propagate_exception!(state, err)
-        state.stack[1] = JuliaStackFrame(frame, next_call!(frame, pc))
+        state.stack[1] = JuliaStackFrame(state.stack[1], next_call!(state.stack[1], state.stack[1].pc))
         return true
     end
     if pc != nothing
@@ -67,7 +67,9 @@ function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, cmd::U
         if isa(expr, Expr)
             if is_call(expr)
                 isexpr(expr, :(=)) && (expr = expr.args[2])
-                expr = Expr(:call, map(x->lookup_var_if_var(frame, x), expr.args)...)
+                args = map(x->isa(x, QuoteNode) ? x.value :
+                    lookup_var_if_var(frame, x), expr.args)
+                expr = Expr(:call, args...)
                 ok = true
                 if !isa(expr.args[1], Union{Core.Builtin, Core.IntrinsicFunction})
                     new_frame = enter_call_expr(expr;
@@ -103,7 +105,7 @@ function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, cmd::U
             _step_expr(frame, pc)
         catch err
             propagate_exception!(state, err)
-            state.stack[1] = JuliaStackFrame(frame, next_call!(frame, pc))
+            state.stack[1] = JuliaStackFrame(state.stack[1], next_call!(state.stack[1], pc))
             return true
         end
         if new_pc == nothing

@@ -98,7 +98,8 @@ function DebuggerFramework.print_locals(io::IO, frame::JuliaStackFrame)
         if !isnull(frame.locals[i])
             # #self# is only interesting if it has values inside of it. We already know
             # which function we're in otherwise.
-            if frame.code.slotnames[i] == Symbol("#self#") && sizeof(get(frame.locals[i])) == 0
+            val = get(frame.locals[i])
+            if frame.code.slotnames[i] == Symbol("#self#") && (isa(val, Type) || sizeof(val) == 0)
                 continue
             end
             DebuggerFramework.print_var(io, frame.code.slotnames[i], frame.locals[i], nothing)
@@ -149,12 +150,12 @@ function DebuggerFramework.eval_code(state, frame::JuliaStackFrame, command)
     for i = 1:length(frame.locals)
         if !isnull(frame.locals[i])
             push!(local_vars, frame.code.slotnames[i])
-            push!(local_vals, get(frame.locals[i]))
+            push!(local_vals, QuoteNode(get(frame.locals[i])))
         end
     end
     for i = 1:length(frame.sparams)
         push!(local_vars, frame.meth.sparam_syms[i])
-        push!(local_vals, frame.sparams[i])
+        push!(local_vals, QuoteNode(frame.sparams[i]))
     end
     res = gensym()
     eval_expr = Expr(:let, Expr(:block,
