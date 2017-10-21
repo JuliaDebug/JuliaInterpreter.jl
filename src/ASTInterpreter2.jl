@@ -23,6 +23,7 @@ struct JuliaStackFrame
     locals::Vector{Nullable{Any}}
     ssavalues::Vector{Any}
     sparams::Vector{Any}
+    exception_frames::Vector{Int}
     pc::JuliaProgramCounter
     # A vector from names to the slotnumber of that name
     # for which a reference was last encountered.

@@ -74,7 +74,6 @@ end
 
 function _step_expr(frame, pc)
     node = pc_expr(frame, pc)
-    local ret
     try
         if isa(node, Expr)
             if node.head == :(=)
@@ -89,11 +88,8 @@ function _step_expr(frame, pc)
                 do_assignment!(frame, lhs, rhs)
                 # Special case hack for readability.
                 # ret = rhs
-                ret = node
             elseif node.head == :&
-                ret = node
             elseif node.head == :gotoifnot
-                ret = node
                 arg = node.args[1]
                 arg = isa(arg, Bool) ? arg : lookup_var(frame, arg)
                 if !isa(arg, Bool)
@@ -105,18 +101,14 @@ function _step_expr(frame, pc)
             elseif node.head == :call || node.head == :foreigncall
                 evaluate_call(frame, node)
             elseif node.head == :static_typeof
-                ret = Any
             elseif node.head == :type_goto || node.head == :inbounds
             elseif node.head == :enter
-                push!(interp.exception_frames, node.args[1])
-                ret = node
+                push!(frame.exception_frames, node.args[1])
             elseif node.head == :leave
                 for _ = 1:node.args[1]
-                    pop!(interp.exception_frames)
+                    pop!(frame.exception_frames)
                 end
-                ret = node
             elseif node.head == :static_parameter
-                ret = interp.env.sparams[node.args[1]]
             elseif node.head == :return
                 return nothing
             else
