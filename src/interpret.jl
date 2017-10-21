@@ -131,18 +131,6 @@ function _step_expr(frame, pc)
 end
 step_expr(frame) = _step_expr(frame, frame.pc)
 
-function next_statement!(interp)
-    ind, node = interp.next_expr
-    move_past = ind[1]
-    while step_expr(interp)
-        ind, node = interp.next_expr
-        if ind[1] != move_past
-            return true
-        end
-    end
-    return false
-end
-
 function is_call(node)
     isexpr(node, :call) ||
     (isexpr(node, :(=)) && isexpr(node.args[2], :call))
@@ -226,38 +214,4 @@ function next_line!(frame, stack = nothing)
         end
     end
     maybe_next_call!(frame, pc)
-end
-
-function advance_to_line(interp, line)
-    while true
-        at_line = determine_line_and_file(interp, idx_stack(interp))[1][2]
-        at_line == line && break
-        next_line!(interp) || break
-    end
-end
-
-function _evaluated!(interp, ret, wasstaged = false)
-    if wasstaged
-        # If this is the result of a staged function, we replace the argument
-        # the call rather than the call itself
-        ind, node = interp.next_expr
-        @assert isexpr(node, :call)
-        interp.shadowtree[[ind.idx_stack.stack; 1]] = (ret, AnnotationNode{Any}(true,AnnotationNode{Any}[]))
-    else
-        ind, node = interp.next_expr
-        interp.shadowtree[ind.idx_stack.stack] = (ret, AnnotationNode{Any}(true,AnnotationNode{Any}[]))
-    end
-end
-evaluated!(interp, ret, wasstaged = false) = (_evaluated!(interp, ret, wasstaged); done!(interp))
-
-"""
-Advance to the next evaluatable statement
-"""
-function done!(interp)
-    ind, node = interp.next_expr
-    # Skip evaluated values (e.g. constants)
-    while interp.shadowtree.shadow[ind.idx_stack.stack].val
-        ind, node = next_expr!(interp)
-    end
-    return true
 end
