@@ -1,10 +1,10 @@
 function perform_return!(state)
+    returning_frame = state.stack[1]
+    returning_expr = pc_expr(returning_frame)
+    @assert isexpr(returning_expr, :return)
+    val = lookup_var_if_var(returning_frame, returning_expr.args[1])
     if length(state.stack) != 1
-        returning_frame = state.stack[1]
         calling_frame = state.stack[2]
-        returning_expr = pc_expr(returning_frame)
-        @assert isexpr(returning_expr, :return)
-        val = lookup_var_if_var(returning_frame, returning_expr.args[1])
         if returning_frame.generator
             # Don't do anything here, just return us to where we were
         else
@@ -14,6 +14,9 @@ function perform_return!(state)
             state.stack[2] = JuliaStackFrame(calling_frame, maybe_next_call!(calling_frame,
                 calling_frame.pc + 1))
         end
+    else
+        @assert !returning_frame.generator
+        state.overall_result = val
     end
     shift!(state.stack)
     if !isempty(state.stack) && state.stack[1].wrapper

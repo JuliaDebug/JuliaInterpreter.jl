@@ -4,6 +4,7 @@ lookup_var(frame, val::SSAValue) = frame.ssavalues[val.id+1]
 lookup_var(frame, ref::GlobalRef) = getfield(ref.mod, ref.name)
 lookup_var(frame, slot::SlotNumber) = get(frame.locals[slot.id])
 function lookup_var(frame, e::Expr)
+    isexpr(e, :the_exception) && return get(frame.last_exception[])
     isexpr(e, :static_parameter) || error()
     frame.sparams[e.args[1]]
 end
@@ -122,7 +123,9 @@ function _step_expr(frame, pc)
             ret = eval(node)
         end
     catch err
-        rethrow(err)
+        isempty(frame.exception_frames) && rethrow(err)
+        frame.last_exception[] = err
+        return JuliaProgramCounter(frame.exception_frames[end])
     end
     return JuliaProgramCounter(pc.next_stmt + 1)
 end

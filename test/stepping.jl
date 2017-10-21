@@ -96,7 +96,7 @@ f(x; b = 1) = x+b
 g() = f(1; b = 2)
 frame = ASTInterpreter2.enter_call_expr(:($(g)()));
 state = dummy_state([frame])
-# Step to the actual call 
+# Step to the actual call
 execute_command(state, state.stack[1], Val{:nc}(), "nc")
 execute_command(state, state.stack[1], Val{:nc}(), "nc")
 execute_command(state, state.stack[1], Val{:nc}(), "nc")
@@ -106,3 +106,32 @@ execute_command(state, state.stack[1], Val{:s}(), "s")
 execute_command(state, state.stack[1], Val{:finish}(), "finish")
 execute_command(state, state.stack[1], Val{:finish}(), "finish")
 @assert isempty(state.stack)
+
+# Test stepping into functions with exception frames
+function f_exc()
+    try
+    catch err
+    end
+end
+
+function g_exc()
+    try
+        error()
+    catch err
+        return err
+    end
+end
+
+stack = @make_stack f_exc()
+state = dummy_state(stack)
+
+execute_command(state, state.stack[1], Val{:n}(), "n")
+@assert isempty(state.stack)
+
+stack = @make_stack g_exc()
+state = dummy_state(stack)
+
+execute_command(state, state.stack[1], Val{:n}(), "n")
+execute_command(state, state.stack[1], Val{:n}(), "n")
+@assert isempty(state.stack)
+@assert state.overall_result isa ErrorException

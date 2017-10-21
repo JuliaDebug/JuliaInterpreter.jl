@@ -7,7 +7,7 @@ using Base.Meta
 using Base: LineEdit
 import Base: +
 
-export @enter
+export @enter, @make_stack
 
 include("linearize.jl")
 include("interpret.jl")
@@ -24,6 +24,7 @@ struct JuliaStackFrame
     ssavalues::Vector{Any}
     sparams::Vector{Any}
     exception_frames::Vector{Int}
+    last_exception::Ref{Nullable{Any}}
     pc::JuliaProgramCounter
     # A vector from names to the slotnumber of that name
     # for which a reference was last encountered.
@@ -33,7 +34,9 @@ struct JuliaStackFrame
 end
 function JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter; wrapper = frame.wrapper, generator=frame.generator)
     JuliaStackFrame(frame.meth, frame.code, frame.locals,
-                    frame.ssavalues, frame.sparams, pc, frame.last_reference, wrapper, generator)
+                    frame.ssavalues, frame.sparams,
+                    frame.exception_frames, frame.last_exception,
+                    pc, frame.last_reference, wrapper, generator)
 end
 
 is_loc_meta(expr, kind) = isexpr(expr, :meta) && length(expr.args) >= 1 && expr.args[1] === kind
@@ -133,7 +136,7 @@ function DebuggerFramework.locinfo(frame::JuliaStackFrame)
 end
 
 function lookup_var_if_var(frame, x)
-    if isa(x, Union{SSAValue, GlobalRef, SlotNumber}) || isexpr(x, :static_parameter)
+    if isa(x, Union{SSAValue, GlobalRef, SlotNumber}) || isexpr(x, :static_parameter) || isexpr(x, :the_exception)
         return lookup_var(frame, x)
     end
     x
@@ -344,7 +347,8 @@ function prepare_locals(meth, code, argvals = (), generator = false)
     for i = (meth.nargs+1):length(code.slotnames)
         locals[i] = Nullable{Any}()
     end
-    JuliaStackFrame(meth, code, locals, ssavalues, sparams, JuliaProgramCounter(2), Dict{Symbol,Int}(), false, generator)
+    JuliaStackFrame(meth, code, locals, ssavalues, sparams,  Int[], Nullable{Any}(),
+        JuliaProgramCounter(2), Dict{Symbol,Int}(), false, generator)
 end
 
 
