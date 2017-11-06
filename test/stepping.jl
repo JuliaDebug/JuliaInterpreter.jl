@@ -3,7 +3,7 @@ using ASTInterpreter2
 using Base.Meta
 using DebuggerFramework: execute_command, dummy_state
 
-immutable DummyState; end
+struct DummyState; end
 Base.LineEdit.transition(s::DummyState, _) = nothing
 
 # Steps through the whole expression using `s`
