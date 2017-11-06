@@ -37,6 +37,7 @@ if is_unix()
             repl.specialdisplay = Base.REPL.REPLDisplay(repl)
         end
         stack = ASTInterpreter2.@make_stack my_gcd(10, 20)
+        stack[1] = ASTInterpreter2.JuliaStackFrame(stack[1], stack[1].pc; fullpath=false)
         DebuggerFramework.RunDebugger(stack, repl, emuterm)
     end
 end

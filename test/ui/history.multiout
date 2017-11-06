@@ -1,5 +1,5 @@
 ++++++++++++++++++++++++++++++++++++++++++++++++++
-|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|In my_gcd(a, b) at ui.jl:5
 |5     a == 0 && return abs(b)
 |6     b == 0 && return abs(a)
 |7     za = trailing_zeros(a)
@@ -7,7 +7,7 @@
 |About to run: (==)(10, 0)
 |1|debug > 
 --------------------------------------------------
-|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAA
 |BBCCCCCCCCCCCCCCCCCCCCCCCCCCC
 |DDCCCCCCCCCCCCCCCCCCCCCCCCCCC
 |DDCCCCCCCCCCCCCCCCCCCCCCCCCC
@@ -15,14 +15,14 @@
 |CCCCCCCCCCCCCCCCCCCCCCCCC
 |EEEEEEEEEE
 ++++++++++++++++++++++++++++++++++++++++++++++++++
-|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|In my_gcd(a, b) at ui.jl:5
 |5     a == 0 && return abs(b)
 |6     b == 0 && return abs(a)
 |7     za = trailing_zeros(a)
 |
 |About to run: (==)(10, 0)
 |1|debug > n
-|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|In my_gcd(a, b) at ui.jl:5
 |5     a == 0 && return abs(b)
 |6     b == 0 && return abs(a)
 |7     za = trailing_zeros(a)
@@ -31,14 +31,14 @@
 |About to run: (==)(20, 0)
 |1|debug > 
 --------------------------------------------------
-|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAA
 |BBCCCCCCCCCCCCCCCCCCCCCCCCCCC
 |DDCCCCCCCCCCCCCCCCCCCCCCCCCCC
 |DDCCCCCCCCCCCCCCCCCCCCCCCCCC
 |
 |CCCCCCCCCCCCCCCCCCCCCCCCC
 |EEEEEEEEEEF
-|GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG
+|GGGGGGGGGGGGGGGGGGGGGGGGGG
 |GGFFFFFFFFFFFFFFFFFFFFFFFFFFF
 |HHIIIIIIIIIIIIIIIIIIIIIIIIIII
 |JJIIIIIIIIIIIIIIIIIIIIIIIIII
@@ -47,14 +47,14 @@
 |IIIIIIIIIIIIIIIIIIIIIIIII
 |EEEEEEEEEE
 ++++++++++++++++++++++++++++++++++++++++++++++++++
-|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|In my_gcd(a, b) at ui.jl:5
 |5     a == 0 && return abs(b)
 |6     b == 0 && return abs(a)
 |7     za = trailing_zeros(a)
 |
 |About to run: (==)(10, 0)
 |1|debug > n
-|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|In my_gcd(a, b) at ui.jl:5
 |5     a == 0 && return abs(b)
 |6     b == 0 && return abs(a)
 |7     za = trailing_zeros(a)
@@ -63,14 +63,14 @@
 |About to run: (==)(20, 0)
 |1|julia > 
 --------------------------------------------------
-|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAA
 |BBCCCCCCCCCCCCCCCCCCCCCCCCCCC
 |DDCCCCCCCCCCCCCCCCCCCCCCCCCCC
 |DDCCCCCCCCCCCCCCCCCCCCCCCCCC
 |
 |CCCCCCCCCCCCCCCCCCCCCCCCC
 |EEEEEEEEEEF
-|GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG
+|GGGGGGGGGGGGGGGGGGGGGGGGGG
 |GGFFFFFFFFFFFFFFFFFFFFFFFFFFF
 |HHIIIIIIIIIIIIIIIIIIIIIIIIIII
 |JJIIIIIIIIIIIIIIIIIIIIIIIIII
@@ -79,14 +79,14 @@
 |IIIIIIIIIIIIIIIIIIIIIIIII
 |KKKKKKKKKK
 ++++++++++++++++++++++++++++++++++++++++++++++++++
-|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|In my_gcd(a, b) at ui.jl:5
 |5     a == 0 && return abs(b)
 |6     b == 0 && return abs(a)
 |7     za = trailing_zeros(a)
 |
 |About to run: (==)(10, 0)
 |1|debug > n
-|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|In my_gcd(a, b) at ui.jl:5
 |5     a == 0 && return abs(b)
 |6     b == 0 && return abs(a)
 |7     za = trailing_zeros(a)
@@ -98,14 +98,14 @@
 |
 |1|julia > 
 --------------------------------------------------
-|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAA
 |BBCCCCCCCCCCCCCCCCCCCCCCCCCCC
 |DDCCCCCCCCCCCCCCCCCCCCCCCCCCC
 |DDCCCCCCCCCCCCCCCCCCCCCCCCCC
 |
 |CCCCCCCCCCCCCCCCCCCCCCCCC
 |EEEEEEEEEEF
-|GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG
+|GGGGGGGGGGGGGGGGGGGGGGGGGG
 |GGFFFFFFFFFFFFFFFFFFFFFFFFFFF
 |HHIIIIIIIIIIIIIIIIIIIIIIIIIII
 |JJIIIIIIIIIIIIIIIIIIIIIIIIII
@@ -117,14 +117,14 @@
 |
 |KKKKKKKKKK
 ++++++++++++++++++++++++++++++++++++++++++++++++++
-|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|In my_gcd(a, b) at ui.jl:5
 |5     a == 0 && return abs(b)
 |6     b == 0 && return abs(a)
 |7     za = trailing_zeros(a)
 |
 |About to run: (==)(10, 0)
 |1|debug > n
-|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|In my_gcd(a, b) at ui.jl:5
 |5     a == 0 && return abs(b)
 |6     b == 0 && return abs(a)
 |7     za = trailing_zeros(a)
@@ -136,14 +136,14 @@
 |
 |1|julia > a
 --------------------------------------------------
-|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAA
 |BBCCCCCCCCCCCCCCCCCCCCCCCCCCC
 |DDCCCCCCCCCCCCCCCCCCCCCCCCCCC
 |DDCCCCCCCCCCCCCCCCCCCCCCCCCC
 |
 |CCCCCCCCCCCCCCCCCCCCCCCCC
 |EEEEEEEEEEF
-|GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG
+|GGGGGGGGGGGGGGGGGGGGGGGGGG
 |GGFFFFFFFFFFFFFFFFFFFFFFFFFFF
 |HHIIIIIIIIIIIIIIIIIIIIIIIIIII
 |JJIIIIIIIIIIIIIIIIIIIIIIIIII
@@ -155,14 +155,14 @@
 |
 |KKKKKKKKKKI
 ++++++++++++++++++++++++++++++++++++++++++++++++++
-|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|In my_gcd(a, b) at ui.jl:5
 |5     a == 0 && return abs(b)
 |6     b == 0 && return abs(a)
 |7     za = trailing_zeros(a)
 |
 |About to run: (==)(10, 0)
 |1|debug > n
-|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|In my_gcd(a, b) at ui.jl:5
 |5     a == 0 && return abs(b)
 |6     b == 0 && return abs(a)
 |7     za = trailing_zeros(a)
@@ -174,14 +174,14 @@
 |
 |1|debug > n
 --------------------------------------------------
-|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAA
 |BBCCCCCCCCCCCCCCCCCCCCCCCCCCC
 |DDCCCCCCCCCCCCCCCCCCCCCCCCCCC
 |DDCCCCCCCCCCCCCCCCCCCCCCCCCC
 |
 |CCCCCCCCCCCCCCCCCCCCCCCCC
 |EEEEEEEEEEF
-|GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG
+|GGGGGGGGGGGGGGGGGGGGGGGGGG
 |GGFFFFFFFFFFFFFFFFFFFFFFFFFFF
 |HHIIIIIIIIIIIIIIIIIIIIIIIIIII
 |JJIIIIIIIIIIIIIIIIIIIIIIIIII
@@ -193,14 +193,14 @@
 |
 |EEEEEEEEEEF
 ++++++++++++++++++++++++++++++++++++++++++++++++++
-|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|In my_gcd(a, b) at ui.jl:5
 |5     a == 0 && return abs(b)
 |6     b == 0 && return abs(a)
 |7     za = trailing_zeros(a)
 |
 |About to run: (==)(10, 0)
 |1|debug > n
-|In my_gcd(a, b) at /Users/kfischer/.julia/v0.6/ASTInterpreter2/test/ui.jl:5
+|In my_gcd(a, b) at ui.jl:5
 |5     a == 0 && return abs(b)
 |6     b == 0 && return abs(a)
 |7     za = trailing_zeros(a)
@@ -214,14 +214,14 @@
 |
 |1|debug > 
 --------------------------------------------------
-|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+|AAAAAAAAAAAAAAAAAAAAAAAAAA
 |BBCCCCCCCCCCCCCCCCCCCCCCCCCCC
 |DDCCCCCCCCCCCCCCCCCCCCCCCCCCC
 |DDCCCCCCCCCCCCCCCCCCCCCCCCCC
 |
 |CCCCCCCCCCCCCCCCCCCCCCCCC
 |EEEEEEEEEEF
-|GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG
+|GGGGGGGGGGGGGGGGGGGGGGGGGG
 |GGFFFFFFFFFFFFFFFFFFFFFFFFFFF
 |HHIIIIIIIIIIIIIIIIIIIIIIIIIII
 |JJIIIIIIIIIIIIIIIIIIIIIIIIII

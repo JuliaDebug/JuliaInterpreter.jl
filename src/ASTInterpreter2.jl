@@ -31,12 +31,15 @@ struct JuliaStackFrame
     last_reference::Dict{Symbol, Int}
     wrapper::Bool
     generator::Bool
+    # Display options
+    fullpath::Bool
 end
-function JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter; wrapper = frame.wrapper, generator=frame.generator)
+function JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter; wrapper = frame.wrapper, generator=frame.generator, fullpath=frame.fullpath)
     JuliaStackFrame(frame.meth, frame.code, frame.locals,
                     frame.ssavalues, frame.sparams,
                     frame.exception_frames, frame.last_exception,
-                    pc, frame.last_reference, wrapper, generator)
+                    pc, frame.last_reference, wrapper, generator,
+                    fullpath)
 end
 
 is_loc_meta(expr, kind) = isexpr(expr, :meta) && length(expr.args) >= 1 && expr.args[1] === kind
@@ -89,7 +92,10 @@ function DebuggerFramework.locdesc(frame::JuliaStackFrame, specslottypes = false
             print(io, argname)
             !(argT === Any) && print(io, "::", argT)
         end
-        print(io, ") at ",frame.meth.file,":",frame.meth.line)
+        print(io, ") at ",
+            frame.fullpath ? frame.meth.file :
+            basename(String(frame.meth.file)),
+            ":",frame.meth.line)
     end
 end
 
@@ -245,7 +251,7 @@ end
 function JuliaStackFrame(meth::Method)
     JuliaStackFrame(meth, Vector{Nullable{Any}}(),
         Vector{Any}(), Vector{Any}(), Vector{Any}(),
-        Dict{Symbol, Int}(), false, false)
+        Dict{Symbol, Int}(), false, false, true)
 end
 
 function DebuggerFramework.debug(meth::Method, args...)
@@ -351,7 +357,8 @@ function prepare_locals(meth, code, argvals = (), generator = false)
         locals[i] = Nullable{Any}()
     end
     JuliaStackFrame(meth, code, locals, ssavalues, sparams,  Int[], Nullable{Any}(),
-        JuliaProgramCounter(2), Dict{Symbol,Int}(), false, generator)
+        JuliaProgramCounter(2), Dict{Symbol,Int}(), false, generator,
+        true)
 end
 
 
