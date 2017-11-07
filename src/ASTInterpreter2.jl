@@ -276,6 +276,14 @@ function is_function_def(ex)
     isexpr(ex,:function)
 end
 
+function is_generated(meth)
+    if VERSION < v"0.7-"
+        meth.isstaged
+    else
+        isdefined(meth, :generator)
+    end
+end
+
 function determine_method_for_expr(expr; enter_generated = false)
     f = to_function(expr.args[1])
     allargs = expr.args
@@ -309,18 +317,29 @@ function determine_method_for_expr(expr; enter_generated = false)
         args = allargs
         sig = method.sig
         isa(method, TypeMapEntry) && (method = method.func)
-        code = get_source(method)
         # Get static parameters
-        (ti, lenv) = ccall(:jl_match_method, Any, (Any, Any),
-                            argtypes, sig)::SimpleVector
-        if method.isstaged && !enter_generated
+        if VERSION < v"0.7-"
+            (ti, lenv) = ccall(:jl_match_method, Any, (Any, Any),
+                                argtypes, sig)::SimpleVector
+        else
+            (ti, lenv) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
+                                argtypes, sig)::SimpleVector
+        end
+        if is_generated(method) && !enter_generated
             # If we're stepping into a staged function, we need to use
             # the specialization, rather than stepping thorugh the
             # unspecialized method.
             code = Core.Inference.get_staged(Core.Inference.code_for_method(method, argtypes, lenv, typemax(UInt), false))
         else
-            if method.isstaged
+            if is_generated(method)
                 args = map(_Typeof, args)
+                if VERSION < v"0.7-"
+                    code = get_source(method)
+                else
+                    code = get_source(method.generator.gen)
+                end
+            else
+                code = get_source(method)
             end
         end
         return code, method, args, lenv
@@ -336,8 +355,17 @@ function get_source(meth)
     end
 end
 
+function copy_codeinfo(code::CodeInfo)
+    old_code = code.code
+    code.code = UInt8[]
+    new_codeinfo = deepcopy(code)
+    new_codeinfo.code = old_code
+    code.code = old_code
+    new_codeinfo
+end
+
 function prepare_locals(meth, code, argvals = (), generator = false)
-    code = deepcopy(code)
+    code = copy_codeinfo(code)
     linearize!(code)
     # Construct the environment from the arguments
     argnames = code.slotnames[1:meth.nargs]
@@ -394,16 +422,18 @@ function maybe_step_through_wrapper!(stack)
     stack
 end
 
-function _make_stack(arg)
-    arg = expand(arg)
+lower(mod, arg) = VERSION < v"0.7-" ? expand(arg) : Meta.lower(mod, arg)
+
+function _make_stack(mod, arg)
+    arg = lower(mod, arg)
     @assert isa(arg, Expr) && arg.head == :call
     kws = collect(filter(x->isexpr(x,:kw),arg.args))
     if !isempty(kws)
       args = Expr(:tuple,:(Core.kwfunc($(args[1]))),
         Expr(:call,Base.vector_any,mapreduce(
           x->[QuoteNode(x.args[1]),x.args[2]],vcat,kws)...),
-        map(x->isexpr(x,:parameters) ? QuoteNode(x) : x,
-          filter(x->!isexpr(x,:kw),arg.args))...)
+        map(x->isexpr(x, :parameters) ? QuoteNode(x) : x,
+          filter(x->!isexpr(x, :kw),arg.args))...)
     else
       args = Expr(:tuple,
         map(x->isexpr(x,:parameters) ? QuoteNode(x) : x, arg.args)...)
@@ -423,7 +453,7 @@ end
 
 macro enter(arg)
     quote
-        let stack = $(_make_stack(arg))
+        let stack = $(_make_stack(__module__,arg))
             DebuggerFramework.RunDebugger(stack)
         end
     end
