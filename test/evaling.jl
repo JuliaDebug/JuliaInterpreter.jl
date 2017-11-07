@@ -12,7 +12,7 @@ res = DebuggerFramework.eval_code(nothing, frame, "y")
 @assert res == 2
 
 # Evaling with sparams
-function evalsparams{T}(x::T)
+function evalsparams(x::T) where T
     x
 end
 frame = ASTInterpreter2.enter_call_expr(:($(evalsparams)(1)))
