@@ -448,10 +448,16 @@ function _make_stack(mod, arg)
 end
 
 macro make_stack(arg)
-    _make_stack(arg)
+     if VERSION < v"0.7-"
+         __module__ = current_module()
+     end
+    _make_stack(__module__, arg)
 end
 
 macro enter(arg)
+    if VERSION < v"0.7-"
+        __module__ = current_module()
+    end
     quote
         let stack = $(_make_stack(__module__,arg))
             DebuggerFramework.RunDebugger(stack)
