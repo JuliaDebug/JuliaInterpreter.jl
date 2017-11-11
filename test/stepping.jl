@@ -184,3 +184,13 @@ execute_command(state, state.stack[1], Val{:finish}(), "finish")
 execute_command(state, state.stack[1], Val{:finish}(), "finish")
 @assert isempty(state.stack)
 @assert state.overall_result == 2
+
+# Test that we step through kw wrappers
+f(foo; bar=3) = foo+bar
+stack = @make_stack f(2, bar=4)
+@assert length(stack) > 1
+state = dummy_state(stack)
+execute_command(state, state.stack[1], Val{:n}(), "nc")
+execute_command(state, state.stack[1], Val{:n}(), "nc")
+@assert isempty(state.stack)
+@assert state.overall_result == 6

@@ -407,7 +407,8 @@ end
 function maybe_step_through_wrapper!(stack)
     last = stack[1].code.code[end-1]
     isexpr(last, :(=)) && (last = last.args[2])
-    if isexpr(last, :call) && any(x->x==SlotNumber(1), last.args)
+    is_kw = startswith(String(Base.unwrap_unionall(stack[1].meth.sig).parameters[1].name.name), "#kw")
+    if is_kw || isexpr(last, :call) && any(x->x==SlotNumber(1), last.args)
         # If the last expr calls #self# or passes it to an implemetnation method,
         # this is a wrapper function that we might want to step though
         frame = stack[1]
