@@ -127,6 +127,33 @@ function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, ::Val{
     return true
 end
 
+"""
+    Runs code_typed on the call we're about to run
+"""
+function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, ::Val{:code_typed}, cmd)
+    expr = pc_expr(frame, frame.pc)
+    if isa(expr, Expr)
+        if is_call(expr)
+            isexpr(expr, :(=)) && (expr = expr.args[2])
+            args = map(x->isa(x, QuoteNode) ? x.value :
+                lookup_var_if_var(frame, x), expr.args)
+            f = args[1]
+            if f == Core._apply
+                f = to_function(args[2])
+                args = Base.append_any((args[2],), args[3:end]...)
+            end
+            if isa(args[1], Core.Builtin)
+                return false
+            end
+            ct = Base.code_typed(f, Base.typesof(args[2:end]...))
+            ct = ct == 1 ? ct[1] : ct
+            println(ct)
+        end    
+    end
+    return false
+end
+
+
 function DebuggerFramework.execute_command(state, frane::JuliaStackFrame, ::Val{:?}, cmd)
     display(
             Base.@md_str """
