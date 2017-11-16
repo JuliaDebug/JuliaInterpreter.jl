@@ -195,9 +195,13 @@ function DebuggerFramework.print_next_state(io::IO, state, frame::JuliaStackFram
     end
     if isa(expr, Expr)
         for (i, arg) in enumerate(expr.args)
-            nbytes = length(repr(arg))
-            if nbytes > max(40, div(200, length(expr.args)))
-                expr.args[i] = Suppressed("$nbytes bytes of output")
+            try
+                nbytes = length(repr(arg))
+                if nbytes > max(40, div(200, length(expr.args)))
+                    expr.args[i] = Suppressed("$nbytes bytes of output")
+                end
+            catch
+                expr.args[i] = Suppressed("printing error")
             end
         end
     end
@@ -218,6 +222,10 @@ function DebuggerFramework.language_specific_prompt(state, frame::JuliaStackFram
         prompt_suffix = (state.repl.envcolors ? Base.input_color : repl.input_color),
         complete = Base.REPL.REPLCompletionProvider(),
         on_enter = Base.REPL.return_callback)
+    # 0.7 compat
+    if isdefined(state.main_mode, :repl)
+        julia_prompt.repl = state.main_mode.repl
+    end
     julia_prompt.hist = state.main_mode.hist
     julia_prompt.hist.mode_mapping[:julia] = julia_prompt
 
