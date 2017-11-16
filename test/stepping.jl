@@ -194,3 +194,16 @@ execute_command(state, state.stack[1], Val{:n}(), "nc")
 execute_command(state, state.stack[1], Val{:n}(), "nc")
 @assert isempty(state.stack)
 @assert state.overall_result == 6
+
+# Test that we throw the right error when stepping through error functions
+function foo_error(a,b)
+    a > b && error()
+    return a*b
+end
+stack = @make_stack foo_error(3,1)
+state = dummy_state(stack)
+try
+    execute_command(state, state.stack[1], Val{:n}(), "n")
+catch e
+    @assert isa(e, ErrorException)
+end
