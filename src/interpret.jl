@@ -5,6 +5,7 @@ lookup_var(frame, ref::GlobalRef) = getfield(ref.mod, ref.name)
 lookup_var(frame, slot::SlotNumber) = get(frame.locals[slot.id])
 function lookup_var(frame, e::Expr)
     isexpr(e, :the_exception) && return get(frame.last_exception[])
+    isexpr(e, :boundscheck) && return true
     isexpr(e, :static_parameter) || error()
     frame.sparams[e.args[1]]
 end
@@ -85,6 +86,9 @@ function _step_expr(frame, pc)
                 else
                     rhs = (isexpr(node.args[2], :call) || isexpr(node.args[2], :foreigncall)) ? evaluate_call(frame, node.args[2]) :
                         lookup_var_if_var(frame, node.args[2])
+                end
+                if isa(rhs, QuoteNode)
+                    rhs = rhs.value
                 end
                 do_assignment!(frame, lhs, rhs)
                 # Special case hack for readability.

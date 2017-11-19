@@ -143,7 +143,7 @@ function DebuggerFramework.locinfo(frame::JuliaStackFrame)
 end
 
 function lookup_var_if_var(frame, x)
-    if isa(x, Union{SSAValue, GlobalRef, SlotNumber}) || isexpr(x, :static_parameter) || isexpr(x, :the_exception)
+    if isa(x, Union{SSAValue, GlobalRef, SlotNumber}) || isexpr(x, :static_parameter) || isexpr(x, :the_exception) || isexpr(x, :boundscheck)
         return lookup_var(frame, x)
     end
     x
@@ -183,6 +183,10 @@ function DebuggerFramework.eval_code(state, frame::JuliaStackFrame, command)
     eval_res
 end
 
+function maybe_quote(x)
+    (isa(x, Expr) || isa(x, Symbol)) ? QuoteNode(x) : x
+end
+
 function DebuggerFramework.print_next_state(io::IO, state, frame::JuliaStackFrame)
     print(io, "About to run: ")
     expr = pc_expr(frame, frame.pc)
@@ -191,7 +195,7 @@ function DebuggerFramework.print_next_state(io::IO, state, frame::JuliaStackFram
         expr = expr.args[2]
     end
     if isexpr(expr, :call) || isexpr(expr, :return)
-        expr.args = map(var->lookup_var_if_var(frame, var), expr.args)
+        expr.args = map(var->maybe_quote(lookup_var_if_var(frame, var)), expr.args)
     end
     if isa(expr, Expr)
         for (i, arg) in enumerate(expr.args)

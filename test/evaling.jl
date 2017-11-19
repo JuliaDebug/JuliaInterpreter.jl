@@ -1,3 +1,4 @@
+using DebuggerFramework
 using ASTInterpreter2
 
 # Simple evaling of function argument

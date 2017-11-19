@@ -58,3 +58,13 @@ end
 
 
 step_through(enter_call_expr(:($(foo)(20))))
+
+# Make sure that Symbols don't get an extra QuoteNode
+function foo_sym()
+    x = :ok
+    typeof(x)
+end
+
+@assert step_through(enter_call_expr(:($(foo_sym)()))) == Symbol
+
+
