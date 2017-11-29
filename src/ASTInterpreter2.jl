@@ -397,7 +397,7 @@ function prepare_locals(meth, code, argvals = (), generator = false)
         locals[i] = Nullable{Any}()
     end
     JuliaStackFrame(meth, code, locals, ssavalues, sparams,  Int[], Nullable{Any}(),
-        JuliaProgramCounter(2), Dict{Symbol,Int}(), false, generator,
+        JuliaProgramCounter(1), Dict{Symbol,Int}(), false, generator,
         true)
 end
 

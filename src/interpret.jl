@@ -203,12 +203,24 @@ function next_line!(frame, stack = nothing)
             fls = determine_line_and_file(frame, pc.next_stmt)
             didchangeline = line != fls[1][2]
         elseif stack !== nothing && iswrappercall(pc_expr(frame, pc))
-            stack[1] = JuliaStackFrame(frame, pc; wrapper = true)
-            call_expr = pc_expr(frame, pc)
-            isexpr(call_expr, :(=)) && (call_expr = call_expr.args[2])
-            frame = enter_call_expr(Expr(:call, map(x->lookup_var_if_var(frame, x), call_expr.args)...))
-            unshift!(stack, frame)
-            pc = frame.pc
+            # With splatting it can happen that we do something like ssa = tuple(#self#), _apply(ssa), which
+            # confuses the logic here, just step into the first call that's not a builtin
+            while true
+                stack[1] = JuliaStackFrame(frame, pc; wrapper = true)
+                call_expr = pc_expr(frame, pc)
+                isexpr(call_expr, :(=)) && (call_expr = call_expr.args[2])
+                call_expr = Expr(:call, map(x->lookup_var_if_var(frame, x), call_expr.args)...)
+                new_frame = enter_call_expr(call_expr)
+                if new_frame !== nothing
+                    unshift!(stack, new_frame)
+                    frame = new_frame
+                    pc = frame.pc
+                    break
+                else
+                    pc = _step_expr(frame, pc)
+                    pc == nothing && return nothing
+                end
+            end
         elseif isa(pc_expr(frame, pc), LineNumberNode)
             line != pc_expr(frame, pc).line && break
             pc = _step_expr(frame, pc)
