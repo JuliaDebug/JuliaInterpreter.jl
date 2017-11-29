@@ -437,19 +437,52 @@ end
 
 lower(mod, arg) = VERSION < v"0.7-" ? expand(arg) : Meta.lower(mod, arg)
 
+# This is a version of gen_call_with_extracted_types, except that is passes back the call expression
+# for further processing.
+function extract_args(__module__, ex0)
+    if isa(ex0, Expr)
+        kws = collect(filter(x->isexpr(x,:kw),ex0.args))
+        if !isempty(kws)
+            return Expr(:tuple,:(Core.kwfunc($(ex0.args[1]))),
+                Expr(:call,Base.vector_any,mapreduce(
+                x->[QuoteNode(x.args[1]),x.args[2]],vcat,kws)...),
+                map(x->isexpr(x, :parameters) ? QuoteNode(x) : x,
+                filter(x->!isexpr(x, :kw),ex0.args))...)
+        else
+            return Expr(:tuple,
+                map(x->isexpr(x,:parameters) ? QuoteNode(x) : x, ex0.args)...)
+        end
+    end
+    if isa(ex0, Expr) && ex0.head == :macrocall # Make @edit @time 1+2 edit the macro by using the types of the *expressions*
+        return error("Macros are not supported in @enter")
+    end
+    ex = lower(__module__, ex0)
+    exret = Expr(:none)
+    if !isa(ex, Expr)
+        return error("expression is not a function call or symbol")
+    elseif ex.head == :call
+        return Expr(:tuple,
+                map(x->isexpr(x,:parameters) ? QuoteNode(x) : x, ex.args)...)
+    elseif ex.head == :body
+        a1 = ex.args[1]
+        if isa(a1, Expr) && a1.head == :call
+            a11 = a1.args[1]
+            if a11 == :setindex!
+                return Expr(:tuple,
+                map(x->isexpr(x,:parameters) ? QuoteNode(x) : x, arg.args)...)
+            end
+        end
+    end
+    return error("expression is not a function call, "
+               * "or is too complex for @enter to analyze; "
+               * "break it down to simpler parts if possible")
+end
+
 function _make_stack(mod, arg)
-    arg = lower(mod, arg)
-    @assert isa(arg, Expr) && arg.head == :call
-    kws = collect(filter(x->isexpr(x,:kw),arg.args))
-    if !isempty(kws)
-      args = Expr(:tuple,:(Core.kwfunc($(args[1]))),
-        Expr(:call,Base.vector_any,mapreduce(
-          x->[QuoteNode(x.args[1]),x.args[2]],vcat,kws)...),
-        map(x->isexpr(x, :parameters) ? QuoteNode(x) : x,
-          filter(x->!isexpr(x, :kw),arg.args))...)
-    else
-      args = Expr(:tuple,
-        map(x->isexpr(x,:parameters) ? QuoteNode(x) : x, arg.args)...)
+    args = try
+        extract_args(mod, arg)
+    catch e
+        return :(throw($e))
     end
     quote
         theargs = $(esc(args))
