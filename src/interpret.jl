@@ -81,7 +81,7 @@ function _step_expr(frame, pc)
             if node.head == :(=)
                 lhs = node.args[1]
                 if isexpr(node.args[2], :new)
-                    new_expr = Expr(:new, map(x->lookup_var_if_var(frame, x), node.args[2].args)...)
+                    new_expr = Expr(:new, map(x->QuoteNode(lookup_var_if_var(frame, x)), node.args[2].args)...)
                     rhs = eval(frame.meth.module, new_expr)
                 else
                     rhs = (isexpr(node.args[2], :call) || isexpr(node.args[2], :foreigncall)) ? evaluate_call(frame, node.args[2]) :

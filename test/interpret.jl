@@ -67,4 +67,11 @@ end
 
 @assert step_through(enter_call_expr(:($(foo_sym)()))) == Symbol
 
+# Make sure evalling "new" works with symbols
 
+function new_sym()
+  a = :a
+  () -> a
+end
+
+step_through(enter_call_expr(:($new_sym())))
