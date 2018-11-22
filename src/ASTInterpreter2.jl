@@ -4,12 +4,14 @@ module ASTInterpreter2
 using DebuggerFramework
 using DebuggerFramework: FileLocInfo, BufferLocInfo, Suppressed
 using Base.Meta
-using Base: LineEdit
-import Base: +
+using REPL.LineEdit
+using REPL
+import Base: +, deepcopy_internal
+using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfoNode, GotoNode, Slot, GeneratedFunctionStub
+using Markdown
 
 export @enter, @make_stack
 
-include("linearize.jl")
 include("interpret.jl")
 
 struct JuliaProgramCounter
@@ -20,11 +22,12 @@ end
 struct JuliaStackFrame
     meth::Method
     code::CodeInfo
-    locals::Vector{Nullable{Any}}
+    locals::Vector{Any}
     ssavalues::Vector{Any}
+    used::BitSet
     sparams::Vector{Any}
     exception_frames::Vector{Int}
-    last_exception::Ref{Nullable{Any}}
+    last_exception::Ref{Any}
     pc::JuliaProgramCounter
     # A vector from names to the slotnumber of that name
     # for which a reference was last encountered.
@@ -36,54 +39,18 @@ struct JuliaStackFrame
 end
 function JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter; wrapper = frame.wrapper, generator=frame.generator, fullpath=frame.fullpath)
     JuliaStackFrame(frame.meth, frame.code, frame.locals,
-                    frame.ssavalues, frame.sparams,
+                    frame.ssavalues, frame.used, frame.sparams,
                     frame.exception_frames, frame.last_exception,
                     pc, frame.last_reference, wrapper, generator,
                     fullpath)
 end
 
 is_loc_meta(expr, kind) = isexpr(expr, :meta) && length(expr.args) >= 1 && expr.args[1] === kind
-function determine_line_and_file(frame, highlight::Int=0)
-    file = frame.meth.file
-    line = frame.meth.line
-    foundline = false
-    extra_locs = Any[]
-    # Find a line number node previous to this expression
-    if highlight !== 0 && !isempty(highlight)
-        i = highlight
-        while i >= 1
-            expr = frame.code.code[i]
-            if !foundline && isa(expr, LineNumberNode)
-                line = expr.line
-                foundline = true
-            elseif !foundline && isexpr(expr, :line)
-                line = expr.args[1]
-                foundline = true
-            elseif foundline && is_loc_meta(expr, :push_loc)
-                file = expr.args[2]
-                extra_locs = determine_line_and_file(frame, i-1)
-                break
-            elseif is_loc_meta(expr, :pop_loc)
-                npops = 1
-                while npops >= 1
-                    i -= 1
-                    expr = frame.code.code[i]
-                    is_loc_meta(expr, :pop_loc) && (npops += 1)
-                    is_loc_meta(expr, :push_loc) && (npops -= 1)
-                end
-            end
-            i -= 1
-        end
-    end
-    [extra_locs; (file, line)]
-end
 
 function DebuggerFramework.locdesc(frame::JuliaStackFrame, specslottypes = false)
     sprint() do io
-        slottypes = frame.code.slottypes
         argnames = frame.code.slotnames[2:frame.meth.nargs]
-        spectypes = specslottypes && (slottypes != nothing) ?
-            slottypes[2:frame.meth.nargs] : Any[Any for i=1:length(argnames)]
+        spectypes = Any[Any for i=1:length(argnames)]
         print(io, frame.meth.name,'(')
         first = true
         for (argname, argT) in zip(argnames, spectypes)
@@ -101,25 +68,25 @@ end
 
 function DebuggerFramework.print_locals(io::IO, frame::JuliaStackFrame)
     for i = 1:length(frame.locals)
-        if !isnull(frame.locals[i])
+        if !isa(frame.locals[i], Nothing)
             # #self# is only interesting if it has values inside of it. We already know
             # which function we're in otherwise.
-            val = get(frame.locals[i])
+            val = something(frame.locals[i])
             if frame.code.slotnames[i] == Symbol("#self#") && (isa(val, Type) || sizeof(val) == 0)
                 continue
             end
-            DebuggerFramework.print_var(io, frame.code.slotnames[i], frame.locals[i], nothing)
+            DebuggerFramework.print_var(io, frame.code.slotnames[i], something(frame.locals[i]), nothing)
         end
     end
     for i = 1:length(frame.sparams)
-        DebuggerFramework.print_var(io, frame.meth.sparam_syms[i], Nullable{Any}(frame.sparams[i]), nothing)
+        DebuggerFramework.print_var(io, frame.meth.sparam_syms[i], frame.sparams[i], nothing)
     end
 end
 
 
 const SEARCH_PATH = []
-__init__() = append!(SEARCH_PATH,[joinpath(JULIA_HOME,"../share/julia/base/"),
-    joinpath(JULIA_HOME,"../include/")])
+__init__() = append!(SEARCH_PATH,[joinpath(Sys.BINDIR,"../share/julia/base/"),
+    joinpath(Sys.BINDIR,"../include/")])
 function loc_for_fname(file, line, defline)
     if startswith(string(file),"REPL[")
         hist_idx = parse(Int,string(file)[6:end-1])
@@ -138,8 +105,7 @@ function loc_for_fname(file, line, defline)
 end
 
 function DebuggerFramework.locinfo(frame::JuliaStackFrame)
-    file, line = determine_line_and_file(frame, frame.pc.next_stmt)[end]
-    loc_for_fname(file, line, frame.meth.line)
+    loc_for_fname(frame.meth.file, location(frame), frame.meth.line)
 end
 
 function lookup_var_if_var(frame, x)
@@ -154,9 +120,9 @@ function DebuggerFramework.eval_code(state, frame::JuliaStackFrame, command)
     local_vars = Any[]
     local_vals = Any[]
     for i = 1:length(frame.locals)
-        if !isnull(frame.locals[i])
+        if !isa(frame.locals[i], Nothing)
             push!(local_vars, frame.code.slotnames[i])
-            push!(local_vals, QuoteNode(get(frame.locals[i])))
+            push!(local_vals, QuoteNode(something(frame.locals[i])))
         end
     end
     for i = 1:length(frame.sparams)
@@ -164,15 +130,17 @@ function DebuggerFramework.eval_code(state, frame::JuliaStackFrame, command)
         push!(local_vals, QuoteNode(frame.sparams[i]))
     end
     res = gensym()
-    eval_expr = Expr(:let, Expr(:block,
-        Expr(:(=), res, expr),
-        Expr(:tuple, res, Expr(:tuple, local_vars...))),
-    map(x->Expr(:(=), x...), zip(local_vars, local_vals))...)
-    eval_res, res = eval(frame.meth.module, eval_expr)
+    eval_expr = Expr(:let,
+        Expr(:block, map(x->Expr(:(=), x...), zip(local_vars, local_vals))...),
+        Expr(:block,
+            Expr(:(=), res, expr),
+            Expr(:tuple, res, Expr(:tuple, local_vars...))
+        ))
+    eval_res, res = Core.eval(frame.meth.module, eval_expr)
     j = 1
     for i = 1:length(frame.locals)
-        if !isnull(frame.locals[i])
-            frame.locals[i] = Nullable{Any}(res[j])
+        if !isa(frame.locals[i], Nothing)
+            frame.locals[i] = Some(res[j])
             j += 1
         end
     end
@@ -223,9 +191,9 @@ function DebuggerFramework.language_specific_prompt(state, frame::JuliaStackFram
     julia_prompt = LineEdit.Prompt(DebuggerFramework.promptname(state.level, "julia");
         # Copy colors from the prompt object
         prompt_prefix = state.repl.prompt_color,
-        prompt_suffix = (state.repl.envcolors ? Base.input_color : repl.input_color),
-        complete = Base.REPL.REPLCompletionProvider(),
-        on_enter = Base.REPL.return_callback)
+        prompt_suffix = (state.repl.envcolors ? Base.input_color : state.repl.input_color),
+        complete = REPL.REPLCompletionProvider(),
+        on_enter = REPL.return_callback)
     # 0.7 compat
     if isdefined(state.main_mode, :repl)
         julia_prompt.repl = state.main_mode.repl
@@ -241,7 +209,7 @@ function DebuggerFramework.language_specific_prompt(state, frame::JuliaStackFram
         xbuf = copy(buf)
         command = String(take!(buf))
         ok, result = DebuggerFramework.eval_code(state, command)
-        Base.REPL.print_response(state.repl, ok ? result : result[1], ok ? nothing : result[2], true, true)
+        REPL.print_response(state.repl, ok ? result : result[1], ok ? nothing : result[2], true, true)
         println(state.repl.t)
 
         if !ok
@@ -255,13 +223,13 @@ function DebuggerFramework.language_specific_prompt(state, frame::JuliaStackFram
         end
         LineEdit.reset_state(s)
     end
-    julia_prompt.keymap_dict = LineEdit.keymap([Base.REPL.mode_keymap(state.main_mode);state.standard_keymap])
+    julia_prompt.keymap_dict = LineEdit.keymap([REPL.mode_keymap(state.main_mode);state.standard_keymap])
     state.language_modes[:julia] = julia_prompt
     return julia_prompt
 end
 
 function JuliaStackFrame(meth::Method)
-    JuliaStackFrame(meth, Vector{Nullable{Any}}(),
+    JuliaStackFrame(meth, Vector{Any}(),
         Vector{Any}(), Vector{Any}(), Vector{Any}(),
         Dict{Symbol, Int}(), false, false, true)
 end
@@ -289,11 +257,7 @@ function is_function_def(ex)
 end
 
 function is_generated(meth)
-    if VERSION < v"0.7-"
-        meth.isstaged
-    else
-        isdefined(meth, :generator)
-    end
+    isdefined(meth, :generator)
 end
 
 function determine_method_for_expr(expr; enter_generated = false)
@@ -330,26 +294,17 @@ function determine_method_for_expr(expr; enter_generated = false)
         sig = method.sig
         isa(method, TypeMapEntry) && (method = method.func)
         # Get static parameters
-        if VERSION < v"0.7-"
-            (ti, lenv) = ccall(:jl_match_method, Any, (Any, Any),
-                                argtypes, sig)::SimpleVector
-        else
-            (ti, lenv) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
-                                argtypes, sig)::SimpleVector
-        end
+        (ti, lenv) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
+                            argtypes, sig)::SimpleVector
         if is_generated(method) && !enter_generated
             # If we're stepping into a staged function, we need to use
             # the specialization, rather than stepping thorugh the
             # unspecialized method.
-            code = Core.Inference.get_staged(Core.Inference.code_for_method(method, argtypes, lenv, typemax(UInt), false))
+            code = Core.Compiler.get_staged(Core.Compiler.code_for_method(method, argtypes, lenv, typemax(UInt), false))
         else
             if is_generated(method)
                 args = map(_Typeof, args)
-                if VERSION < v"0.7-"
-                    code = get_source(method)
-                else
-                    code = get_source(method.generator.gen)
-                end
+                code = get_source(method.generator)
             else
                 code = get_source(method)
             end
@@ -367,6 +322,21 @@ function get_source(meth)
     end
 end
 
+function get_source(g::GeneratedFunctionStub)
+    b = g(g.argnames...)
+    b isa CodeInfo && return b
+    return eval(b)
+end
+
+function Base.deepcopy_internal(x::LineInfoNode, stackdict::IdDict)
+    if haskey(stackdict, x)
+        return stackdict[x]
+    end
+    deeper(x) = deepcopy_internal(x, stackdict)
+    stackdict[x] = LineInfoNode(x.mod, deeper(x.method),
+        deeper(x.file), deeper(x.line), deeper(x.inlined_at))
+end
+
 function copy_codeinfo(code::CodeInfo)
     old_code = code.code
     code.code = UInt8[]
@@ -378,25 +348,25 @@ end
 
 function prepare_locals(meth, code, argvals = (), generator = false)
     code = copy_codeinfo(code)
-    linearize!(code)
     # Construct the environment from the arguments
     argnames = code.slotnames[1:meth.nargs]
-    locals = Array{Nullable{Any}}(length(code.slotflags))
+    locals = Array{Any}(undef, length(code.slotflags))
     ng = isa(code.ssavaluetypes, Int) ? code.ssavaluetypes : length(code.ssavaluetypes)
-    ssavalues = Array{Any}(ng)
-    sparams = Array{Any}(length(meth.sparam_syms))
+    ssavalues = Array{Any}(undef, ng)
+    sparams = Array{Any}(undef, length(meth.sparam_syms))
     for i = 1:meth.nargs
         if meth.isva && i == length(argnames)
-            locals[i] = length(argvals) >= i ? tuple(argvals[i:end]...) : Nullable{Any}(())
+            locals[i] = length(argvals) >= i ? Some(tuple(argvals[i:end]...)) : Some(())
             break
         end
-        locals[i] = length(argvals) >= i ? Nullable{Any}(argvals[i]) : Nullable{Any}()
+        locals[i] = length(argvals) >= i ? Some(argvals[i]) : Some(())
     end
     # add local variables initially undefined
     for i = (meth.nargs+1):length(code.slotnames)
-        locals[i] = Nullable{Any}()
+        locals[i] = nothing
     end
-    JuliaStackFrame(meth, code, locals, ssavalues, sparams,  Int[], Nullable{Any}(),
+    used = find_used(code)
+    JuliaStackFrame(meth, code, locals, ssavalues, used, sparams,  Int[], nothing,
         JuliaProgramCounter(1), Dict{Symbol,Int}(), false, generator,
         true)
 end
@@ -429,13 +399,13 @@ function maybe_step_through_wrapper!(stack)
             pc = next_call!(frame, pc)
         end
         stack[1] = JuliaStackFrame(frame, pc; wrapper=true)
-        unshift!(stack, enter_call_expr(Expr(:call, map(x->lookup_var_if_var(frame, x), last.args)...)))
+        pushfirst!(stack, enter_call_expr(Expr(:call, map(x->lookup_var_if_var(frame, x), last.args)...)))
         return maybe_step_through_wrapper!(stack)
     end
     stack
 end
 
-lower(mod, arg) = VERSION < v"0.7-" ? expand(arg) : Meta.lower(mod, arg)
+lower(mod, arg) = false ? expand(arg) : Meta.lower(mod, arg)
 
 # This is a version of gen_call_with_extracted_types, except that is passes back the call expression
 # for further processing.
@@ -443,9 +413,14 @@ function extract_args(__module__, ex0)
     if isa(ex0, Expr)
         kws = collect(filter(x->isexpr(x,:kw),ex0.args))
         if !isempty(kws)
+            names = []
+            values = Tuple(map(x-> begin
+                push!(names,x.args[1])
+                x.args[2]
+            end,kws))
+            names = Tuple(names)
             return Expr(:tuple,:(Core.kwfunc($(ex0.args[1]))),
-                Expr(:call,Base.vector_any,mapreduce(
-                x->[QuoteNode(x.args[1]),x.args[2]],vcat,kws)...),
+                Expr(:call, NamedTuple{names,typeof(values)}, values),
                 map(x->isexpr(x, :parameters) ? QuoteNode(x) : x,
                 filter(x->!isexpr(x, :kw),ex0.args))...)
         else
@@ -494,16 +469,10 @@ function _make_stack(mod, arg)
 end
 
 macro make_stack(arg)
-     if VERSION < v"0.7-"
-         __module__ = current_module()
-     end
     _make_stack(__module__, arg)
 end
 
 macro enter(arg)
-    if VERSION < v"0.7-"
-        __module__ = current_module()
-    end
     quote
         let stack = $(_make_stack(__module__,arg))
             DebuggerFramework.RunDebugger(stack)

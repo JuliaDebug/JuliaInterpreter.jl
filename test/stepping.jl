@@ -1,10 +1,11 @@
 
 using ASTInterpreter2
 using Base.Meta
+using REPL
 using DebuggerFramework: execute_command, dummy_state
 
 struct DummyState; end
-Base.LineEdit.transition(s::DummyState, _) = nothing
+REPL.LineEdit.transition(s::DummyState, _) = nothing
 
 # Steps through the whole expression using `s`
 function step_through(frame)
@@ -67,7 +68,7 @@ end
 
 # Work around the fact that we can't detect macro expansions if the macro
 # is defined in the same file
-include_string("""
+include_string(Main, """
 function test_macro()
     a = sin(5)
     b = asin(a)

@@ -1,6 +1,6 @@
 using ASTInterpreter2
 using ASTInterpreter2: enter_call_expr
-using Base.Test
+using Test
 
 function CallTest()
     UnitRange{Int64}(2,2)

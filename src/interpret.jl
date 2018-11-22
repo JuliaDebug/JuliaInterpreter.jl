@@ -1,10 +1,15 @@
 # Implements a simple interpreter for julia's lowered AST
 
+getlhs(pc) = SSAValue(pc.next_stmt)
+
+isassign(fr) = isassign(fr, fr.pc)
+isassign(fr, pc) = (pc.next_stmt in fr.used)
+
 lookup_var(frame, val::SSAValue) = frame.ssavalues[val.id+1]
 lookup_var(frame, ref::GlobalRef) = getfield(ref.mod, ref.name)
-lookup_var(frame, slot::SlotNumber) = get(frame.locals[slot.id])
+lookup_var(frame, slot::SlotNumber) = something(frame.locals[slot.id])
 function lookup_var(frame, e::Expr)
-    isexpr(e, :the_exception) && return get(frame.last_exception[])
+    isexpr(e, :the_exception) && return frame.last_exception[]
     isexpr(e, :boundscheck) && return true
     isexpr(e, :static_parameter) || error()
     frame.sparams[e.args[1]]
@@ -23,7 +28,7 @@ instantiate_type_in_env(arg, spsig, spvals) =
     ccall(:jl_instantiate_type_in_env, Any, (Any, Any, Ptr{Any}), arg, spsig, spvals)
 
 function evaluate_call(frame, call_expr)
-    args = Array{Any}(length(call_expr.args))
+    args = Array{Any}(undef, length(call_expr.args))
     for i = 1:length(args)
         arg = call_expr.args[i]
         if isa(arg, QuoteNode)
@@ -32,6 +37,8 @@ function evaluate_call(frame, call_expr)
             args[i] = lookup_var(frame, arg)
         elseif isexpr(arg, :&)
             args[i] = Expr(:&, lookup_var(frame, arg.args[1]))
+        elseif isa(arg, Expr)
+            args[i] = eval_rhs(frame, arg)
         else
             args[i] = arg
         end
@@ -48,7 +55,7 @@ function evaluate_call(frame, call_expr)
                 instantiate_type_in_env(arg, frame.meth.sig, frame.sparams)
             end...)
         end
-        ret = eval(frame.meth.module, Expr(:foreigncall, args...))
+        ret = Core.eval(frame.meth.module, Expr(:foreigncall, args...))
     else
         f = to_function(args[1])
         if isa(f, CodeInfo)
@@ -66,37 +73,57 @@ function do_assignment!(frame, lhs, rhs)
     if isa(lhs, SSAValue)
         frame.ssavalues[lhs.id+1] = rhs
     elseif isa(lhs, Slot)
-        frame.locals[lhs.id] = Nullable{Any}(rhs)
+        frame.locals[lhs.id] = Some(rhs)
         frame.last_reference[frame.code.slotnames[lhs.id]] =
             lhs.id
     elseif isa(lhs, GlobalRef)
-        eval(lhs.mod,:($(lhs.name) = $(QuoteNode(rhs))))
+        Base.eval(lhs.mod,:($(lhs.name) = $(QuoteNode(rhs))))
     end
+end
+
+eval_rhs(frame, node) = eval(node)
+function eval_rhs(frame, node::Expr)
+    if isexpr(node, :new)
+        new_expr = Expr(:new, map(x->QuoteNode(lookup_var_if_var(frame, x)),
+            node.args)...)
+        rhs = Core.eval(frame.meth.module, new_expr)
+    elseif isexpr(node, :isdefined)
+        rhs = check_isdefined(frame, node.args[1])
+    else
+        rhs = (isexpr(node, :call) || isexpr(node, :foreigncall)) ?
+            evaluate_call(frame, node) :
+            lookup_var_if_var(frame, node)
+    end
+    if isa(rhs, QuoteNode)
+        rhs = rhs.value
+    end
+    return rhs
+end
+
+eval_rhs(frame, node::Union{SSAValue, GlobalRef, SlotNumber}) = lookup_var(frame, node)
+eval_rhs(frame, node::QuoteNode) = node.value
+check_isdefined(frame, node::Slot) = isdefined(frame.locals, slot.id)
+function check_isdefined(frame, node::Expr)
+    node.head == :static_parameter && return isdefined(frame.sparams, node.args[1])
 end
 
 function _step_expr(frame, pc)
     node = pc_expr(frame, pc)
     try
-        if isa(node, Expr)
+        if isassign(frame, pc)
+            lhs = getlhs(pc)
+            rhs = eval_rhs(frame, node)
+            do_assignment!(frame, lhs, rhs)
+        elseif isa(node, Expr)
             if node.head == :(=)
                 lhs = node.args[1]
-                if isexpr(node.args[2], :new)
-                    new_expr = Expr(:new, map(x->QuoteNode(lookup_var_if_var(frame, x)), node.args[2].args)...)
-                    rhs = eval(frame.meth.module, new_expr)
-                else
-                    rhs = (isexpr(node.args[2], :call) || isexpr(node.args[2], :foreigncall)) ? evaluate_call(frame, node.args[2]) :
-                        lookup_var_if_var(frame, node.args[2])
-                end
-                if isa(rhs, QuoteNode)
-                    rhs = rhs.value
-                end
+                rhs = eval_rhs(frame, node.args[2])
                 do_assignment!(frame, lhs, rhs)
                 # Special case hack for readability.
                 # ret = rhs
             elseif node.head == :&
             elseif node.head == :gotoifnot
-                arg = node.args[1]
-                arg = isa(arg, Bool) ? arg : lookup_var(frame, arg)
+                arg = eval_rhs(frame, node.args[1])
                 if !isa(arg, Bool)
                     throw(TypeError(frame.meth.name, "if", Bool, node.args[1]))
                 end
@@ -114,6 +141,7 @@ function _step_expr(frame, pc)
                     pop!(frame.exception_frames)
                 end
             elseif node.head == :static_parameter
+            elseif node.head == :gc_preserve_end || node.head == :gc_preserve_begin
             elseif node.head == :return
                 return nothing
             else
@@ -124,7 +152,7 @@ function _step_expr(frame, pc)
         elseif isa(node, QuoteNode)
             ret = node.value
         else
-            ret = eval(node)
+            ret = eval_rhs(frame, node)
         end
     catch err
         isempty(frame.exception_frames) && rethrow(err)
@@ -177,6 +205,15 @@ end
 pc_expr(frame, pc) = frame.code.code[pc.next_stmt]
 pc_expr(frame) = pc_expr(frame, frame.pc)
 
+function find_used(code::CodeInfo)
+    used = BitSet()
+    stmts = code.code
+    for stmt in stmts
+        Core.Compiler.scan_ssa_use!(push!, used, stmt)
+    end
+    return used
+end
+
 function maybe_next_call!(frame, pc)
     call_or_return(node) = is_call(node) || isexpr(node, :return)
     call_or_return(pc_expr(frame, pc)) ||
@@ -185,13 +222,13 @@ function maybe_next_call!(frame, pc)
 end
 maybe_next_call!(frame) = maybe_next_call!(frame, frame.pc)
 
+location(frame) = location(frame, frame.pc)
+location(frame, pc) = frame.code.codelocs[pc.next_stmt] + frame.meth.line - 1
 function next_line!(frame, stack = nothing)
-    didchangeline = false
-    fls = determine_line_and_file(frame, frame.pc.next_stmt)
-    line = fls[1][2]
+    initial = location(frame)
     first = true
     pc = frame.pc
-    while !didchangeline
+    while location(frame, pc) == initial
         # If this is a return node, interrupt execution. This is the same
         # special case as in `s`.
         (!first && isexpr(pc_expr(frame, pc), :return)) && return pc
@@ -200,8 +237,6 @@ function next_line!(frame, stack = nothing)
         if isgotonode(pc_expr(frame, pc))
             pc = _step_expr(frame, pc)
             pc == nothing && return nothing
-            fls = determine_line_and_file(frame, pc.next_stmt)
-            didchangeline = line != fls[1][2]
         elseif stack !== nothing && iswrappercall(pc_expr(frame, pc))
             # With splatting it can happen that we do something like ssa = tuple(#self#), _apply(ssa), which
             # confuses the logic here, just step into the first call that's not a builtin
@@ -212,7 +247,7 @@ function next_line!(frame, stack = nothing)
                 call_expr = Expr(:call, map(x->lookup_var_if_var(frame, x), call_expr.args)...)
                 new_frame = enter_call_expr(call_expr)
                 if new_frame !== nothing
-                    unshift!(stack, new_frame)
+                    pushfirst!(stack, new_frame)
                     frame = new_frame
                     pc = frame.pc
                     break
