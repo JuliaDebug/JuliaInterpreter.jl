@@ -159,7 +159,7 @@ function _step_expr(frame, pc)
         frame.last_exception[] = err
         return JuliaProgramCounter(frame.exception_frames[end])
     end
-    return JuliaProgramCounter(pc.next_stmt + 1)
+    return pc + 1
 end
 step_expr(frame) = _step_expr(frame, frame.pc)
 

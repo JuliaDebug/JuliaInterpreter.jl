@@ -1,4 +1,3 @@
-__precompile__()
 module ASTInterpreter2
 
 using DebuggerFramework
