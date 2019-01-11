@@ -385,6 +385,7 @@ function enter_call_expr(expr; enter_generated = false)
 end
 
 function maybe_step_through_wrapper!(stack)
+    length(stack[1].code.code) < 2 && return stack
     last = stack[1].code.code[end-1]
     isexpr(last, :(=)) && (last = last.args[2])
     is_kw = startswith(String(Base.unwrap_unionall(stack[1].meth.sig).parameters[1].name.name), "#kw")
