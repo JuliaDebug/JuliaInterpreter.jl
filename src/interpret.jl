@@ -102,9 +102,9 @@ end
 
 eval_rhs(frame, node::Union{SSAValue, GlobalRef, SlotNumber}) = lookup_var(frame, node)
 eval_rhs(frame, node::QuoteNode) = node.value
-check_isdefined(frame, node::Slot) = isdefined(frame.locals, slot.id)
+check_isdefined(frame, node::Slot) = isassigned(frame.locals, slot.id)
 function check_isdefined(frame, node::Expr)
-    node.head == :static_parameter && return isdefined(frame.sparams, node.args[1])
+    node.head == :static_parameter && return isassigned(frame.sparams, node.args[1])
 end
 
 function _step_expr(frame, pc)
