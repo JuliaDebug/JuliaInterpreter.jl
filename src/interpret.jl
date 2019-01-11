@@ -89,6 +89,8 @@ function eval_rhs(frame, node::Expr)
         rhs = Core.eval(frame.meth.module, new_expr)
     elseif isexpr(node, :isdefined)
         rhs = check_isdefined(frame, node.args[1])
+    elseif isexpr(node, :enter)
+        rhs = length(frame.exception_frames)
     else
         rhs = (isexpr(node, :call) || isexpr(node, :foreigncall)) ?
             evaluate_call(frame, node) :
@@ -110,49 +112,57 @@ end
 function _step_expr(frame, pc)
     node = pc_expr(frame, pc)
     try
+        handled = false
         if isassign(frame, pc)
             lhs = getlhs(pc)
             rhs = eval_rhs(frame, node)
             do_assignment!(frame, lhs, rhs)
-        elseif isa(node, Expr)
-            if node.head == :(=)
-                lhs = node.args[1]
-                rhs = eval_rhs(frame, node.args[2])
-                do_assignment!(frame, lhs, rhs)
-                # Special case hack for readability.
-                # ret = rhs
-            elseif node.head == :&
-            elseif node.head == :gotoifnot
-                arg = eval_rhs(frame, node.args[1])
-                if !isa(arg, Bool)
-                    throw(TypeError(frame.meth.name, "if", Bool, node.args[1]))
+            handled = !isexpr(node, :enter)
+        end
+        if !handled
+            if isa(node, Expr)
+                if node.head == :(=)
+                    lhs = node.args[1]
+                    rhs = eval_rhs(frame, node.args[2])
+                    do_assignment!(frame, lhs, rhs)
+                    # Special case hack for readability.
+                    # ret = rhs
+                elseif node.head == :&
+                elseif node.head == :gotoifnot
+                    arg = eval_rhs(frame, node.args[1])
+                    if !isa(arg, Bool)
+                        throw(TypeError(frame.meth.name, "if", Bool, node.args[1]))
+                    end
+                    if !arg
+                        return JuliaProgramCounter(node.args[2])
+                    end
+                elseif node.head == :call || node.head == :foreigncall
+                    evaluate_call(frame, node)
+                elseif node.head == :static_typeof
+                elseif node.head == :type_goto || node.head == :inbounds
+                elseif node.head == :enter
+                    push!(frame.exception_frames, node.args[1])
+                elseif node.head == :leave
+                    for _ = 1:node.args[1]
+                        pop!(frame.exception_frames)
+                    end
+                elseif node.head == :pop_exception
+                    n = lookup_var(frame, node.args[1])
+                    deleteat!(frame.exception_frames, n+1:length(frame.exception_frames))
+                elseif node.head == :static_parameter
+                elseif node.head == :gc_preserve_end || node.head == :gc_preserve_begin
+                elseif node.head == :return
+                    return nothing
+                else
+                    ret = eval(node)
                 end
-                if !arg
-                    return JuliaProgramCounter(node.args[2])
-                end
-            elseif node.head == :call || node.head == :foreigncall
-                evaluate_call(frame, node)
-            elseif node.head == :static_typeof
-            elseif node.head == :type_goto || node.head == :inbounds
-            elseif node.head == :enter
-                push!(frame.exception_frames, node.args[1])
-            elseif node.head == :leave
-                for _ = 1:node.args[1]
-                    pop!(frame.exception_frames)
-                end
-            elseif node.head == :static_parameter
-            elseif node.head == :gc_preserve_end || node.head == :gc_preserve_begin
-            elseif node.head == :return
-                return nothing
+            elseif isa(node, GotoNode)
+                return JuliaProgramCounter(node.label)
+            elseif isa(node, QuoteNode)
+                ret = node.value
             else
-                ret = eval(node)
+                ret = eval_rhs(frame, node)
             end
-        elseif isa(node, GotoNode)
-            return JuliaProgramCounter(node.label)
-        elseif isa(node, QuoteNode)
-            ret = node.value
-        else
-            ret = eval_rhs(frame, node)
         end
     catch err
         isempty(frame.exception_frames) && rethrow(err)
