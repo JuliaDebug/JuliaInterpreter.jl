@@ -44,6 +44,11 @@ function JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter; wrappe
                     fullpath)
 end
 
+function JuliaStackFrame(meth::Method)
+    code = Base.uncompressed_ast(meth)
+    prepare_locals(meth, code)
+end
+
 is_loc_meta(expr, kind) = isexpr(expr, :meta) && length(expr.args) >= 1 && expr.args[1] === kind
 
 function DebuggerFramework.locdesc(frame::JuliaStackFrame, specslottypes = false)
@@ -225,12 +230,6 @@ function DebuggerFramework.language_specific_prompt(state, frame::JuliaStackFram
     julia_prompt.keymap_dict = LineEdit.keymap([REPL.mode_keymap(state.main_mode);state.standard_keymap])
     state.language_modes[:julia] = julia_prompt
     return julia_prompt
-end
-
-function JuliaStackFrame(meth::Method)
-    JuliaStackFrame(meth, Vector{Any}(),
-        Vector{Any}(), Vector{Any}(), Vector{Any}(),
-        Dict{Symbol, Int}(), false, false, true)
 end
 
 function DebuggerFramework.debug(meth::Method, args...)

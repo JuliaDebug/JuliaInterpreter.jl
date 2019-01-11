@@ -15,3 +15,6 @@ state = dummy_state(stack)
 execute_command(state, state.stack[1], Val{:n}(), "n")
 execute_command(state, state.stack[1], Val{:finish}(), "finish")
 @test isempty(state.stack)
+
+meth = first(methods(complicated_keyword_stuff))
+@test ASTInterpreter2.JuliaStackFrame(meth) isa ASTInterpreter2.JuliaStackFrame
