@@ -7,5 +7,5 @@ using DebuggerFramework
 include("evaling.jl")
 include("stepping.jl")
 include("interpret.jl")
-include("ui.jl")
+# include("ui.jl")
 include("misc.jl")
