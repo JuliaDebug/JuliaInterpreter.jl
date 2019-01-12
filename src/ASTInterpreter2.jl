@@ -44,11 +44,6 @@ function JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter; wrappe
                     fullpath)
 end
 
-function JuliaStackFrame(meth::Method)
-    code = Base.uncompressed_ast(meth)
-    prepare_locals(meth, code)
-end
-
 moduleof(frame) = isa(frame.scope, Method) ? frame.scope.module : frame.scope
 Base.nameof(frame) = isa(frame.scope, Method) ? frame.scope.name : nameof(frame.scope)
 
@@ -249,7 +244,7 @@ function DebuggerFramework.language_specific_prompt(state, frame::JuliaStackFram
 end
 
 function DebuggerFramework.debug(meth::Method, args...)
-    stack = [JuliaStackFrame(meth)]
+    stack = [enter_call(meth, args...)]
     DebuggerFramework.RunDebugger(stack)
 end
 
@@ -274,6 +269,56 @@ function is_generated(meth)
     isdefined(meth, :generator)
 end
 
+kwpair(ex::Expr) = [ex.args[1]; ex.args[2]]
+kwpair(pr::Pair) = [pr.first; pr.second]
+
+function prepare_args(f, allargs, kwargs)
+    if !isempty(kwargs)
+        of = f
+        f = Core.kwfunc(f)
+        allargs = [f,reduce(vcat,Any[kwpair(ex) for ex in kwargs]),of,
+            allargs[2:end]...]
+    elseif f === Core._apply
+        f = to_function(allargs[2])
+        allargs = Base.append_any((allargs[2],), allargs[3:end]...)
+    end
+    return f, allargs
+end
+
+function prepare_call(f, allargs; enter_generated = false)
+    args = allargs[2:end]
+    argtypes = Tuple{map(_Typeof,args)...}
+    method = try
+        which(f, argtypes)
+    catch err
+        @show typeof(f)
+        println(f)
+        println(argtypes)
+        rethrow(err)
+    end
+    argtypes = Tuple{_Typeof(f), argtypes.parameters...}
+    args = allargs
+    sig = method.sig
+    isa(method, TypeMapEntry) && (method = method.func)
+    # Get static parameters
+    (ti, lenv) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
+                        argtypes, sig)::SimpleVector
+    if is_generated(method) && !enter_generated
+        # If we're stepping into a staged function, we need to use
+        # the specialization, rather than stepping thorugh the
+        # unspecialized method.
+        code = Core.Compiler.get_staged(Core.Compiler.code_for_method(method, argtypes, lenv, typemax(UInt), false))
+    else
+        if is_generated(method)
+            args = map(_Typeof, args)
+            code = get_source(method.generator)
+        else
+            code = get_source(method)
+        end
+    end
+    return code, method, args, lenv
+end
+
 function determine_method_for_expr(expr; enter_generated = false)
     f = to_function(expr.args[1])
     allargs = expr.args
@@ -282,48 +327,10 @@ function determine_method_for_expr(expr; enter_generated = false)
     if length(allargs) > 1 && isexpr(allargs[2], :parameters)
         kwargs = splice!(allargs, 2)
     end
-    if !isempty(kwargs.args)
-        of = f
-        f = Core.kwfunc(f)
-        allargs = [f,reduce(vcat,Any[[ex.args[1];ex.args[2]] for ex in kwargs.args]),of,
-            allargs[2:end]...]
-    elseif f === Core._apply
-        f = to_function(allargs[2])
-        allargs = Base.append_any((allargs[2],), allargs[3:end]...)
-    end
+    f, allargs = prepare_args(f, allargs, kwargs.args)
     # Can happen for thunks created by generated functions
     if !isa(f, Core.Builtin) && !isa(f, Core.IntrinsicFunction)
-        args = allargs[2:end]
-        argtypes = Tuple{map(_Typeof,args)...}
-        method = try
-            which(f, argtypes)
-        catch err
-            @show typeof(f)
-            println(f)
-            println(argtypes)
-            rethrow(err)
-        end
-        argtypes = Tuple{_Typeof(f), argtypes.parameters...}
-        args = allargs
-        sig = method.sig
-        isa(method, TypeMapEntry) && (method = method.func)
-        # Get static parameters
-        (ti, lenv) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
-                            argtypes, sig)::SimpleVector
-        if is_generated(method) && !enter_generated
-            # If we're stepping into a staged function, we need to use
-            # the specialization, rather than stepping thorugh the
-            # unspecialized method.
-            code = Core.Compiler.get_staged(Core.Compiler.code_for_method(method, argtypes, lenv, typemax(UInt), false))
-        else
-            if is_generated(method)
-                args = map(_Typeof, args)
-                code = get_source(method.generator)
-            else
-                code = get_source(method)
-            end
-        end
-        return code, method, args, lenv
+        return prepare_call(f, allargs; enter_generated=enter_generated)
     end
     nothing
 end
@@ -363,13 +370,12 @@ end
 function prepare_locals(meth, code, argvals = (), generator = false)
     code = copy_codeinfo(code)
     # Construct the environment from the arguments
-    argnames = code.slotnames[1:meth.nargs]
     locals = Array{Any}(undef, length(code.slotflags))
     ng = isa(code.ssavaluetypes, Int) ? code.ssavaluetypes : length(code.ssavaluetypes)
     ssavalues = Array{Any}(undef, ng)
     sparams = Array{Any}(undef, length(meth.sparam_syms))
     for i = 1:meth.nargs
-        if meth.isva && i == length(argnames)
+        if meth.isva && i == meth.nargs
             locals[i] = length(argvals) >= i ? Some(tuple(argvals[i:end]...)) : Some(())
             break
         end
@@ -386,19 +392,36 @@ function prepare_locals(meth, code, argvals = (), generator = false)
 end
 
 
+function build_frame(code, method, args, lenv; enter_generated=false)
+    frame = prepare_locals(method, code, args, enter_generated)
+    # Add static parameters to environment
+    for i = 1:length(lenv)
+        frame.sparams[i] = lenv[i]
+    end
+    return frame
+end
+
 function enter_call_expr(expr; enter_generated = false)
     r = determine_method_for_expr(expr; enter_generated = enter_generated)
     if r !== nothing
-        code, method, args, lenv = r
-        frame = prepare_locals(method, code, args, enter_generated)
-        # Add static parameters to environment
-        for i = 1:length(lenv)
-            frame.sparams[i] = lenv[i]
-        end
-        return frame
+        return build_frame(r...; enter_generated=enter_generated)
     end
     nothing
 end
+
+function enter_call((f, enter_generated)::Tuple{Any, Bool}, args...; kwargs...)
+    f, allargs = prepare_args(f, [f, args...], kwargs)
+    # Can happen for thunks created by generated functions
+    if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
+        error(f, " is a builtin or intrinsic")
+    end
+    r = prepare_call(f, allargs; enter_generated=enter_generated)
+    if r !== nothing
+        return build_frame(r...; enter_generated=enter_generated)
+    end
+    return nothing
+end
+enter_call(f, args...; kwargs...) = enter_call((f, false), args...; kwargs...)
 
 function maybe_step_through_wrapper!(stack)
     length(stack[1].code.code) < 2 && return stack

@@ -7,15 +7,6 @@ using DebuggerFramework: execute_command, dummy_state
 struct DummyState; end
 REPL.LineEdit.transition(s::DummyState, _) = nothing
 
-# Steps through the whole expression using `s`
-function step_through(frame)
-    state = DebuggerFramework.dummy_state([frame])
-    while !isexpr(ASTInterpreter2.pc_expr(state.stack[end]), :return)
-        execute_command(state, state.stack[1], Val{:s}(), "s")
-    end
-    return ASTInterpreter2.lookup_var_if_var(state.stack[end], ASTInterpreter2.pc_expr(state.stack[end]).args[1])
-end
-
 @assert step_through(ASTInterpreter2.enter_call_expr(:($(+)(1,2.5)))) == 3.5
 @assert step_through(ASTInterpreter2.enter_call_expr(:($(sin)(1)))) == sin(1)
 @assert step_through(ASTInterpreter2.enter_call_expr(:($(gcd)(10,20)))) == gcd(10, 20)
