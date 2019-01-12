@@ -27,30 +27,39 @@ end
 instantiate_type_in_env(arg, spsig, spvals) =
     ccall(:jl_instantiate_type_in_env, Any, (Any, Any, Ptr{Any}), arg, spsig, spvals)
 
-function evaluate_call(frame, call_expr)
+function collect_args(frame, call_expr)
     args = Array{Any}(undef, length(call_expr.args))
     for i = 1:length(args)
         arg = call_expr.args[i]
         if isa(arg, QuoteNode)
             args[i] = arg.value
-        elseif isa(arg, Union{SSAValue, GlobalRef, Slot})
-            args[i] = lookup_var(frame, arg)
+        elseif isa(arg, SSAValue) || isa(arg, GlobalRef) || isa(arg, SlotNumber)
+            args[i] = lookup_var(frame, arg, false)
+        # elseif isa(arg, Slot)
+        #     error("unexpected TypedSlot")
         elseif isexpr(arg, :&)
-            args[i] = Expr(:&, lookup_var(frame, arg.args[1]))
+            args[i] = Expr(:&, lookup_var(frame, (arg::Expr).args[1], false))
         elseif isa(arg, Expr)
             args[i] = eval_rhs(frame, arg)
         else
             args[i] = arg
         end
     end
+    return args
+end
+
+function evaluate_call(frame, call_expr)
+    args = collect_args(frame, call_expr)
     # Don't go through eval since this may have unquoted symbols and
     # exprs
     if isexpr(call_expr, :foreigncall)
-        args = map(args) do arg
-            isa(arg, Symbol) ? QuoteNode(arg) : arg
+        for i = 1:length(args)
+            arg = args[i]
+            args[i] =  isa(arg, Symbol) ? QuoteNode(arg) : arg
         end
-        if !isempty(frame.sparams) && frame.scope isa Method
-            sig = frame.scope.sig
+        scope = frame.scope
+        if !isempty(frame.sparams) && scope isa Method
+            sig = scope.sig
             args[2] = instantiate_type_in_env(args[2], sig, frame.sparams)
             args[3] = Core.svec(map(args[3]) do arg
                 instantiate_type_in_env(arg, sig, frame.sparams)
@@ -64,17 +73,18 @@ function evaluate_call(frame, call_expr)
         else
             # Don't go through eval since this may have unquoted symbols and
             # exprs
-            ret = f(args[2:end]...)
+            popfirst!(args)
+            ret = f(args...)
         end
     end
     return ret
 end
 
-function do_assignment!(frame, lhs, rhs)
+function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
     if isa(lhs, SSAValue)
         frame.ssavalues[lhs.id+1] = rhs
-    elseif isa(lhs, Slot)
-        frame.locals[lhs.id] = Some(rhs)
+    elseif isa(lhs, SlotNumber)
+        frame.locals[lhs.id] = Some{Any}(rhs)
         frame.last_reference[frame.code.slotnames[lhs.id]] =
             lhs.id
     elseif isa(lhs, GlobalRef)
@@ -148,7 +158,7 @@ function _step_expr(frame, pc)
                         pop!(frame.exception_frames)
                     end
                 elseif node.head == :pop_exception
-                    n = lookup_var(frame, node.args[1])
+                    n = lookup_var(frame, node.args[1], false)
                     deleteat!(frame.exception_frames, n+1:length(frame.exception_frames))
                 elseif node.head == :static_parameter
                 elseif node.head == :gc_preserve_end || node.head == :gc_preserve_begin
@@ -258,7 +268,7 @@ function next_line!(frame, stack = nothing)
                 stack[1] = JuliaStackFrame(frame, pc; wrapper = true)
                 call_expr = pc_expr(frame, pc)
                 isexpr(call_expr, :(=)) && (call_expr = call_expr.args[2])
-                call_expr = Expr(:call, map(x->lookup_var_if_var(frame, x), call_expr.args)...)
+                call_expr = Expr(:call, map(x->lookup_var(frame, x, true), call_expr.args)...)
                 new_frame = enter_call_expr(call_expr)
                 if new_frame !== nothing
                     pushfirst!(stack, new_frame)

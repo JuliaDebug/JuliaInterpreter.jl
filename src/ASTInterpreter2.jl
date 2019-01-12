@@ -18,15 +18,17 @@ struct JuliaProgramCounter
 end
 +(x::JuliaProgramCounter, y::Integer) = JuliaProgramCounter(x.next_stmt+y)
 
+Base.show(io::IO, pc::JuliaProgramCounter) = print(io, "JuliaProgramCounter(", pc.next_stmt, ')')
+
 struct JuliaStackFrame
     scope::Union{Method,Module}
     code::CodeInfo
-    locals::Vector{Any}
+    locals::Vector{Union{Nothing,Some{Any}}}
     ssavalues::Vector{Any}
     used::BitSet
     sparams::Vector{Any}
     exception_frames::Vector{Int}
-    last_exception::Ref{Any}
+    last_exception::Base.RefValue{Any}
     pc::JuliaProgramCounter
     # A vector from names to the slotnumber of that name
     # for which a reference was last encountered.
@@ -122,13 +124,6 @@ function DebuggerFramework.locinfo(frame::JuliaStackFrame)
     end
 end
 
-function lookup_var_if_var(frame, x)
-    if isa(x, Union{SSAValue, GlobalRef, SlotNumber}) || isexpr(x, :static_parameter) || isexpr(x, :the_exception) || isexpr(x, :boundscheck)
-        return lookup_var(frame, x)
-    end
-    x
-end
-
 function DebuggerFramework.eval_code(state, frame::JuliaStackFrame, command)
     expr = Base.parse_input_line(command)
     local_vars = Any[]
@@ -155,7 +150,7 @@ function DebuggerFramework.eval_code(state, frame::JuliaStackFrame, command)
     j = 1
     for i = 1:length(frame.locals)
         if !isa(frame.locals[i], Nothing)
-            frame.locals[i] = Some(res[j])
+            frame.locals[i] = Some{Any}(res[j])
             j += 1
         end
     end
@@ -178,7 +173,7 @@ function DebuggerFramework.print_next_state(io::IO, state, frame::JuliaStackFram
         expr = expr.args[2]
     end
     if isexpr(expr, :call) || isexpr(expr, :return)
-        expr.args = map(var->maybe_quote(lookup_var_if_var(frame, var)), expr.args)
+        expr.args = map(var->maybe_quote(lookup_var(frame, var, true)), expr.args)
     end
     if isa(expr, Expr)
         for (i, arg) in enumerate(expr.args)
@@ -249,10 +244,8 @@ function DebuggerFramework.debug(meth::Method, args...)
 end
 
 function to_function(x)
-    if isa(x, Function) || isa(x, Core.IntrinsicFunction)
-        x
-    elseif isa(x, GlobalRef)
-        eval(x)
+    if isa(x, GlobalRef)
+        getfield(x.mod, x.name)
     else
         x
     end
@@ -376,17 +369,17 @@ function prepare_locals(meth, code, argvals = (), generator = false)
     sparams = Array{Any}(undef, length(meth.sparam_syms))
     for i = 1:meth.nargs
         if meth.isva && i == meth.nargs
-            locals[i] = length(argvals) >= i ? Some(tuple(argvals[i:end]...)) : Some(())
+            locals[i] = length(argvals) >= i ? Some{Any}(tuple(argvals[i:end]...)) : Some{Any}(())
             break
         end
-        locals[i] = length(argvals) >= i ? Some(argvals[i]) : Some(())
+        locals[i] = length(argvals) >= i ? Some{Any}(argvals[i]) : Some{Any}(())
     end
     # add local variables initially undefined
     for i = (meth.nargs+1):length(code.slotnames)
         locals[i] = nothing
     end
     used = find_used(code)
-    JuliaStackFrame(meth, code, locals, ssavalues, used, sparams,  Int[], nothing,
+    JuliaStackFrame(meth, code, locals, ssavalues, used, sparams,  Int[], Base.RefValue{Any}(nothing),
         JuliaProgramCounter(1), Dict{Symbol,Int}(), false, generator,
         true)
 end
@@ -438,7 +431,7 @@ function maybe_step_through_wrapper!(stack)
             pc = next_call!(frame, pc)
         end
         stack[1] = JuliaStackFrame(frame, pc; wrapper=true)
-        pushfirst!(stack, enter_call_expr(Expr(:call, map(x->lookup_var_if_var(frame, x), last.args)...)))
+        pushfirst!(stack, enter_call_expr(Expr(:call, map(x->lookup_var(frame, x, true), last.args)...)))
         return maybe_step_through_wrapper!(stack)
     end
     stack
