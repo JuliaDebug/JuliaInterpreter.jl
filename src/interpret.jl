@@ -43,25 +43,26 @@ function evaluate_call(frame, call_expr)
             args[i] = arg
         end
     end
-    # Don't go through eval since this may have unqouted, symbols and
+    # Don't go through eval since this may have unquoted symbols and
     # exprs
     if isexpr(call_expr, :foreigncall)
         args = map(args) do arg
             isa(arg, Symbol) ? QuoteNode(arg) : arg
         end
-        if !isempty(frame.sparams)
-            args[2] = instantiate_type_in_env(args[2], frame.meth.sig, frame.sparams)
+        if !isempty(frame.sparams) && frame.scope isa Method
+            sig = frame.scope.sig
+            args[2] = instantiate_type_in_env(args[2], sig, frame.sparams)
             args[3] = Core.svec(map(args[3]) do arg
-                instantiate_type_in_env(arg, frame.meth.sig, frame.sparams)
+                instantiate_type_in_env(arg, sig, frame.sparams)
             end...)
         end
-        ret = Core.eval(frame.meth.module, Expr(:foreigncall, args...))
+        ret = Core.eval(moduleof(frame), Expr(:foreigncall, args...))
     else
         f = to_function(args[1])
         if isa(f, CodeInfo)
             ret = finish!(enter_call_expr(frame, call_expr))
         else
-            # Don't go through eval since this may have unqouted, symbols and
+            # Don't go through eval since this may have unquoted symbols and
             # exprs
             ret = f(args[2:end]...)
         end
@@ -86,7 +87,7 @@ function eval_rhs(frame, node::Expr)
     if isexpr(node, :new)
         new_expr = Expr(:new, map(x->QuoteNode(lookup_var_if_var(frame, x)),
             node.args)...)
-        rhs = Core.eval(frame.meth.module, new_expr)
+        rhs = Core.eval(moduleof(frame), new_expr)
     elseif isexpr(node, :isdefined)
         rhs = check_isdefined(frame, node.args[1])
     elseif isexpr(node, :enter)
@@ -131,7 +132,7 @@ function _step_expr(frame, pc)
                 elseif node.head == :gotoifnot
                     arg = eval_rhs(frame, node.args[1])
                     if !isa(arg, Bool)
-                        throw(TypeError(frame.meth.name, "if", Bool, node.args[1]))
+                        throw(TypeError(nameof(frame), "if", Bool, node.args[1]))
                     end
                     if !arg
                         return JuliaProgramCounter(node.args[2])
@@ -233,7 +234,10 @@ end
 maybe_next_call!(frame) = maybe_next_call!(frame, frame.pc)
 
 location(frame) = location(frame, frame.pc)
-location(frame, pc) = frame.code.codelocs[pc.next_stmt] + frame.meth.line - 1
+function location(frame, pc)
+    ln = frame.code.codelocs[pc.next_stmt]
+    return frame.scope isa Method ? ln + frame.scope.line - 1 : ln
+end
 function next_line!(frame, stack = nothing)
     initial = location(frame)
     first = true

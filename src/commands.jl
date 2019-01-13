@@ -83,7 +83,7 @@ function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, cmd::U
                         new_frame = JuliaStackFrame(new_frame, maybe_next_call!(new_frame))
                     end
                     # Don't step into Core.Compiler
-                    if new_frame.meth.module == Core.Compiler
+                    if moduleof(new_frame) == Core.Compiler
                         ok = false
                     else
                         state.stack[1] = JuliaStackFrame(frame, pc)

@@ -19,7 +19,7 @@ end
 +(x::JuliaProgramCounter, y::Integer) = JuliaProgramCounter(x.next_stmt+y)
 
 struct JuliaStackFrame
-    meth::Method
+    scope::Union{Method,Module}
     code::CodeInfo
     locals::Vector{Any}
     ssavalues::Vector{Any}
@@ -37,7 +37,7 @@ struct JuliaStackFrame
     fullpath::Bool
 end
 function JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter; wrapper = frame.wrapper, generator=frame.generator, fullpath=frame.fullpath)
-    JuliaStackFrame(frame.meth, frame.code, frame.locals,
+    JuliaStackFrame(frame.scope, frame.code, frame.locals,
                     frame.ssavalues, frame.used, frame.sparams,
                     frame.exception_frames, frame.last_exception,
                     pc, frame.last_reference, wrapper, generator,
@@ -49,24 +49,32 @@ function JuliaStackFrame(meth::Method)
     prepare_locals(meth, code)
 end
 
+moduleof(frame) = isa(frame.scope, Method) ? frame.scope.module : frame.scope
+Base.nameof(frame) = isa(frame.scope, Method) ? frame.scope.name : nameof(frame.scope)
+
 is_loc_meta(expr, kind) = isexpr(expr, :meta) && length(expr.args) >= 1 && expr.args[1] === kind
 
 function DebuggerFramework.locdesc(frame::JuliaStackFrame, specslottypes = false)
     sprint() do io
-        argnames = frame.code.slotnames[2:frame.meth.nargs]
-        spectypes = Any[Any for i=1:length(argnames)]
-        print(io, frame.meth.name,'(')
-        first = true
-        for (argname, argT) in zip(argnames, spectypes)
-            first || print(io, ", ")
-            first = false
-            print(io, argname)
-            !(argT === Any) && print(io, "::", argT)
+        if frame.scope isa Method
+            meth = frame.scope
+            argnames = frame.code.slotnames[2:meth.nargs]
+            spectypes = Any[Any for i=1:length(argnames)]
+            print(io, meth.name,'(')
+            first = true
+            for (argname, argT) in zip(argnames, spectypes)
+                first || print(io, ", ")
+                first = false
+                print(io, argname)
+                !(argT === Any) && print(io, "::", argT)
+            end
+            print(io, ") at ",
+                frame.fullpath ? meth.file :
+                basename(String(meth.file)),
+                ":",meth.line)
+        else
+            println("not yet implemented")
         end
-        print(io, ") at ",
-            frame.fullpath ? frame.meth.file :
-            basename(String(frame.meth.file)),
-            ":",frame.meth.line)
     end
 end
 
@@ -82,8 +90,10 @@ function DebuggerFramework.print_locals(io::IO, frame::JuliaStackFrame)
             DebuggerFramework.print_var(io, frame.code.slotnames[i], something(frame.locals[i]), nothing)
         end
     end
-    for i = 1:length(frame.sparams)
-        DebuggerFramework.print_var(io, frame.meth.sparam_syms[i], frame.sparams[i], nothing)
+    if frame.scope isa Method
+        for i = 1:length(frame.sparams)
+            DebuggerFramework.print_var(io, frame.scope.sparam_syms[i], frame.sparams[i], nothing)
+        end
     end
 end
 
@@ -109,7 +119,12 @@ function loc_for_fname(file, line, defline)
 end
 
 function DebuggerFramework.locinfo(frame::JuliaStackFrame)
-    loc_for_fname(frame.meth.file, location(frame), frame.meth.line)
+    if frame.scope isa Method
+        meth = frame.scope
+        loc_for_fname(meth.file, location(frame), meth.line)
+    else
+        println("not yet implemented")
+    end
 end
 
 function lookup_var_if_var(frame, x)
@@ -129,8 +144,9 @@ function DebuggerFramework.eval_code(state, frame::JuliaStackFrame, command)
             push!(local_vals, QuoteNode(something(frame.locals[i])))
         end
     end
+    ismeth = frame.scope isa Method
     for i = 1:length(frame.sparams)
-        push!(local_vars, frame.meth.sparam_syms[i])
+        ismeth && push!(local_vars, frame.scope.sparam_syms[i])
         push!(local_vals, QuoteNode(frame.sparams[i]))
     end
     res = gensym()
@@ -140,7 +156,7 @@ function DebuggerFramework.eval_code(state, frame::JuliaStackFrame, command)
             Expr(:(=), res, expr),
             Expr(:tuple, res, Expr(:tuple, local_vars...))
         ))
-    eval_res, res = Core.eval(frame.meth.module, eval_expr)
+    eval_res, res = Core.eval(moduleof(frame), eval_expr)
     j = 1
     for i = 1:length(frame.locals)
         if !isa(frame.locals[i], Nothing)
@@ -388,11 +404,12 @@ function maybe_step_through_wrapper!(stack)
     length(stack[1].code.code) < 2 && return stack
     last = stack[1].code.code[end-1]
     isexpr(last, :(=)) && (last = last.args[2])
-    is_kw = startswith(String(Base.unwrap_unionall(stack[1].meth.sig).parameters[1].name.name), "#kw")
+    stack1 = stack[1]
+    is_kw = stack1.scope isa Method && startswith(String(Base.unwrap_unionall(stack1.scope.sig).parameters[1].name.name), "#kw")
     if is_kw || isexpr(last, :call) && any(x->x==SlotNumber(1), last.args)
         # If the last expr calls #self# or passes it to an implemetnation method,
         # this is a wrapper function that we might want to step though
-        frame = stack[1]
+        frame = stack1
         pc = frame.pc
         while pc != JuliaProgramCounter(length(frame.code.code)-1)
             pc = next_call!(frame, pc)
