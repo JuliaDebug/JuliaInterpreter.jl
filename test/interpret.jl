@@ -75,3 +75,15 @@ function new_sym()
 end
 
 step_through(enter_call_expr(:($new_sym())))
+
+function summer(A)
+    s = zero(eltype(A))
+    for a in A
+        s += a
+    end
+    return s
+end
+
+A = [0.12, -.99]
+frame = ASTInterpreter2.enter_call(summer, A)
+@test summer(A) == something(runframe(frame)) == something(runstack(frame))

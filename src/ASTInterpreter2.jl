@@ -173,7 +173,7 @@ function DebuggerFramework.print_next_state(io::IO, state, frame::JuliaStackFram
         expr = expr.args[2]
     end
     if isexpr(expr, :call) || isexpr(expr, :return)
-        expr.args = map(var->maybe_quote(lookup_var(frame, var, true)), expr.args)
+        expr.args = map(var->maybe_quote(@eval_rhs(true, frame, var)), expr.args)
     end
     if isa(expr, Expr)
         for (i, arg) in enumerate(expr.args)
@@ -428,10 +428,10 @@ function maybe_step_through_wrapper!(stack)
         frame = stack1
         pc = frame.pc
         while pc != JuliaProgramCounter(length(frame.code.code)-1)
-            pc = next_call!(frame, pc)
+            pc = next_call!(evaluate_call_compiled, frame, pc)
         end
         stack[1] = JuliaStackFrame(frame, pc; wrapper=true)
-        pushfirst!(stack, enter_call_expr(Expr(:call, map(x->lookup_var(frame, x, true), last.args)...)))
+        pushfirst!(stack, enter_call_expr(Expr(:call, map(x->@eval_rhs(true, frame, x), last.args)...)))
         return maybe_step_through_wrapper!(stack)
     end
     stack
@@ -495,7 +495,7 @@ function _make_stack(mod, arg)
         theargs = $(esc(args))
         stack = [ASTInterpreter2.enter_call_expr(Expr(:call,theargs...))]
         ASTInterpreter2.maybe_step_through_wrapper!(stack)
-        stack[1] = ASTInterpreter2.JuliaStackFrame(stack[1], ASTInterpreter2.maybe_next_call!(stack[1]))
+        stack[1] = ASTInterpreter2.JuliaStackFrame(stack[1], ASTInterpreter2.maybe_next_call!(evaluate_call_compiled, stack[1]))
         stack
     end
 end
