@@ -10,7 +10,7 @@ lookup_var(frame, ref::GlobalRef) = getfield(ref.mod, ref.name)
 function lookup_var(frame, slot::SlotNumber)
     val = frame.locals[slot.id]
     val !== nothing && return val.value
-    error("slot not assigned")
+    error("slot ", slot, " not assigned")
 end
 
 function lookup_expr(frame, e::Expr, fallback::Bool)
@@ -43,6 +43,7 @@ macro eval_rhs(flag, frame, node)
         fallback = quote
             isa($(esc(node)), QuoteNode) ? $(esc(node)).value :
             isa($(esc(node)), Expr) ? eval_rhs($(esc(flag)), $(esc(frame)), $(esc(node))) :
+            isa($(esc(node)), LocalMethodTable) ? evaluate_call!($(esc(flag)), $(esc(frame)), $(esc(node))) :
             $(esc(node))
         end
     end
@@ -98,7 +99,7 @@ function evaluate_foreigncall!(stack, frame, call_expr)
     return Core.eval(moduleof(frame), Expr(:foreigncall, args...))
 end
 
-function evaluate_call!(::Compiled, frame, call_expr)
+function evaluate_call!(::Compiled, frame, call_expr::Expr)
     ret = maybe_evaluate_nested(Compiled(), frame, call_expr)
     isexpr(ret, :call) || return ret
     args = collect_args(Compiled(), frame, call_expr)
@@ -114,8 +115,10 @@ function evaluate_call!(::Compiled, frame, call_expr)
     end
     return ret
 end
+evaluate_call!(::Compiled, frame, localmt::LocalMethodTable) =
+    evaluate_call!(Compiled(), frame, localmt.callexpr)
 
-function evaluate_call!(stack, frame, call_expr)
+function evaluate_call!(stack, frame, call_expr::Expr)
     ret = maybe_evaluate_nested(stack, frame, call_expr)
     isexpr(ret, :call) || return ret
     args = collect_args(stack, frame, call_expr)
@@ -133,6 +136,16 @@ function evaluate_call!(stack, frame, call_expr)
         ret = finish_and_return!(stack, frame)
         pop!(stack)
     end
+    return ret
+end
+
+function evaluate_call!(stack, frame, localmt::LocalMethodTable)
+    allargs = collect_args(stack, frame, localmt.callexpr)
+    framecode, lenv = get_framecode(localmt, allargs)
+    frame = build_frame(framecode, allargs, lenv)
+    push!(stack, frame)
+    ret = finish_and_return!(stack, frame)
+    pop!(stack)
     return ret
 end
 
@@ -224,6 +237,8 @@ function _step_expr!(stack, frame, pc)
             else
                 ret = eval(node)
             end
+        elseif isa(node, LocalMethodTable)
+            rhs = evaluate_call!(stack, frame, node)
         elseif isa(node, GotoNode)
             return JuliaProgramCounter(node.label)
         elseif isa(node, QuoteNode)
@@ -238,7 +253,7 @@ function _step_expr!(stack, frame, pc)
     end
     if isassign(frame, pc)
         if !@isdefined(rhs)
-            @show node pc
+            @show frame node pc
         end
         lhs = getlhs(pc)
         do_assignment!(frame, lhs, rhs)
@@ -270,12 +285,12 @@ end
 
 function is_call(node)
     isexpr(node, :call) ||
-    (isexpr(node, :(=)) && isexpr(node.args[2], :call))
+    (isexpr(node, :(=)) && (isexpr(node.args[2], :call) || isa(node.args[2], LocalMethodTable)))
 end
 
 function next_until!(f, stack, frame, pc=frame.pc[])
     while (pc = _step_expr!(stack, frame, pc)) != nothing
-        f(pc_expr(frame, pc)) && (frame.pc[] = pc; return pc)
+        f(plain(pc_expr(frame, pc))) && (frame.pc[] = pc; return pc)
     end
     return nothing
 end
@@ -314,14 +329,14 @@ function find_used(code::CodeInfo)
     used = BitSet()
     stmts = code.code
     for stmt in stmts
-        Core.Compiler.scan_ssa_use!(push!, used, stmt)
+        Core.Compiler.scan_ssa_use!(push!, used, plain(stmt))
     end
     return used
 end
 
 function maybe_next_call!(stack, frame, pc)
     call_or_return(node) = is_call(node) || isexpr(node, :return)
-    call_or_return(pc_expr(frame, pc)) ||
+    call_or_return(plain(pc_expr(frame, pc))) ||
         (pc = next_until!(call_or_return, stack, frame, pc))
     pc
 end
@@ -339,18 +354,19 @@ function next_line!(stack, frame, dbstack = nothing)
     while location(frame, pc) == initial
         # If this is a return node, interrupt execution. This is the same
         # special case as in `s`.
-        (!first && isexpr(pc_expr(frame, pc), :return)) && return pc
+        expr = plain(pc_expr(frame, pc))
+        (!first && isexpr(expr, :return)) && return pc
         first = false
         # If this is a goto node, step it and reevaluate
-        if isgotonode(pc_expr(frame, pc))
+        if isgotonode(expr)
             pc = _step_expr!(stack, frame, pc)
             pc == nothing && return nothing
-        elseif dbstack !== nothing && iswrappercall(pc_expr(frame, pc))
+        elseif dbstack !== nothing && iswrappercall(expr)
             # With splatting it can happen that we do something like ssa = tuple(#self#), _apply(ssa), which
             # confuses the logic here, just step into the first call that's not a builtin
             while true
                 dbstack[1] = JuliaStackFrame(JuliaFrameCode(frame.code; wrapper = true), frame, pc)
-                call_expr = pc_expr(frame, pc)
+                call_expr = plain(pc_expr(frame, pc))
                 isexpr(call_expr, :(=)) && (call_expr = call_expr.args[2])
                 call_expr = Expr(:call, map(x->@eval_rhs(true, frame, x), call_expr.args)...)
                 new_frame = enter_call_expr(call_expr)
@@ -364,9 +380,6 @@ function next_line!(stack, frame, dbstack = nothing)
                     pc == nothing && return nothing
                 end
             end
-        elseif isa(pc_expr(frame, pc), LineNumberNode)
-            line != pc_expr(frame, pc).line && break
-            pc = _step_expr!(stack, frame, pc)
         else
             pc = _step_expr!(stack, frame, pc)
             pc == nothing && return nothing

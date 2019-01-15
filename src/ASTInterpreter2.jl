@@ -6,7 +6,7 @@ using Base.Meta
 using REPL.LineEdit
 using REPL
 import Base: +, deepcopy_internal
-using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfoNode, GotoNode, Slot, GeneratedFunctionStub
+using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfoNode, GotoNode, Slot, GeneratedFunctionStub, MethodInstance
 using Markdown
 
 export @enter, @make_stack, Compiled, JuliaStackFrame
@@ -18,7 +18,8 @@ which will cause all calls to be evaluated via the interpreter.
 """
 struct Compiled end
 
-include("interpret.jl")
+Base.push!(::Compiled, frame) = frame
+Base.pop!(::Compiled) = nothing
 
 struct JuliaProgramCounter
     next_stmt::Int
@@ -76,6 +77,9 @@ function JuliaStackFrame(framecode::JuliaFrameCode, frame::JuliaStackFrame, pc::
 end
 
 const framedict = Dict{Tuple{Method,Bool},JuliaFrameCode}()  # essentially a method table for lowered code
+
+include("localmethtable.jl")
+include("interpret.jl")
 
 moduleof(frame) = isa(frame.code.scope, Method) ? frame.code.scope.module : frame.code.scope
 Base.nameof(frame) = isa(frame.code.scope, Method) ? frame.code.scope.name : nameof(frame.code.scope)
@@ -198,7 +202,7 @@ end
 
 function DebuggerFramework.print_next_state(io::IO, state, frame::JuliaStackFrame)
     print(io, "About to run: ")
-    expr = pc_expr(frame, frame.pc[])
+    expr = plain(pc_expr(frame, frame.pc[]))
     isa(expr, Expr) && (expr = copy(expr))
     if isexpr(expr, :(=))
         expr = expr.args[2]
@@ -347,10 +351,10 @@ function prepare_call(f, allargs; enter_generated = false)
             end
         end
         used = find_used(code)
-        framecode = JuliaFrameCode(method, copy_codeinfo(code), used, false, generator, true)
+        framecode = JuliaFrameCode(method, optimize!(copy_codeinfo(code)), used, false, generator, true)
         framedict[(method, generator)] = framecode
     end
-    return framecode, args, lenv
+    return framecode, args, lenv, argtypes
 end
 
 function determine_method_for_expr(expr; enter_generated = false)
@@ -401,6 +405,46 @@ function copy_codeinfo(code::CodeInfo)
     new_codeinfo
 end
 
+function should_wrap_mt(stmt)
+    fex = stmt.args[1]
+    if isa(fex, GlobalRef)
+        fex.mod == Core && (fex.name == :svec || fex.name == :apply_type) && return false
+    end
+    f = to_function(fex)
+    (f isa Core.Builtin || f isa Core.IntrinsicFunction) && return false
+    return true
+end
+
+function optimize!(code::CodeInfo)
+    # return code
+    for i = 1:length(code.code)
+        stmt = code.code[i]
+        if isexpr(stmt, :call)
+            if should_wrap_mt(stmt)
+                code.code[i] = LocalMethodTable(stmt)
+            end
+        elseif isexpr(stmt, :(=)) && isexpr(stmt.args[2], :call)
+            call_expr = stmt.args[2]::Expr
+            if should_wrap_mt(call_expr)
+                stmt.args[2] = LocalMethodTable(call_expr)
+            end
+        end
+    end
+    return code
+end
+
+# undo the wrapping in a LocalMethodTable
+function plain(stmt)
+    if isa(stmt, LocalMethodTable)
+        return stmt.callexpr
+    elseif isa(stmt, Expr)
+        if stmt.head == :(=) && isa(stmt.args[2], LocalMethodTable)
+            return Expr(:(=), stmt.args[1], stmt.args[2].callexpr)
+        end
+    end
+    return stmt
+end
+
 function prepare_locals(framecode, @nospecialize(argvals) = (), generator = false)
     meth, code = framecode.scope::Method, framecode.code
     # Construct the environment from the arguments
@@ -420,7 +464,6 @@ function prepare_locals(framecode, @nospecialize(argvals) = (), generator = fals
     for i = (meth.nargs+1):length(code.slotnames)
         locals[i] = nothing
     end
-    used = find_used(code)
     JuliaStackFrame(framecode, locals, ssavalues, sparams,  Int[], Ref{Any}(nothing),
                     Ref(JuliaProgramCounter(1)), Dict{Symbol,Int}())
 end
@@ -437,7 +480,7 @@ end
 function enter_call_expr(expr; enter_generated = false)
     r = determine_method_for_expr(expr; enter_generated = enter_generated)
     if r !== nothing
-        return build_frame(r...; enter_generated=enter_generated)
+        return build_frame(r[1:end-1]...; enter_generated=enter_generated)
     end
     nothing
 end
@@ -457,14 +500,14 @@ function enter_call(@nospecialize(finfo), @nospecialize(args...); kwargs...)
     end
     r = prepare_call(f, allargs; enter_generated=enter_generated)
     if r !== nothing
-        return build_frame(r...; enter_generated=enter_generated)
+        return build_frame(r[1:end-1]...; enter_generated=enter_generated)
     end
     return nothing
 end
 
 function maybe_step_through_wrapper!(stack)
     length(stack[1].code.code.code) < 2 && return stack
-    last = stack[1].code.code.code[end-1]
+    last = plain(stack[1].code.code.code[end-1])
     isexpr(last, :(=)) && (last = last.args[2])
     stack1 = stack[1]
     is_kw = stack1.code.scope isa Method && startswith(String(Base.unwrap_unionall(stack1.code.scope.sig).parameters[1].name.name), "#kw")
@@ -477,7 +520,8 @@ function maybe_step_through_wrapper!(stack)
             pc = next_call!(Compiled(), frame, pc)
         end
         stack[1] = JuliaStackFrame(JuliaFrameCode(frame.code; wrapper=true), frame, pc)
-        pushfirst!(stack, enter_call_expr(Expr(:call, map(x->@eval_rhs(true, frame, x), last.args)...)))
+        newcall = Expr(:call, map(x->@eval_rhs(true, frame, x), last.args)...)
+        pushfirst!(stack, enter_call_expr(newcall))
         return maybe_step_through_wrapper!(stack)
     end
     stack
