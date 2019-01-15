@@ -9,7 +9,14 @@ import Base: +, deepcopy_internal
 using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfoNode, GotoNode, Slot, GeneratedFunctionStub
 using Markdown
 
-export @enter, @make_stack
+export @enter, @make_stack, Compiled, JuliaStackFrame
+
+"""
+`Compiled` is a trait indicating that any `:call` expressions should be evaluated
+using Julia's normal compiled-code evaluation. The alternative is to pass `stack=JuliaStackFrame[]`,
+which will cause all calls to be evaluated via the interpreter.
+"""
+struct Compiled end
 
 include("interpret.jl")
 
@@ -467,7 +474,7 @@ function maybe_step_through_wrapper!(stack)
         frame = stack1
         pc = frame.pc[]
         while pc != JuliaProgramCounter(length(frame.code.code.code)-1)
-            pc = next_call!(evaluate_call_compiled, frame, pc)
+            pc = next_call!(Compiled(), frame, pc)
         end
         stack[1] = JuliaStackFrame(JuliaFrameCode(frame.code; wrapper=true), frame, pc)
         pushfirst!(stack, enter_call_expr(Expr(:call, map(x->@eval_rhs(true, frame, x), last.args)...)))
@@ -534,7 +541,7 @@ function _make_stack(mod, arg)
         theargs = $(esc(args))
         stack = [ASTInterpreter2.enter_call_expr(Expr(:call,theargs...))]
         ASTInterpreter2.maybe_step_through_wrapper!(stack)
-        stack[1] = ASTInterpreter2.JuliaStackFrame(stack[1], ASTInterpreter2.maybe_next_call!(evaluate_call_compiled, stack[1]))
+        stack[1] = ASTInterpreter2.JuliaStackFrame(stack[1], ASTInterpreter2.maybe_next_call!(Compiled(), stack[1]))
         stack
     end
 end
