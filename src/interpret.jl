@@ -56,13 +56,26 @@ end
 instantiate_type_in_env(arg, spsig, spvals) =
     ccall(:jl_instantiate_type_in_env, Any, (Any, Any, Ptr{Any}), arg, spsig, spvals)
 
+function maybe_evaluate_nested(feval, frame, call_expr)
+    # Core.svec and Core.apply_type are the only two common "nested" calls;
+    # by special-casing them we get performance advantages.
+    nestedargs(args) = Any[@eval_rhs(feval, frame, a) for a in Iterators.drop(args, 1)]
+
+    if isa(call_expr.args[1], GlobalRef)
+        g = call_expr.args[1]::GlobalRef
+        if g.mod == Core && g.name == :svec
+            return Core.svec(nestedargs(call_expr.args)...)
+        elseif g.mod == Core && g.name == :apply_type
+            return Core.apply_type(nestedargs(call_expr.args)...)
+        end
+    end
+    return call_expr
+end
+
 function collect_args(feval, frame, call_expr)
-    # Note: if lowered stopped nesting :call exprs and split them out to separate SSAValues,
-    # we could reuse a temporary buffer in the JuliaStackFrame (instead of allocating `args` fresh each time)
-    args = Array{Any}(undef, length(call_expr.args))
+    args = Vector{Any}(undef, length(call_expr.args))
     for i = 1:length(args)
-        arg = call_expr.args[i]
-        args[i] = @eval_rhs(feval, frame, arg)
+        args[i] = @eval_rhs(feval, frame, call_expr.args[i])
     end
     return args
 end
@@ -85,7 +98,10 @@ function evaluate_foreigncall(feval, frame, call_expr)
 end
 
 function evaluate_call_compiled(frame, call_expr)
+    ret = maybe_evaluate_nested(evaluate_call_compiled, frame, call_expr)
+    isexpr(ret, :call) || return ret
     args = collect_args(evaluate_call_compiled, frame, call_expr)
+    isa(args, Vector{Any}) || return args
     # Don't go through eval since this may have unquoted symbols and
     # exprs
     f = to_function(args[1])
@@ -100,7 +116,11 @@ end
 
 function evaluate_call_interpreted!(stack, frame, call_expr)
     feval(frm, nd) = evaluate_call_interpreted!(stack, frm, nd)
+
+    ret = maybe_evaluate_nested(feval, frame, call_expr)
+    isexpr(ret, :call) || return ret
     args = collect_args(feval, frame, call_expr)
+    isa(args, Vector{Any}) || return args
     f = to_function(args[1])
     popfirst!(args)
     if isa(f, CodeInfo)
