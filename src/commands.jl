@@ -5,24 +5,24 @@ function perform_return!(state)
     val = @eval_rhs(true, returning_frame, returning_expr.args[1])
     if length(state.stack) != 1
         calling_frame = state.stack[2]
-        if returning_frame.generator
+        if returning_frame.code.generator
             # Don't do anything here, just return us to where we were
         else
             prev = pc_expr(calling_frame)
             if isexpr(prev, :(=))
                 do_assignment!(calling_frame, prev.args[1], val)
             elseif isassign(calling_frame)
-                do_assignment!(calling_frame, getlhs(calling_frame.pc), val)
+                do_assignment!(calling_frame, getlhs(calling_frame.pc[]), val)
             end
             state.stack[2] = JuliaStackFrame(calling_frame, maybe_next_call!(evaluate_call_compiled, calling_frame,
-                calling_frame.pc + 1))
+                calling_frame.pc[] + 1))
         end
     else
-        @assert !returning_frame.generator
+        @assert !returning_frame.code.generator
         state.overall_result = val
     end
     popfirst!(state.stack)
-    if !isempty(state.stack) && state.stack[1].wrapper
+    if !isempty(state.stack) && state.stack[1].code.wrapper
         state.stack[1] = JuliaStackFrame(state.stack[1], finish!(evaluate_call_compiled, state.stack[1]))
         perform_return!(state)
     end
@@ -52,7 +52,7 @@ function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, ::Unio
         #= command == "se" =# step_expr(frame)
     catch err
         propagate_exception!(state, err)
-        state.stack[1] = JuliaStackFrame(state.stack[1], next_call!(evaluate_call_compiled, state.stack[1], state.stack[1].pc))
+        state.stack[1] = JuliaStackFrame(state.stack[1], next_call!(evaluate_call_compiled, state.stack[1], state.stack[1].pc[]))
         return true
     end
     if pc != nothing
@@ -64,7 +64,7 @@ function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, ::Unio
 end
 
 function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, cmd::Union{Val{:s},Val{:si},Val{:sg}}, command)
-    pc = frame.pc
+    pc = frame.pc[]
     first = true
     while true
         expr = pc_expr(frame, pc)
@@ -135,7 +135,7 @@ end
     Runs code_typed on the call we're about to run
 """
 function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, ::Val{:code_typed}, cmd)
-    expr = pc_expr(frame, frame.pc)
+    expr = pc_expr(frame, frame.pc[])
     if isa(expr, Expr)
         if is_call(expr)
             isexpr(expr, :(=)) && (expr = expr.args[2])

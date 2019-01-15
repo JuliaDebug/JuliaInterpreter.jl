@@ -20,42 +20,66 @@ end
 
 Base.show(io::IO, pc::JuliaProgramCounter) = print(io, "JuliaProgramCounter(", pc.next_stmt, ')')
 
-struct JuliaStackFrame
+"""
+`JuliaFrameCode` holds static information about a method or toplevel code.
+One `JuliaFrameCode` can be shared by many `JuliaFrameState` calling frames.
+"""
+struct JuliaFrameCode
     scope::Union{Method,Module}
     code::CodeInfo
-    locals::Vector{Union{Nothing,Some{Any}}}
-    ssavalues::Vector{Any}
     used::BitSet
-    sparams::Vector{Any}
-    exception_frames::Vector{Int}
-    last_exception::Base.RefValue{Any}
-    pc::JuliaProgramCounter
-    # A vector from names to the slotnumber of that name
-    # for which a reference was last encountered.
-    last_reference::Dict{Symbol, Int}
     wrapper::Bool
     generator::Bool
     # Display options
     fullpath::Bool
 end
-function JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter; wrapper = frame.wrapper, generator=frame.generator, fullpath=frame.fullpath)
-    JuliaStackFrame(frame.scope, frame.code, frame.locals,
-                    frame.ssavalues, frame.used, frame.sparams,
-                    frame.exception_frames, frame.last_exception,
-                    pc, frame.last_reference, wrapper, generator,
-                    fullpath)
+
+function JuliaFrameCode(frame::JuliaFrameCode; wrapper = frame.wrapper, generator=frame.generator, fullpath=frame.fullpath)
+    JuliaFrameCode(frame.scope, frame.code, frame.used,
+                   wrapper, generator, fullpath)
 end
 
-moduleof(frame) = isa(frame.scope, Method) ? frame.scope.module : frame.scope
-Base.nameof(frame) = isa(frame.scope, Method) ? frame.scope.name : nameof(frame.scope)
+"""
+`JuliaStackFrame` represents the execution state in a particular call frame.
+"""
+struct JuliaStackFrame
+    code::JuliaFrameCode
+    locals::Vector{Union{Nothing,Some{Any}}}
+    ssavalues::Vector{Any}
+    sparams::Vector{Any}
+    exception_frames::Vector{Int}
+    last_exception::Base.RefValue{Any}
+    pc::Base.RefValue{JuliaProgramCounter}
+    # A vector from names to the slotnumber of that name
+    # for which a reference was last encountered.
+    last_reference::Dict{Symbol, Int}
+end
+
+function JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter)
+    JuliaStackFrame(frame.code, frame.locals,
+                    frame.ssavalues, frame.sparams,
+                    frame.exception_frames, frame.last_exception,
+                    Ref(pc), frame.last_reference)
+end
+function JuliaStackFrame(framecode::JuliaFrameCode, frame::JuliaStackFrame, pc::JuliaProgramCounter)
+    JuliaStackFrame(framecode, frame.locals,
+                    frame.ssavalues, frame.sparams,
+                    frame.exception_frames, frame.last_exception,
+                    Ref(pc), frame.last_reference)
+end
+
+const framedict = Dict{Tuple{Method,Bool},JuliaFrameCode}()  # essentially a method table for lowered code
+
+moduleof(frame) = isa(frame.code.scope, Method) ? frame.code.scope.module : frame.code.scope
+Base.nameof(frame) = isa(frame.code.scope, Method) ? frame.code.scope.name : nameof(frame.code.scope)
 
 is_loc_meta(expr, kind) = isexpr(expr, :meta) && length(expr.args) >= 1 && expr.args[1] === kind
 
 function DebuggerFramework.locdesc(frame::JuliaStackFrame, specslottypes = false)
     sprint() do io
-        if frame.scope isa Method
-            meth = frame.scope
-            argnames = frame.code.slotnames[2:meth.nargs]
+        if frame.code.scope isa Method
+            meth = frame.code.scope
+            argnames = frame.code.code.slotnames[2:meth.nargs]
             spectypes = Any[Any for i=1:length(argnames)]
             print(io, meth.name,'(')
             first = true
@@ -66,7 +90,7 @@ function DebuggerFramework.locdesc(frame::JuliaStackFrame, specslottypes = false
                 !(argT === Any) && print(io, "::", argT)
             end
             print(io, ") at ",
-                frame.fullpath ? meth.file :
+                frame.code.fullpath ? meth.file :
                 basename(String(meth.file)),
                 ":",meth.line)
         else
@@ -81,15 +105,15 @@ function DebuggerFramework.print_locals(io::IO, frame::JuliaStackFrame)
             # #self# is only interesting if it has values inside of it. We already know
             # which function we're in otherwise.
             val = something(frame.locals[i])
-            if frame.code.slotnames[i] == Symbol("#self#") && (isa(val, Type) || sizeof(val) == 0)
+            if frame.code.code.slotnames[i] == Symbol("#self#") && (isa(val, Type) || sizeof(val) == 0)
                 continue
             end
-            DebuggerFramework.print_var(io, frame.code.slotnames[i], something(frame.locals[i]), nothing)
+            DebuggerFramework.print_var(io, frame.code.code.slotnames[i], frame.locals[i], nothing)
         end
     end
-    if frame.scope isa Method
+    if frame.code.scope isa Method
         for i = 1:length(frame.sparams)
-            DebuggerFramework.print_var(io, frame.scope.sparam_syms[i], frame.sparams[i], nothing)
+            DebuggerFramework.print_var(io, frame.code.scope.sparam_syms[i], frame.sparams[i], nothing)
         end
     end
 end
@@ -116,8 +140,8 @@ function loc_for_fname(file, line, defline)
 end
 
 function DebuggerFramework.locinfo(frame::JuliaStackFrame)
-    if frame.scope isa Method
-        meth = frame.scope
+    if frame.code.scope isa Method
+        meth = frame.code.scope
         loc_for_fname(meth.file, location(frame), meth.line)
     else
         println("not yet implemented")
@@ -130,13 +154,13 @@ function DebuggerFramework.eval_code(state, frame::JuliaStackFrame, command)
     local_vals = Any[]
     for i = 1:length(frame.locals)
         if !isa(frame.locals[i], Nothing)
-            push!(local_vars, frame.code.slotnames[i])
+            push!(local_vars, frame.code.code.slotnames[i])
             push!(local_vals, QuoteNode(something(frame.locals[i])))
         end
     end
-    ismeth = frame.scope isa Method
+    ismeth = frame.code.scope isa Method
     for i = 1:length(frame.sparams)
-        ismeth && push!(local_vars, frame.scope.sparam_syms[i])
+        ismeth && push!(local_vars, frame.code.scope.sparam_syms[i])
         push!(local_vals, QuoteNode(frame.sparams[i]))
     end
     res = gensym()
@@ -167,7 +191,7 @@ end
 
 function DebuggerFramework.print_next_state(io::IO, state, frame::JuliaStackFrame)
     print(io, "About to run: ")
-    expr = pc_expr(frame, frame.pc)
+    expr = pc_expr(frame, frame.pc[])
     isa(expr, Expr) && (expr = copy(expr))
     if isexpr(expr, :(=))
         expr = expr.args[2]
@@ -254,7 +278,7 @@ end
 _Typeof(x) = isa(x,Type) ? Type{x} : typeof(x)
 
 function is_function_def(ex)
-    (isa(ex,Expr) && ex.head == :(=) && isexpr(ex.args[1],:call)) ||
+    (isexpr(ex, :(=)) && isexpr(ex.args[1], :call)) ||
     isexpr(ex,:function)
 end
 
@@ -294,22 +318,32 @@ function prepare_call(f, allargs; enter_generated = false)
     sig = method.sig
     isa(method, TypeMapEntry) && (method = method.func)
     # Get static parameters
-    (ti, lenv) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
+    (ti, lenv::SimpleVector) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
                         argtypes, sig)::SimpleVector
-    if is_generated(method) && !enter_generated
-        # If we're stepping into a staged function, we need to use
-        # the specialization, rather than stepping thorugh the
-        # unspecialized method.
-        code = Core.Compiler.get_staged(Core.Compiler.code_for_method(method, argtypes, lenv, typemax(UInt), false))
-    else
-        if is_generated(method)
-            args = map(_Typeof, args)
-            code = get_source(method.generator)
+    enter_generated &= is_generated(method)
+    framecode = get(framedict, (method, enter_generated), nothing)
+    if framecode === nothing
+        if is_generated(method) && !enter_generated
+            # If we're stepping into a staged function, we need to use
+            # the specialization, rather than stepping thorugh the
+            # unspecialized method.
+            code = Core.Compiler.get_staged(Core.Compiler.code_for_method(method, argtypes, lenv, typemax(UInt), false))
+            generator = false
         else
-            code = get_source(method)
+            if is_generated(method)
+                args = Any[_Typeof(a) for a in args]
+                code = get_source(method.generator)
+                generator = true
+            else
+                code = get_source(method)
+                generator = false
+            end
         end
+        used = find_used(code)
+        framecode = JuliaFrameCode(method, copy_codeinfo(code), used, false, generator, true)
+        framedict[(method, generator)] = framecode
     end
-    return code, method, args, lenv
+    return framecode, args, lenv
 end
 
 function determine_method_for_expr(expr; enter_generated = false)
@@ -360,13 +394,14 @@ function copy_codeinfo(code::CodeInfo)
     new_codeinfo
 end
 
-function prepare_locals(meth, code, argvals = (), generator = false)
-    code = copy_codeinfo(code)
+function prepare_locals(framecode, @nospecialize(argvals) = (), generator = false)
+    meth, code = framecode.scope::Method, framecode.code
     # Construct the environment from the arguments
-    locals = Array{Any}(undef, length(code.slotflags))
-    ng = isa(code.ssavaluetypes, Int) ? code.ssavaluetypes : length(code.ssavaluetypes)
-    ssavalues = Array{Any}(undef, ng)
-    sparams = Array{Any}(undef, length(meth.sparam_syms))
+    locals = Vector{Any}(undef, length(code.slotflags))
+    ssavt = code.ssavaluetypes
+    ng = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any})
+    ssavalues = Vector{Any}(undef, ng)
+    sparams = Vector{Any}(undef, length(meth.sparam_syms))
     for i = 1:meth.nargs
         if meth.isva && i == meth.nargs
             locals[i] = length(argvals) >= i ? Some{Any}(tuple(argvals[i:end]...)) : Some{Any}(())
@@ -379,14 +414,12 @@ function prepare_locals(meth, code, argvals = (), generator = false)
         locals[i] = nothing
     end
     used = find_used(code)
-    JuliaStackFrame(meth, code, locals, ssavalues, used, sparams,  Int[], Base.RefValue{Any}(nothing),
-        JuliaProgramCounter(1), Dict{Symbol,Int}(), false, generator,
-        true)
+    JuliaStackFrame(framecode, locals, ssavalues, sparams,  Int[], Ref{Any}(nothing),
+                    Ref(JuliaProgramCounter(1)), Dict{Symbol,Int}())
 end
 
-
-function build_frame(code, method, args, lenv; enter_generated=false)
-    frame = prepare_locals(method, code, args, enter_generated)
+function build_frame(framecode, args, lenv; enter_generated=false)
+    frame = prepare_locals(framecode, args, enter_generated)
     # Add static parameters to environment
     for i = 1:length(lenv)
         frame.sparams[i] = lenv[i]
@@ -402,8 +435,15 @@ function enter_call_expr(expr; enter_generated = false)
     nothing
 end
 
-function enter_call((f, enter_generated)::Tuple{Any, Bool}, args...; kwargs...)
-    f, allargs = prepare_args(f, [f, args...], kwargs)
+function enter_call(@nospecialize(finfo), @nospecialize(args...); kwargs...)
+    if isa(finfo, Tuple)
+        f = finfo[1]
+        enter_generated = finfo[2]::Bool
+    else
+        f = finfo
+        enter_generated = false
+    end
+    f, allargs = prepare_args(f, Any[f, args...], kwargs)
     # Can happen for thunks created by generated functions
     if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
         error(f, " is a builtin or intrinsic")
@@ -414,23 +454,22 @@ function enter_call((f, enter_generated)::Tuple{Any, Bool}, args...; kwargs...)
     end
     return nothing
 end
-enter_call(f, args...; kwargs...) = enter_call((f, false), args...; kwargs...)
 
 function maybe_step_through_wrapper!(stack)
-    length(stack[1].code.code) < 2 && return stack
-    last = stack[1].code.code[end-1]
+    length(stack[1].code.code.code) < 2 && return stack
+    last = stack[1].code.code.code[end-1]
     isexpr(last, :(=)) && (last = last.args[2])
     stack1 = stack[1]
-    is_kw = stack1.scope isa Method && startswith(String(Base.unwrap_unionall(stack1.scope.sig).parameters[1].name.name), "#kw")
+    is_kw = stack1.code.scope isa Method && startswith(String(Base.unwrap_unionall(stack1.code.scope.sig).parameters[1].name.name), "#kw")
     if is_kw || isexpr(last, :call) && any(x->x==SlotNumber(1), last.args)
         # If the last expr calls #self# or passes it to an implemetnation method,
         # this is a wrapper function that we might want to step though
         frame = stack1
-        pc = frame.pc
-        while pc != JuliaProgramCounter(length(frame.code.code)-1)
+        pc = frame.pc[]
+        while pc != JuliaProgramCounter(length(frame.code.code.code)-1)
             pc = next_call!(evaluate_call_compiled, frame, pc)
         end
-        stack[1] = JuliaStackFrame(frame, pc; wrapper=true)
+        stack[1] = JuliaStackFrame(JuliaFrameCode(frame.code; wrapper=true), frame, pc)
         pushfirst!(stack, enter_call_expr(Expr(:call, map(x->@eval_rhs(true, frame, x), last.args)...)))
         return maybe_step_through_wrapper!(stack)
     end

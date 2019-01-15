@@ -13,10 +13,10 @@ function step_through(frame)
 end
 
 # Execute a frame using Julia's regular compiled-code dispatch for any :call expressions
-runframe(frame, pc=frame.pc) = Some{Any}(finish_and_return!(evaluate_call_compiled, frame, pc))
+runframe(frame, pc=frame.pc[]) = Some{Any}(finish_and_return!(evaluate_call_compiled, frame, pc))
 
 # Execute a frame using the interpreter for all :call expressions (except builtins & intrinsics)
-function runstack(frame::JuliaStackFrame, pc=frame.pc)
+function runstack(frame::JuliaStackFrame, pc=frame.pc[])
     stack = JuliaStackFrame[]
     feval(frm, nd) = evaluate_call_interpreted!(stack, frm, nd)
     return Some{Any}(finish_and_return!(feval, frame, pc))

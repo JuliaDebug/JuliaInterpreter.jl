@@ -2,8 +2,8 @@
 
 getlhs(pc) = SSAValue(pc.next_stmt)
 
-isassign(fr) = isassign(fr, fr.pc)
-isassign(fr, pc) = (pc.next_stmt in fr.used)
+isassign(fr) = isassign(fr, fr.pc[])
+isassign(fr, pc) = (pc.next_stmt in fr.code.used)
 
 lookup_var(frame, val::SSAValue) = frame.ssavalues[val.id+1]
 lookup_var(frame, ref::GlobalRef) = getfield(ref.mod, ref.name)
@@ -73,7 +73,7 @@ function evaluate_foreigncall(feval, frame, call_expr)
         arg = args[i]
         args[i] = isa(arg, Symbol) ? QuoteNode(arg) : arg
     end
-    scope = frame.scope
+    scope = frame.code.scope
     if !isempty(frame.sparams) && scope isa Method
         sig = scope.sig
         args[2] = instantiate_type_in_env(args[2], sig, frame.sparams)
@@ -122,7 +122,7 @@ function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
         frame.ssavalues[lhs.id+1] = rhs
     elseif isa(lhs, SlotNumber)
         frame.locals[lhs.id] = Some{Any}(rhs)
-        frame.last_reference[frame.code.slotnames[lhs.id]] =
+        frame.last_reference[frame.code.code.slotnames[lhs.id]] =
             lhs.id
     elseif isa(lhs, GlobalRef)
         Base.eval(lhs.mod,:($(lhs.name) = $(QuoteNode(rhs))))
@@ -226,17 +226,23 @@ function _step_expr(feval, frame, pc)
     end
     return pc + 1
 end
-step_expr(feval, frame) = _step_expr(feval, frame, frame.pc)
 
-function finish!(feval, frame, pc=frame.pc)
-    while true
-        new_pc = _step_expr(feval, frame, pc)
-        new_pc == nothing && return pc
-        pc = new_pc
-    end
+function step_expr(feval, frame)
+    pc = _step_expr(feval, frame, frame.pc[])
+    pc === nothing && return nothing
+    frame.pc[] = pc
 end
 
-function finish_and_return!(feval, frame, pc=frame.pc)
+function finish!(feval, frame, pc=frame.pc[])
+    while true
+        new_pc = _step_expr(feval, frame, pc)
+        new_pc == nothing && break
+        pc = new_pc
+    end
+    frame.pc[] = pc
+end
+
+function finish_and_return!(feval, frame, pc=frame.pc[])
     pc = finish!(feval, frame, pc)
     node = pc_expr(frame, pc)
     isexpr(node, :return) || error("unexpected node ", node)
@@ -248,13 +254,13 @@ function is_call(node)
     (isexpr(node, :(=)) && isexpr(node.args[2], :call))
 end
 
-function next_until!(f, feval, frame, pc=frame.pc)
+function next_until!(f, feval, frame, pc=frame.pc[])
     while (pc = _step_expr(feval, frame, pc)) != nothing
-        f(pc_expr(frame, pc)) && return pc
+        f(pc_expr(frame, pc)) && (frame.pc[] = pc; return pc)
     end
     return nothing
 end
-next_call!(feval, frame, pc=frame.pc) = next_until!(node->is_call(node)||isexpr(node,:return), feval, frame, pc)
+next_call!(feval, frame, pc=frame.pc[]) = next_until!(node->is_call(node)||isexpr(node,:return), feval, frame, pc)
 
 function changed_line!(expr, line, fls)
     if length(fls) == 1 && isa(expr, LineNumberNode)
@@ -282,8 +288,8 @@ function iswrappercall(expr)
     isexpr(expr, :call) && any(x->x==SlotNumber(1), expr.args)
 end
 
-pc_expr(frame, pc) = frame.code.code[pc.next_stmt]
-pc_expr(frame) = pc_expr(frame, frame.pc)
+pc_expr(frame, pc) = frame.code.code.code[pc.next_stmt]
+pc_expr(frame) = pc_expr(frame, frame.pc[])
 
 function find_used(code::CodeInfo)
     used = BitSet()
@@ -300,17 +306,17 @@ function maybe_next_call!(feval, frame, pc)
         (pc = next_until!(call_or_return, feval, frame, pc))
     pc
 end
-maybe_next_call!(feval, frame) = maybe_next_call!(feval, frame, frame.pc)
+maybe_next_call!(feval, frame) = maybe_next_call!(feval, frame, frame.pc[])
 
-location(frame) = location(frame, frame.pc)
+location(frame) = location(frame, frame.pc[])
 function location(frame, pc)
-    ln = frame.code.codelocs[pc.next_stmt]
-    return frame.scope isa Method ? ln + frame.scope.line - 1 : ln
+    ln = frame.code.code.codelocs[pc.next_stmt]
+    return frame.code.scope isa Method ? ln + frame.code.scope.line - 1 : ln
 end
 function next_line!(feval, frame, stack = nothing)
     initial = location(frame)
     first = true
-    pc = frame.pc
+    pc = frame.pc[]
     while location(frame, pc) == initial
         # If this is a return node, interrupt execution. This is the same
         # special case as in `s`.
@@ -324,7 +330,7 @@ function next_line!(feval, frame, stack = nothing)
             # With splatting it can happen that we do something like ssa = tuple(#self#), _apply(ssa), which
             # confuses the logic here, just step into the first call that's not a builtin
             while true
-                stack[1] = JuliaStackFrame(frame, pc; wrapper = true)
+                stack[1] = JuliaStackFrame(JuliaFrameCode(frame.code; wrapper = true), frame, pc)
                 call_expr = pc_expr(frame, pc)
                 isexpr(call_expr, :(=)) && (call_expr = call_expr.args[2])
                 call_expr = Expr(:call, map(x->@eval_rhs(true, frame, x), call_expr.args)...)
@@ -332,7 +338,7 @@ function next_line!(feval, frame, stack = nothing)
                 if new_frame !== nothing
                     pushfirst!(stack, new_frame)
                     frame = new_frame
-                    pc = frame.pc
+                    pc = frame.pc[]
                     break
                 else
                     pc = _step_expr(feval, frame, pc)
@@ -346,6 +352,7 @@ function next_line!(feval, frame, stack = nothing)
             pc = _step_expr(feval, frame, pc)
             pc == nothing && return nothing
         end
+        frame.pc[] = pc
     end
     maybe_next_call!(feval, frame, pc)
 end
