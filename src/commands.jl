@@ -2,7 +2,7 @@ function perform_return!(state)
     returning_frame = state.stack[1]
     returning_expr = pc_expr(returning_frame)
     @assert isexpr(returning_expr, :return)
-    val = @eval_rhs(true, returning_frame, returning_expr.args[1])
+    val = @eval_rhs(true, returning_frame, returning_expr.args[1], returning_frame.pc[])
     if length(state.stack) != 1
         calling_frame = state.stack[2]
         if returning_frame.code.generator
@@ -72,7 +72,7 @@ function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, cmd::U
             if is_call(expr)
                 isexpr(expr, :(=)) && (expr = expr.args[2])
                 args = map(x->isa(x, QuoteNode) ? x.value :
-                @eval_rhs(true, frame, x), expr.args)
+                @eval_rhs(true, frame, x, pc), expr.args)
                 expr = Expr(:call, args...)
                 f = (expr.args[1] == Core._apply) ? expr.args[2] : expr.args[1]
                 ok = true
@@ -140,7 +140,7 @@ function DebuggerFramework.execute_command(state, frame::JuliaStackFrame, ::Val{
         if is_call(expr)
             isexpr(expr, :(=)) && (expr = expr.args[2])
             args = map(x->isa(x, QuoteNode) ? x.value :
-                @eval_rhs(true, frame, x), expr.args)
+                @eval_rhs(true, frame, x, frame.pc[]), expr.args)
             f = args[1]
             if f == Core._apply
                 f = to_function(args[2])

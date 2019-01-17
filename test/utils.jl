@@ -9,7 +9,8 @@ function step_through(frame)
     while !isexpr(plain(pc_expr(state.stack[end])), :return)
         execute_command(state, state.stack[1], Val{:s}(), "s")
     end
-    return @eval_rhs(true, state.stack[end], plain(pc_expr(state.stack[end])).args[1])
+    lastframe = state.stack[end]
+    return @eval_rhs(true, lastframe, plain(pc_expr(lastframe)).args[1], lastframe.pc[])
 end
 
 # Execute a frame using Julia's regular compiled-code dispatch for any :call expressions

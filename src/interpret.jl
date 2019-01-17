@@ -32,7 +32,7 @@ It calls `lookup_var(frame, node)` when appropriate, otherwise:
 * with `flag=Compiled()` it will additionally recurse into calls using Julia's normal compiled-code evaluation
 * with `flag=stack`, a vector of `JuliaStackFrames`, it will recurse via the interpreter
 """
-macro eval_rhs(flag, frame, node)
+macro eval_rhs(flag, frame, node, pc)
     if flag == true
         fallback = quote
             isa($(esc(node)), Expr) ? lookup_expr($(esc(frame)), $(esc(node)), true) : $(esc(node))
@@ -42,8 +42,7 @@ macro eval_rhs(flag, frame, node)
     else
         fallback = quote
             isa($(esc(node)), QuoteNode) ? $(esc(node)).value :
-            isa($(esc(node)), Expr) ? eval_rhs($(esc(flag)), $(esc(frame)), $(esc(node))) :
-            isa($(esc(node)), LocalMethodTable) ? evaluate_call!($(esc(flag)), $(esc(frame)), $(esc(node))) :
+            isa($(esc(node)), Expr) ? eval_rhs($(esc(flag)), $(esc(frame)), $(esc(node)), $(esc(pc))) :
             $(esc(node))
         end
     end
@@ -58,10 +57,10 @@ end
 instantiate_type_in_env(arg, spsig, spvals) =
     ccall(:jl_instantiate_type_in_env, Any, (Any, Any, Ptr{Any}), arg, spsig, spvals)
 
-function maybe_evaluate_nested(stack, frame, call_expr)
+function maybe_evaluate_nested(stack, frame, call_expr, pc)
     # Core.svec and Core.apply_type are the only two common "nested" calls;
     # by special-casing them we get performance advantages.
-    nestedargs(args) = Any[@eval_rhs(stack, frame, a) for a in Iterators.drop(args, 1)]
+    nestedargs(args) = Any[@eval_rhs(stack, frame, a, pc) for a in Iterators.drop(args, 1)]
 
     if isa(call_expr.args[1], GlobalRef)
         g = call_expr.args[1]::GlobalRef
@@ -74,16 +73,16 @@ function maybe_evaluate_nested(stack, frame, call_expr)
     return call_expr
 end
 
-function collect_args(stack, frame, call_expr)
+function collect_args(stack, frame, call_expr, pc)
     args = Vector{Any}(undef, length(call_expr.args))
     for i = 1:length(args)
-        args[i] = @eval_rhs(stack, frame, call_expr.args[i])
+        args[i] = @eval_rhs(stack, frame, call_expr.args[i], pc)
     end
     return args
 end
 
-function evaluate_foreigncall!(stack, frame, call_expr)
-    args = collect_args(stack, frame, call_expr)
+function evaluate_foreigncall!(stack, frame, call_expr, pc)
+    args = collect_args(stack, frame, call_expr, pc)
     for i = 1:length(args)
         arg = args[i]
         args[i] = isa(arg, Symbol) ? QuoteNode(arg) : arg
@@ -99,11 +98,10 @@ function evaluate_foreigncall!(stack, frame, call_expr)
     return Core.eval(moduleof(frame), Expr(:foreigncall, args...))
 end
 
-function evaluate_call!(::Compiled, frame, call_expr::Expr)
-    ret = maybe_evaluate_nested(Compiled(), frame, call_expr)
+function evaluate_call!(::Compiled, frame, call_expr::Expr, pc)
+    ret = maybe_evaluate_nested(Compiled(), frame, call_expr, pc)
     isexpr(ret, :call) || return ret
-    args = collect_args(Compiled(), frame, call_expr)
-    isa(args, Vector{Any}) || return args
+    args = collect_args(Compiled(), frame, call_expr, pc)
     # Don't go through eval since this may have unquoted symbols and
     # exprs
     f = to_function(args[1])
@@ -115,36 +113,22 @@ function evaluate_call!(::Compiled, frame, call_expr::Expr)
     end
     return ret
 end
-evaluate_call!(::Compiled, frame, localmt::LocalMethodTable) =
-    evaluate_call!(Compiled(), frame, localmt.callexpr)
 
-function evaluate_call!(stack, frame, call_expr::Expr)
-    ret = maybe_evaluate_nested(stack, frame, call_expr)
+function evaluate_call!(stack, frame, call_expr::Expr, pc)
+    ret = maybe_evaluate_nested(stack, frame, call_expr, pc)
     isexpr(ret, :call) || return ret
-    args = collect_args(stack, frame, call_expr)
-    isa(args, Vector{Any}) || return args
-    f = to_function(args[1])
-    popfirst!(args)
-    if isa(f, CodeInfo)
+    fargs = collect_args(stack, frame, call_expr, pc)
+    f = to_function(fargs[1])
+    if f isa Core.Builtin || f isa Core.IntrinsicFunction  # TODO: make this faster
+        popfirst!(fargs)
+        return f(fargs...)
+    elseif isa(f, CodeInfo)
         error("FIXME")
     end
-    if f isa Core.Builtin || f isa Core.IntrinsicFunction  # TODO: make this faster
-        ret = f(args...)
-    else
-        frame = enter_call(f, args...)
-        push!(stack, frame)
-        ret = finish_and_return!(stack, frame)
-        pop!(stack)
-    end
-    return ret
-end
-
-function evaluate_call!(stack, frame, localmt::LocalMethodTable)
-    allargs = collect_args(stack, frame, localmt.callexpr)
-    framecode, lenv = get_framecode(localmt, allargs)
-    frame = build_frame(framecode, allargs, lenv)
+    framecode, env = get_call_framecode(fargs, frame.code, pc.next_stmt)
     push!(stack, frame)
-    ret = finish_and_return!(stack, frame)
+    newframe = build_frame(framecode, fargs, env)
+    ret = finish_and_return!(stack, newframe)
     pop!(stack)
     return ret
 end
@@ -161,10 +145,10 @@ function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
     end
 end
 
-function eval_rhs(stack, frame, node::Expr)
+function eval_rhs(stack, frame, node::Expr, pc)
     head = node.head
     if head == :new
-        new_expr = Expr(:new, map(x->QuoteNode(@eval_rhs(true, frame, x)),
+        new_expr = Expr(:new, map(x->QuoteNode(@eval_rhs(true, frame, x, pc)),
             node.args)...)
         rhs = Core.eval(moduleof(frame), new_expr)
     elseif head == :isdefined
@@ -172,9 +156,9 @@ function eval_rhs(stack, frame, node::Expr)
     elseif head == :enter
         rhs = length(frame.exception_frames)
     elseif head == :call
-        rhs = evaluate_call!(stack, frame, node)
+        rhs = evaluate_call!(stack, frame, node, pc)
     elseif head == :foreigncall
-        rhs = evaluate_foreigncall!(stack, frame, node)
+        rhs = evaluate_foreigncall!(stack, frame, node, pc)
     else
         rhs = lookup_expr(frame, node, false)
     end
@@ -196,12 +180,12 @@ function _step_expr!(stack, frame, pc)
         if isa(node, Expr)
             if node.head == :(=)
                 lhs = node.args[1]
-                rhs = @eval_rhs(stack, frame, node.args[2])
+                rhs = @eval_rhs(stack, frame, node.args[2], pc)
                 do_assignment!(frame, lhs, rhs)
                 # Special case hack for readability.
                 # ret = rhs
             elseif node.head == :gotoifnot
-                arg = @eval_rhs(stack, frame, node.args[1])
+                arg = @eval_rhs(stack, frame, node.args[1], pc)
                 if !isa(arg, Bool)
                     throw(TypeError(nameof(frame), "if", Bool, node.args[1]))
                 end
@@ -209,13 +193,13 @@ function _step_expr!(stack, frame, pc)
                     return JuliaProgramCounter(node.args[2])
                 end
             elseif node.head == :call
-                rhs = evaluate_call!(stack, frame, node)
+                rhs = evaluate_call!(stack, frame, node, pc)
             elseif node.head ==  :foreigncall
-                rhs = evaluate_foreigncall!(stack, frame, node)
+                rhs = evaluate_foreigncall!(stack, frame, node, pc)
             elseif node.head == :new
-                rhs = eval_rhs(stack, frame, node)
+                rhs = eval_rhs(stack, frame, node, pc)
             elseif node.head == :static_typeof || node.head == :type_goto
-                error(node, " still exists")
+                error(node, ", despite the docs, still exists")
             elseif node.head == :inbounds
             elseif node.head == :enter
                 rhs = node.args[1]
@@ -237,14 +221,12 @@ function _step_expr!(stack, frame, pc)
             else
                 ret = eval(node)
             end
-        elseif isa(node, LocalMethodTable)
-            rhs = evaluate_call!(stack, frame, node)
         elseif isa(node, GotoNode)
             return JuliaProgramCounter(node.label)
         elseif isa(node, QuoteNode)
             rhs = node.value
         else
-            rhs = @eval_rhs(stack, frame, node)
+            rhs = @eval_rhs(stack, frame, node, pc)
         end
     catch err
         isempty(frame.exception_frames) && rethrow(err)
@@ -280,12 +262,12 @@ function finish_and_return!(stack, frame, pc=frame.pc[])
     pc = finish!(stack, frame, pc)
     node = pc_expr(frame, pc)
     isexpr(node, :return) || error("unexpected node ", node)
-    return @eval_rhs(stack, frame, node.args[1])
+    return @eval_rhs(stack, frame, (node::Expr).args[1], pc)
 end
 
 function is_call(node)
     isexpr(node, :call) ||
-    (isexpr(node, :(=)) && (isexpr(node.args[2], :call) || isa(node.args[2], LocalMethodTable)))
+    (isexpr(node, :(=)) && (isexpr(node.args[2], :call)))
 end
 
 function next_until!(f, stack, frame, pc=frame.pc[])
@@ -368,7 +350,7 @@ function next_line!(stack, frame, dbstack = nothing)
                 dbstack[1] = JuliaStackFrame(JuliaFrameCode(frame.code; wrapper = true), frame, pc)
                 call_expr = plain(pc_expr(frame, pc))
                 isexpr(call_expr, :(=)) && (call_expr = call_expr.args[2])
-                call_expr = Expr(:call, map(x->@eval_rhs(true, frame, x), call_expr.args)...)
+                call_expr = Expr(:call, map(x->@eval_rhs(true, frame, x, pc), call_expr.args)...)
                 new_frame = enter_call_expr(call_expr)
                 if new_frame !== nothing
                     pushfirst!(dbstack, new_frame)

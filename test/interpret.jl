@@ -86,4 +86,5 @@ end
 
 A = [0.12, -.99]
 frame = ASTInterpreter2.enter_call(summer, A)
-@test summer(A) == something(runframe(frame)) == something(runstack(frame))
+frame2 = ASTInterpreter2.enter_call(summer, A)
+@test summer(A) == something(runframe(frame)) == something(runstack(frame2))

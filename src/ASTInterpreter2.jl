@@ -6,7 +6,8 @@ using Base.Meta
 using REPL.LineEdit
 using REPL
 import Base: +, deepcopy_internal
-using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfoNode, GotoNode, Slot, GeneratedFunctionStub, MethodInstance
+using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfoNode, GotoNode, Slot,
+            GeneratedFunctionStub, MethodInstance
 using Markdown
 
 export @enter, @make_stack, Compiled, JuliaStackFrame
@@ -35,6 +36,7 @@ One `JuliaFrameCode` can be shared by many `JuliaFrameState` calling frames.
 struct JuliaFrameCode
     scope::Union{Method,Module}
     code::CodeInfo
+    methodtables::Vector{TypeMapEntry} # line-by-line method tables for generic-function :call Exprs
     used::BitSet
     wrapper::Bool
     generator::Bool
@@ -43,7 +45,7 @@ struct JuliaFrameCode
 end
 
 function JuliaFrameCode(frame::JuliaFrameCode; wrapper = frame.wrapper, generator=frame.generator, fullpath=frame.fullpath)
-    JuliaFrameCode(frame.scope, frame.code, frame.used,
+    JuliaFrameCode(frame.scope, frame.code, frame.methodtables, frame.used,
                    wrapper, generator, fullpath)
 end
 
@@ -60,7 +62,7 @@ struct JuliaStackFrame
     pc::Base.RefValue{JuliaProgramCounter}
     # A vector from names to the slotnumber of that name
     # for which a reference was last encountered.
-    last_reference::Dict{Symbol, Int}
+    last_reference::Dict{Symbol,Int}
 end
 
 function JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter)
@@ -208,7 +210,7 @@ function DebuggerFramework.print_next_state(io::IO, state, frame::JuliaStackFram
         expr = expr.args[2]
     end
     if isexpr(expr, :call) || isexpr(expr, :return)
-        expr.args = map(var->maybe_quote(@eval_rhs(true, frame, var)), expr.args)
+        expr.args = map(var->maybe_quote(@eval_rhs(true, frame, var, frame.pc[])), expr.args)
     end
     if isa(expr, Expr)
         for (i, arg) in enumerate(expr.args)
@@ -350,8 +352,10 @@ function prepare_call(f, allargs; enter_generated = false)
                 generator = false
             end
         end
+        code = optimize!(copy_codeinfo(code))
         used = find_used(code)
-        framecode = JuliaFrameCode(method, optimize!(copy_codeinfo(code)), used, false, generator, true)
+        methodtables = Vector{TypeMapEntry}(undef, length(code.code))
+        framecode = JuliaFrameCode(method, code, methodtables, used, false, generator, true)
         framedict[(method, generator)] = framecode
     end
     return framecode, args, lenv, argtypes
@@ -405,50 +409,13 @@ function copy_codeinfo(code::CodeInfo)
     new_codeinfo
 end
 
-function should_wrap_mt(stmt)
-    fex = stmt.args[1]
-    if isa(fex, GlobalRef)
-        fex.mod == Core && (fex.name == :svec || fex.name == :apply_type) && return false
-    end
-    f = to_function(fex)
-    (f isa Core.Builtin || f isa Core.IntrinsicFunction) && return false
-    return true
-end
-
-function optimize!(code::CodeInfo)
-    # return code
-    for i = 1:length(code.code)
-        stmt = code.code[i]
-        if isexpr(stmt, :call)
-            if should_wrap_mt(stmt)
-                code.code[i] = LocalMethodTable(stmt)
-            end
-        elseif isexpr(stmt, :(=)) && isexpr(stmt.args[2], :call)
-            call_expr = stmt.args[2]::Expr
-            if should_wrap_mt(call_expr)
-                stmt.args[2] = LocalMethodTable(call_expr)
-            end
-        end
-    end
-    return code
-end
-
-# undo the wrapping in a LocalMethodTable
-function plain(stmt)
-    if isa(stmt, LocalMethodTable)
-        return stmt.callexpr
-    elseif isa(stmt, Expr)
-        if stmt.head == :(=) && isa(stmt.args[2], LocalMethodTable)
-            return Expr(:(=), stmt.args[1], stmt.args[2].callexpr)
-        end
-    end
-    return stmt
-end
+optimize!(framecode) = framecode
+plain(stmt) = stmt
 
 function prepare_locals(framecode, @nospecialize(argvals) = (), generator = false)
     meth, code = framecode.scope::Method, framecode.code
     # Construct the environment from the arguments
-    locals = Vector{Any}(undef, length(code.slotflags))
+    locals = Vector{Union{Nothing,Some{Any}}}(undef, length(code.slotflags))
     ssavt = code.ssavaluetypes
     ng = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any})
     ssavalues = Vector{Any}(undef, ng)
@@ -464,7 +431,7 @@ function prepare_locals(framecode, @nospecialize(argvals) = (), generator = fals
     for i = (meth.nargs+1):length(code.slotnames)
         locals[i] = nothing
     end
-    JuliaStackFrame(framecode, locals, ssavalues, sparams,  Int[], Ref{Any}(nothing),
+    JuliaStackFrame(framecode, locals, ssavalues, sparams, Int[], Ref{Any}(nothing),
                     Ref(JuliaProgramCounter(1)), Dict{Symbol,Int}())
 end
 
@@ -520,7 +487,7 @@ function maybe_step_through_wrapper!(stack)
             pc = next_call!(Compiled(), frame, pc)
         end
         stack[1] = JuliaStackFrame(JuliaFrameCode(frame.code; wrapper=true), frame, pc)
-        newcall = Expr(:call, map(x->@eval_rhs(true, frame, x), last.args)...)
+        newcall = Expr(:call, map(x->@eval_rhs(true, frame, x, pc), last.args)...)
         pushfirst!(stack, enter_call_expr(newcall))
         return maybe_step_through_wrapper!(stack)
     end
