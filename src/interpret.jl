@@ -57,22 +57,6 @@ end
 instantiate_type_in_env(arg, spsig, spvals) =
     ccall(:jl_instantiate_type_in_env, Any, (Any, Any, Ptr{Any}), arg, spsig, spvals)
 
-function maybe_evaluate_nested(stack, frame, call_expr, pc)
-    # Core.svec and Core.apply_type are the only two common "nested" calls;
-    # by special-casing them we get performance advantages.
-    nestedargs(args) = Any[@eval_rhs(stack, frame, a, pc) for a in Iterators.drop(args, 1)]
-
-    if isa(call_expr.args[1], GlobalRef)
-        g = call_expr.args[1]::GlobalRef
-        if g.mod == Core && g.name == :svec
-            return Core.svec(nestedargs(call_expr.args)...)
-        elseif g.mod == Core && g.name == :apply_type
-            return Core.apply_type(nestedargs(call_expr.args)...)
-        end
-    end
-    return call_expr
-end
-
 function collect_args(stack, frame, call_expr, pc)
     args = Vector{Any}(undef, length(call_expr.args))
     for i = 1:length(args)
@@ -99,35 +83,29 @@ function evaluate_foreigncall!(stack, frame, call_expr, pc)
 end
 
 function evaluate_call!(::Compiled, frame, call_expr::Expr, pc)
-    ret = maybe_evaluate_nested(Compiled(), frame, call_expr, pc)
-    isexpr(ret, :call) || return ret
-    args = collect_args(Compiled(), frame, call_expr, pc)
+    ret = maybe_evaluate_builtin(Compiled(), frame, call_expr, pc)
+    isa(ret, Some{Any}) && return ret.value
+    fargs = collect_args(Compiled(), frame, call_expr, pc)
     # Don't go through eval since this may have unquoted symbols and
     # exprs
-    f = to_function(args[1])
+    f = to_function(fargs[1])
     if isa(f, CodeInfo)
         ret = finish_and_return!(Compiled(), enter_call_expr(frame, call_expr))
     else
-        popfirst!(args)
-        ret = f(args...)
+        popfirst!(fargs)  # now it's really just `args`
+        ret = f(fargs...)
     end
     return ret
 end
 
 function evaluate_call!(stack, frame, call_expr::Expr, pc)
-    ret = maybe_evaluate_nested(stack, frame, call_expr, pc)
-    isexpr(ret, :call) || return ret
+    ret = maybe_evaluate_builtin(stack, frame, call_expr, pc)
+    isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(stack, frame, call_expr, pc)
-    f = to_function(fargs[1])
-    if f isa Core.Builtin || f isa Core.IntrinsicFunction  # TODO: make this faster
-        popfirst!(fargs)
-        return f(fargs...)
-    elseif isa(f, CodeInfo)
-        error("FIXME")
-    end
-    framecode, env = get_call_framecode(fargs, frame.code, pc.next_stmt)
+    framecode, lenv = get_call_framecode(fargs, frame.code, pc.next_stmt)
+    frame = build_frame(framecode, fargs, lenv)
     push!(stack, frame)
-    newframe = build_frame(framecode, fargs, env)
+    newframe = build_frame(framecode, fargs, lenv)
     ret = finish_and_return!(stack, newframe)
     pop!(stack)
     return ret

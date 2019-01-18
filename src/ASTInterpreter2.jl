@@ -82,6 +82,7 @@ const framedict = Dict{Tuple{Method,Bool},JuliaFrameCode}()  # essentially a met
 
 include("localmethtable.jl")
 include("interpret.jl")
+include("builtins.jl")
 
 moduleof(frame) = isa(frame.code.scope, Method) ? frame.code.scope.module : frame.code.scope
 Base.nameof(frame) = isa(frame.code.scope, Method) ? frame.code.scope.name : nameof(frame.code.scope)
