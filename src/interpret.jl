@@ -103,11 +103,11 @@ function evaluate_call!(stack, frame, call_expr::Expr, pc)
     isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(stack, frame, call_expr, pc)
     framecode, lenv = get_call_framecode(fargs, frame.code, pc.next_stmt)
-    frame = build_frame(framecode, fargs, lenv)
     push!(stack, frame)
     newframe = build_frame(framecode, fargs, lenv)
     ret = finish_and_return!(stack, newframe)
     pop!(stack)
+    push!(junk, newframe)  # rather than going through GC, just re-use it
     return ret
 end
 

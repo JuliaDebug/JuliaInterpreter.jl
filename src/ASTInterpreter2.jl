@@ -79,6 +79,7 @@ function JuliaStackFrame(framecode::JuliaFrameCode, frame::JuliaStackFrame, pc::
 end
 
 const framedict = Dict{Tuple{Method,Bool},JuliaFrameCode}()  # essentially a method table for lowered code
+const junk = JuliaStackFrame[]      # to allow re-use of allocated memory (this is otherwise a bottleneck)
 
 include("localmethtable.jl")
 include("interpret.jl")
@@ -134,8 +135,12 @@ end
 
 
 const SEARCH_PATH = []
-__init__() = append!(SEARCH_PATH,[joinpath(Sys.BINDIR,"../share/julia/base/"),
-    joinpath(Sys.BINDIR,"../include/")])
+function __init__()
+    append!(SEARCH_PATH,[joinpath(Sys.BINDIR,"../share/julia/base/"),
+            joinpath(Sys.BINDIR,"../include/")])
+    return nothing
+end
+
 function loc_for_fname(file, line, defline)
     if startswith(string(file),"REPL[")
         hist_idx = parse(Int,string(file)[6:end-1])
@@ -415,12 +420,24 @@ plain(stmt) = stmt
 
 function prepare_locals(framecode, @nospecialize(argvals) = (), generator = false)
     meth, code = framecode.scope::Method, framecode.code
-    # Construct the environment from the arguments
-    locals = Vector{Union{Nothing,Some{Any}}}(undef, length(code.slotflags))
     ssavt = code.ssavaluetypes
     ng = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any})
-    ssavalues = Vector{Any}(undef, ng)
-    sparams = Vector{Any}(undef, length(meth.sparam_syms))
+    if !isempty(junk)
+        oldframe = pop!(junk)
+        locals, ssavalues, sparams = oldframe.locals, oldframe.ssavalues, oldframe.sparams
+        exception_frames, last_reference = oldframe.exception_frames, oldframe.last_reference
+        resize!(locals, length(code.slotflags))
+        resize!(ssavalues, ng)
+        resize!(sparams, length(meth.sparam_syms))
+        empty!(exception_frames)
+        empty!(last_reference)
+    else
+        locals = Vector{Union{Nothing,Some{Any}}}(undef, length(code.slotflags))
+        ssavalues = Vector{Any}(undef, ng)
+        sparams = Vector{Any}(undef, length(meth.sparam_syms))
+        exception_frames = Int[]
+        last_reference = Dict{Symbol,Int}()
+    end
     for i = 1:meth.nargs
         if meth.isva && i == meth.nargs
             locals[i] = length(argvals) >= i ? Some{Any}(tuple(argvals[i:end]...)) : Some{Any}(())
@@ -432,8 +449,8 @@ function prepare_locals(framecode, @nospecialize(argvals) = (), generator = fals
     for i = (meth.nargs+1):length(code.slotnames)
         locals[i] = nothing
     end
-    JuliaStackFrame(framecode, locals, ssavalues, sparams, Int[], Ref{Any}(nothing),
-                    Ref(JuliaProgramCounter(1)), Dict{Symbol,Int}())
+    JuliaStackFrame(framecode, locals, ssavalues, sparams, exception_frames, Ref{Any}(nothing),
+                    Ref(JuliaProgramCounter(1)), last_reference)
 end
 
 function build_frame(framecode, args, lenv; enter_generated=false)
