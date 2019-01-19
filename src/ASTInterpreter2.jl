@@ -29,6 +29,11 @@ end
 
 Base.show(io::IO, pc::JuliaProgramCounter) = print(io, "JuliaProgramCounter(", pc.next_stmt, ')')
 
+# A type used transiently in renumbering CodeInfo SSAValues (to distinguish a new SSAValue from an old one)
+struct NewSSAValue
+    id::Int
+end
+
 """
 `JuliaFrameCode` holds static information about a method or toplevel code.
 One `JuliaFrameCode` can be shared by many `JuliaFrameState` calling frames.
@@ -63,19 +68,24 @@ struct JuliaStackFrame
     # A vector from names to the slotnumber of that name
     # for which a reference was last encountered.
     last_reference::Dict{Symbol,Int}
+    callargs::Vector{Any}  # a temporary for processing arguments of :call exprs
 end
 
 function JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter)
+    pcref = frame.pc
+    pcref[] = pc
     JuliaStackFrame(frame.code, frame.locals,
                     frame.ssavalues, frame.sparams,
                     frame.exception_frames, frame.last_exception,
-                    Ref(pc), frame.last_reference)
+                    pcref, frame.last_reference, frame.callargs)
 end
 function JuliaStackFrame(framecode::JuliaFrameCode, frame::JuliaStackFrame, pc::JuliaProgramCounter)
+    pcref = frame.pc
+    pcref[] = pc
     JuliaStackFrame(framecode, frame.locals,
                     frame.ssavalues, frame.sparams,
                     frame.exception_frames, frame.last_exception,
-                    Ref(pc), frame.last_reference)
+                    pcref, frame.last_reference, frame.callargs)
 end
 
 const framedict = Dict{Tuple{Method,Bool},JuliaFrameCode}()  # essentially a method table for lowered code
@@ -415,7 +425,73 @@ function copy_codeinfo(code::CodeInfo)
     new_codeinfo
 end
 
-optimize!(framecode) = framecode
+const calllike = Set([:call, :struct_type])
+
+function extract_inner_call!(stmt, idx, once::Bool=false)
+    isa(stmt, Expr) || return nothing
+    once |= stmt.head ∈ calllike
+    for (i, a) in enumerate(stmt.args)
+        isa(a, Expr) || continue
+        ret = extract_inner_call!(a, idx, once) # doing this first extracts innermost calls
+        ret !== nothing && return ret
+        iscalllike = a.head ∈ calllike
+        if once && iscalllike
+            stmt.args[i] = NewSSAValue(idx)
+            return a
+        end
+    end
+    return nothing
+end
+
+function replace_ssa!(stmt, ssalookup)
+    isa(stmt, Expr) || return nothing
+    for (i, a) in enumerate(stmt.args)
+        if isa(a, SSAValue)
+            stmt.args[i] = SSAValue(ssalookup[a.id])
+        elseif isa(a, NewSSAValue)
+            stmt.args[i] = SSAValue(a.id)
+        else
+            replace_ssa!(a, ssalookup)
+        end
+    end
+    return nothing
+end
+
+function optimize!(code::CodeInfo)
+    code.inferred && error("optimization of inferred code not implemented")
+    ## Un-nest :call expressions (so that there will be only one :call per line)
+    # This will allow us to re-use args-buffers rather than having to allocate new ones each time.
+    old_code, old_codelocs = code.code, code.codelocs
+    code.code = new_code = eltype(old_code)[]
+    code.codelocs = new_codelocs = Int32[]
+    ssainc = fill(1, length(old_code))
+    for (i, stmt) in enumerate(old_code)
+        loc = old_codelocs[i]
+        inner = extract_inner_call!(stmt, length(new_code)+1)
+        while inner !== nothing
+            push!(new_code, inner)
+            push!(new_codelocs, loc)
+            ssainc[i] += 1
+            inner = extract_inner_call!(stmt, length(new_code)+1)
+        end
+        push!(new_code, stmt)
+        push!(new_codelocs, loc)
+    end
+    # Fix all the SSAValues
+    ssalookup = cumsum(ssainc)
+    for (i, stmt) in enumerate(new_code)
+        if isa(stmt, SSAValue)
+            new_code[i] = SSAValue(ssalookup[stmt.id])
+        elseif isa(stmt, NewSSAValue)
+            new_code[i] = SSAValue(stmt.id)
+        elseif isa(stmt, Expr)
+            replace_ssa!(stmt, ssalookup)
+        end
+    end
+    code.ssavaluetypes = length(new_code)
+    return code
+end
+
 plain(stmt) = stmt
 
 function prepare_locals(framecode, argvals::Vector{Any}, generator = false)
@@ -427,21 +503,28 @@ function prepare_locals(framecode, argvals::Vector{Any}, generator = false)
         oldframe = pop!(junk)
         locals, ssavalues, sparams = oldframe.locals, oldframe.ssavalues, oldframe.sparams
         exception_frames, last_reference = oldframe.exception_frames, oldframe.last_reference
+        callargs = oldframe.callargs
+        last_exception, pc = oldframe.last_exception, oldframe.pc
         resize!(locals, length(code.slotflags))
         resize!(ssavalues, ng)
         resize!(sparams, length(meth.sparam_syms))
         empty!(exception_frames)
         empty!(last_reference)
+        last_exception[] = nothing
+        pc[] = JuliaProgramCounter(1)
     else
         locals = Vector{Union{Nothing,Some{Any}}}(undef, length(code.slotflags))
         ssavalues = Vector{Any}(undef, ng)
         sparams = Vector{Any}(undef, length(meth.sparam_syms))
         exception_frames = Int[]
         last_reference = Dict{Symbol,Int}()
+        callargs = Any[]
+        last_exception = Ref{Any}(nothing)
+        pc = Ref(JuliaProgramCounter(1))
     end
     for i = 1:meth.nargs
         if meth.isva && i == meth.nargs
-            locals[i] = nargs >= i ? Some{Any}(tuple(argvals[i:end]...)) : Some{Any}(())
+            locals[i] = nargs < i ? Some{Any}(()) : (let i=i; Some{Any}(ntuple(k->argvals[i+k-1], nargs-i+1)); end)
             break
         end
         locals[i] = nargs >= i ? Some{Any}(argvals[i]) : Some{Any}(())
@@ -450,8 +533,8 @@ function prepare_locals(framecode, argvals::Vector{Any}, generator = false)
     for i = (meth.nargs+1):length(code.slotnames)
         locals[i] = nothing
     end
-    JuliaStackFrame(framecode, locals, ssavalues, sparams, exception_frames, Ref{Any}(nothing),
-                    Ref(JuliaProgramCounter(1)), last_reference)
+    JuliaStackFrame(framecode, locals, ssavalues, sparams, exception_frames, last_exception,
+                    pc, last_reference, callargs)
 end
 
 function build_frame(framecode, args, lenv; enter_generated=false)

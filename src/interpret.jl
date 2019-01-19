@@ -23,33 +23,41 @@ end
 
 """
     rhs = @eval_rhs(flag, frame, node)
+    rhs = @eval_rhs(flag, frame, node, pc)
 
 This macro substitutes for a function call, as a performance optimization to avoid dynamic dispatch.
 It calls `lookup_var(frame, node)` when appropriate, otherwise:
 
 * with `flag=false` it throws an error (if `lookup_var` didn't already handle the call)
-* with `flag=true` it will additionally try `lookup_expr`
+* with `flag=true` it will additionally try `lookup_expr` and resolve `QuoteNode`s
 * with `flag=Compiled()` it will additionally recurse into calls using Julia's normal compiled-code evaluation
 * with `flag=stack`, a vector of `JuliaStackFrames`, it will recurse via the interpreter
+
+If `flag` isn't a Bool you need to supply `pc`.
 """
-macro eval_rhs(flag, frame, node, pc)
+macro eval_rhs(flag, frame, rest...)
+    node = rest[1]
+    pc = length(rest) == 1 ? nothing : rest[2]
+    nodetmp = gensym(:node)  # used to hoist, e.g., args[4]
     if flag == true
         fallback = quote
-            isa($(esc(node)), Expr) ? lookup_expr($(esc(frame)), $(esc(node)), true) : $(esc(node))
+            isa($nodetmp, QuoteNode) ? $nodetmp.value :
+            isa($nodetmp, Expr) ? lookup_expr($(esc(frame)), $nodetmp, true) : $nodetmp
         end
     elseif flag == false
-        fallback = :(error("bad node ", node))
+        fallback = :(error("bad node ", $nodetmp))
     else
         fallback = quote
-            isa($(esc(node)), QuoteNode) ? $(esc(node)).value :
-            isa($(esc(node)), Expr) ? eval_rhs($(esc(flag)), $(esc(frame)), $(esc(node)), $(esc(pc))) :
-            $(esc(node))
+            isa($nodetmp, QuoteNode) ? $nodetmp.value :
+            isa($nodetmp, Expr) ? eval_rhs($(esc(flag)), $(esc(frame)), $nodetmp, $(esc(pc))) :
+            $nodetmp
         end
     end
     quote
-        isa($(esc(node)), SSAValue) ? lookup_var($(esc(frame)), $(esc(node))) :
-        isa($(esc(node)), GlobalRef) ? lookup_var($(esc(frame)), $(esc(node))) :
-        isa($(esc(node)), SlotNumber) ? lookup_var($(esc(frame)), $(esc(node))) :
+        $nodetmp = $(esc(node))
+        isa($nodetmp, SSAValue) ? lookup_var($(esc(frame)), $nodetmp) :
+        isa($nodetmp, GlobalRef) ? lookup_var($(esc(frame)), $nodetmp) :
+        isa($nodetmp, SlotNumber) ? lookup_var($(esc(frame)), $nodetmp) :
         $fallback
     end
 end
@@ -57,16 +65,17 @@ end
 instantiate_type_in_env(arg, spsig, spvals) =
     ccall(:jl_instantiate_type_in_env, Any, (Any, Any, Ptr{Any}), arg, spsig, spvals)
 
-function collect_args(stack, frame, call_expr, pc)
-    args = Vector{Any}(undef, length(call_expr.args))
+function collect_args(frame, call_expr)
+    args = frame.callargs
+    resize!(args, length(call_expr.args))
     for i = 1:length(args)
-        args[i] = @eval_rhs(stack, frame, call_expr.args[i], pc)
+        args[i] = @eval_rhs(true, frame, call_expr.args[i])
     end
     return args
 end
 
 function evaluate_foreigncall!(stack, frame, call_expr, pc)
-    args = collect_args(stack, frame, call_expr, pc)
+    args = collect_args(frame, call_expr)
     for i = 1:length(args)
         arg = args[i]
         args[i] = isa(arg, Symbol) ? QuoteNode(arg) : arg
@@ -83,13 +92,14 @@ function evaluate_foreigncall!(stack, frame, call_expr, pc)
 end
 
 function evaluate_call!(::Compiled, frame, call_expr::Expr, pc)
-    ret = maybe_evaluate_builtin(Compiled(), frame, call_expr, pc)
+    ret = maybe_evaluate_builtin(frame, call_expr)
     isa(ret, Some{Any}) && return ret.value
-    fargs = collect_args(Compiled(), frame, call_expr, pc)
+    fargs = collect_args(frame, call_expr)
     # Don't go through eval since this may have unquoted symbols and
     # exprs
     f = to_function(fargs[1])
     if isa(f, CodeInfo)
+        error("CodeInfo")
         ret = finish_and_return!(Compiled(), enter_call_expr(frame, call_expr))
     else
         popfirst!(fargs)  # now it's really just `args`
@@ -99,9 +109,9 @@ function evaluate_call!(::Compiled, frame, call_expr::Expr, pc)
 end
 
 function evaluate_call!(stack, frame, call_expr::Expr, pc)
-    ret = maybe_evaluate_builtin(stack, frame, call_expr, pc)
+    ret = maybe_evaluate_builtin(frame, call_expr)
     isa(ret, Some{Any}) && return ret.value
-    fargs = collect_args(stack, frame, call_expr, pc)
+    fargs = collect_args(frame, call_expr)
     framecode, lenv = get_call_framecode(fargs, frame.code, pc.next_stmt)
     push!(stack, frame)
     newframe = build_frame(framecode, fargs, lenv)
@@ -126,7 +136,7 @@ end
 function eval_rhs(stack, frame, node::Expr, pc)
     head = node.head
     if head == :new
-        new_expr = Expr(:new, map(x->QuoteNode(@eval_rhs(true, frame, x, pc)),
+        new_expr = Expr(:new, map(x->QuoteNode(@eval_rhs(true, frame, x)),
             node.args)...)
         rhs = Core.eval(moduleof(frame), new_expr)
     elseif head == :isdefined
