@@ -418,10 +418,11 @@ end
 optimize!(framecode) = framecode
 plain(stmt) = stmt
 
-function prepare_locals(framecode, @nospecialize(argvals) = (), generator = false)
+function prepare_locals(framecode, argvals::Vector{Any}, generator = false)
     meth, code = framecode.scope::Method, framecode.code
     ssavt = code.ssavaluetypes
     ng = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any})
+    nargs = length(argvals)
     if !isempty(junk)
         oldframe = pop!(junk)
         locals, ssavalues, sparams = oldframe.locals, oldframe.ssavalues, oldframe.sparams
@@ -440,10 +441,10 @@ function prepare_locals(framecode, @nospecialize(argvals) = (), generator = fals
     end
     for i = 1:meth.nargs
         if meth.isva && i == meth.nargs
-            locals[i] = length(argvals) >= i ? Some{Any}(tuple(argvals[i:end]...)) : Some{Any}(())
+            locals[i] = nargs >= i ? Some{Any}(tuple(argvals[i:end]...)) : Some{Any}(())
             break
         end
-        locals[i] = length(argvals) >= i ? Some{Any}(argvals[i]) : Some{Any}(())
+        locals[i] = nargs >= i ? Some{Any}(argvals[i]) : Some{Any}(())
     end
     # add local variables initially undefined
     for i = (meth.nargs+1):length(code.slotnames)
