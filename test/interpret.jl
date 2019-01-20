@@ -93,3 +93,9 @@ A = rand(1000)
 @test @interpret(sum(A)) ≈ sum(A)  # note: the compiler can leave things in registers to increase accuracy, doesn't happen with interpreted
 fapply() = (Core.apply_type)(Base.NamedTuple, (), Tuple{})
 @test @interpret(fapply()) == fapply()
+function fbc()
+    bc = Broadcast.broadcasted(CartesianIndex, 6, [1, 2, 3])
+    copy(bc)
+end
+@test @interpret(fbc()) == fbc()
+@test @interpret(repr("hi")) == repr("hi")  # this tests kwargs and @generated functions
