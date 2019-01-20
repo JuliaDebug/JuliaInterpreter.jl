@@ -10,7 +10,7 @@ using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfo
             GeneratedFunctionStub, MethodInstance
 using Markdown
 
-export @enter, @make_stack, Compiled, JuliaStackFrame
+export @enter, @make_stack, @interpret, Compiled, JuliaStackFrame
 
 """
 `Compiled` is a trait indicating that any `:call` expressions should be evaluated
@@ -668,6 +668,21 @@ macro enter(arg)
         let stack = $(_make_stack(__module__,arg))
             DebuggerFramework.RunDebugger(stack)
         end
+    end
+end
+
+macro interpret(arg)
+    args = try
+        extract_args(__module__, arg)
+    catch e
+        return :(throw($e))
+    end
+    quote
+        theargs = $(esc(args))
+        stack = JuliaStackFrame[]
+        frame = ASTInterpreter2.enter_call_expr(Expr(:call,theargs...))
+        empty!(framedict)  # start fresh each time; kind of like bumping the world age at the REPL prompt
+        finish_and_return!(stack, frame)
     end
 end
 

@@ -188,7 +188,7 @@ function _step_expr!(stack, frame, pc)
                 rhs = eval_rhs(stack, frame, node, pc)
             elseif node.head == :static_typeof || node.head == :type_goto
                 error(node, ", despite the docs, still exists")
-            elseif node.head == :inbounds
+            elseif node.head == :meta || node.head == :inbounds || node.head == :simdloop
             elseif node.head == :enter
                 rhs = node.args[1]
                 push!(frame.exception_frames, rhs)

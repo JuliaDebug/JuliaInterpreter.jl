@@ -88,3 +88,6 @@ A = [0.12, -.99]
 frame = ASTInterpreter2.enter_call(summer, A)
 frame2 = ASTInterpreter2.enter_call(summer, A)
 @test summer(A) == something(runframe(frame)) == something(runstack(frame2))
+
+A = rand(1000)
+@test @interpret(sum(A)) ≈ sum(A)  # note: the compiler can leave things in registers to increase accuracy, doesn't happen with interpreted
