@@ -29,7 +29,7 @@ This macro substitutes for a function call, as a performance optimization to avo
 It calls `lookup_var(frame, node)` when appropriate, otherwise:
 
 * with `flag=false` it throws an error (if `lookup_var` didn't already handle the call)
-* with `flag=true` it will additionally try `lookup_expr` and resolve `QuoteNode`s
+* with `flag=true` it will additionally try `lookup_expr`, resolving `QuoteNode`s, and otherwise return `node`
 * with `flag=Compiled()` it will additionally recurse into calls using Julia's normal compiled-code evaluation
 * with `flag=stack`, a vector of `JuliaStackFrames`, it will recurse via the interpreter
 
@@ -207,6 +207,7 @@ function _step_expr!(stack, frame, pc)
             elseif node.head == :static_parameter
                 rhs = frame.sparams[node.args[1]]
             elseif node.head == :gc_preserve_end || node.head == :gc_preserve_begin
+                rhs = @eval_rhs(true, frame, node.args[1])
             elseif node.head == :return
                 return nothing
             else
