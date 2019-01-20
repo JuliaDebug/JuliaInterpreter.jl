@@ -91,3 +91,5 @@ frame2 = ASTInterpreter2.enter_call(summer, A)
 
 A = rand(1000)
 @test @interpret(sum(A)) ≈ sum(A)  # note: the compiler can leave things in registers to increase accuracy, doesn't happen with interpreted
+fapply() = (Core.apply_type)(Base.NamedTuple, (), Tuple{})
+@test @interpret(fapply()) == fapply()

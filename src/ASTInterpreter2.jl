@@ -459,6 +459,11 @@ end
 
 function optimize!(code::CodeInfo)
     code.inferred && error("optimization of inferred code not implemented")
+    # TODO: because of builtins.jl, for CodeInfos like
+    #   %1 = Core.apply_type
+    #   %2 = (%1)(args...)
+    # it would be best to *not* resolve the GlobalRef at %1
+
     ## Un-nest :call expressions (so that there will be only one :call per line)
     # This will allow us to re-use args-buffers rather than having to allocate new ones each time.
     old_code, old_codelocs = code.code, code.codelocs

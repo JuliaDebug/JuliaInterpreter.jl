@@ -38,6 +38,10 @@ function get_call_framecode(fargs, parentframe::JuliaFrameCode, idx::Int)
     end
     # We haven't yet encountered this argtype combination and need to look it up
     fargs[1] = f = to_function(fargs[1])
+    if isa(f, Core.Builtin)
+        # See TODO in optimize!
+        return f(fargs[2:end]...), nothing  # for code that has a direct call to a builtin
+    end
     framecode, args, env, argtypes = prepare_call(f, fargs)
     # Store the results of the method lookup
     tme = ccall(:jl_new_struct_uninit, Any, (Any,), TypeMapEntry)::TypeMapEntry

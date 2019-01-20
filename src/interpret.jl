@@ -113,6 +113,9 @@ function evaluate_call!(stack, frame, call_expr::Expr, pc)
     isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(frame, call_expr)
     framecode, lenv = get_call_framecode(fargs, frame.code, pc.next_stmt)
+    if lenv === nothing
+        return framecode  # this was a Builtin
+    end
     push!(stack, frame)
     newframe = build_frame(framecode, fargs, lenv)
     ret = finish_and_return!(stack, newframe)
