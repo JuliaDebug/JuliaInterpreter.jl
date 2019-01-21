@@ -180,6 +180,9 @@ end
 
 function DebuggerFramework.eval_code(state, frame::JuliaStackFrame, command)
     expr = Base.parse_input_line(command)
+    if isexpr(expr, :toplevel)
+        expr = expr.args[end]
+    end
     local_vars = Any[]
     local_vals = Any[]
     for i = 1:length(frame.locals)
