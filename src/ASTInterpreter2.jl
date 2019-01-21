@@ -71,22 +71,20 @@ struct JuliaStackFrame
     callargs::Vector{Any}  # a temporary for processing arguments of :call exprs
 end
 
-function JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter)
+function JuliaStackFrame(framecode::JuliaFrameCode, frame::JuliaStackFrame, pc::JuliaProgramCounter; kwargs...)
     pcref = frame.pc
     pcref[] = pc
-    JuliaStackFrame(frame.code, frame.locals,
-                    frame.ssavalues, frame.sparams,
-                    frame.exception_frames, frame.last_exception,
-                    pcref, frame.last_reference, frame.callargs)
-end
-function JuliaStackFrame(framecode::JuliaFrameCode, frame::JuliaStackFrame, pc::JuliaProgramCounter)
-    pcref = frame.pc
-    pcref[] = pc
+    if !isempty(kwargs)
+        framecode = JuliaFrameCode(framecode; kwargs...)
+    end
     JuliaStackFrame(framecode, frame.locals,
                     frame.ssavalues, frame.sparams,
                     frame.exception_frames, frame.last_exception,
                     pcref, frame.last_reference, frame.callargs)
 end
+
+JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter; kwargs...) =
+    JuliaStackFrame(frame.code, frame, pc; kwargs...)
 
 const framedict = Dict{Method,JuliaFrameCode}()                # essentially a method table for lowered code
 const genframedict = Dict{Tuple{Method,Type},JuliaFrameCode}() # the same for @generated functions
