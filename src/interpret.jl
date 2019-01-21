@@ -116,6 +116,7 @@ function evaluate_call!(stack, frame, call_expr::Expr, pc)
     if lenv === nothing
         return framecode  # this was a Builtin
     end
+    frame.pc[] = pc  # to mark position in the frame (e.g., if we hit breakpoint or error)
     push!(stack, frame)
     newframe = build_frame(framecode, fargs, lenv)
     ret = finish_and_return!(stack, newframe)
