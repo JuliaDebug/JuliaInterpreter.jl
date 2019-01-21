@@ -88,7 +88,8 @@ function JuliaStackFrame(framecode::JuliaFrameCode, frame::JuliaStackFrame, pc::
                     pcref, frame.last_reference, frame.callargs)
 end
 
-const framedict = Dict{Tuple{Method,Bool},JuliaFrameCode}()  # essentially a method table for lowered code
+const framedict = Dict{Method,JuliaFrameCode}()                # essentially a method table for lowered code
+const genframedict = Dict{Tuple{Method,Type},JuliaFrameCode}() # the same for @generated functions
 const junk = JuliaStackFrame[]      # to allow re-use of allocated memory (this is otherwise a bottleneck)
 
 include("localmethtable.jl")
@@ -350,7 +351,11 @@ function prepare_call(f, allargs; enter_generated = false)
     (ti, lenv::SimpleVector) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
                         argtypes, sig)::SimpleVector
     enter_generated &= is_generated(method)
-    framecode = get(framedict, (method, enter_generated), nothing)
+    if is_generated(method) && !enter_generated
+        framecode = get(genframedict, (method, argtypes), nothing)
+    else
+        framecode = get(framedict, method, nothing)
+    end
     if framecode === nothing
         if is_generated(method) && !enter_generated
             # If we're stepping into a staged function, we need to use
@@ -372,7 +377,11 @@ function prepare_call(f, allargs; enter_generated = false)
         used = find_used(code)
         methodtables = Vector{TypeMapEntry}(undef, length(code.code))
         framecode = JuliaFrameCode(method, code, methodtables, used, false, generator, true)
-        framedict[(method, generator)] = framecode
+        if is_generated(method) && !enter_generated
+            genframedict[(method, argtypes)] = framecode
+        else
+            framedict[method] = framecode
+        end
     end
     return framecode, args, lenv, argtypes
 end
@@ -718,6 +727,7 @@ macro interpret(arg)
         stack = JuliaStackFrame[]
         frame = ASTInterpreter2.enter_call_expr(Expr(:call,theargs...))
         empty!(framedict)  # start fresh each time; kind of like bumping the world age at the REPL prompt
+        empty!(genframedict)
         finish_and_return!(stack, frame)
     end
 end

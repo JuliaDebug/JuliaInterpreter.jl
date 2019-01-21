@@ -42,10 +42,6 @@ function get_call_framecode(fargs, parentframe::JuliaFrameCode, idx::Int)
         # See TODO in optimize!
         return f(fargs[2:end]...), nothing  # for code that has a direct call to a builtin
     end
-    # HACK
-    if isa(f, Type) && f <: NamedTuple
-        return f(fargs[2:end]...), nothing  # FIXME delete this
-    end
     # HACK: don't recurse into inference. Inference sometimes returns SSAValue objects and this
     # seems to confuse lookup_var.
     if f === Base._return_type
