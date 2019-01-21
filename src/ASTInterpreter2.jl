@@ -368,7 +368,7 @@ function prepare_call(f, allargs; enter_generated = false)
                 generator = false
             end
         end
-        code = optimize!(copy_codeinfo(code))
+        code = optimize!(copy_codeinfo(code), method.module)
         used = find_used(code)
         methodtables = Vector{TypeMapEntry}(undef, length(code.code))
         framecode = JuliaFrameCode(method, code, methodtables, used, false, generator, true)
@@ -457,12 +457,43 @@ function replace_ssa!(stmt, ssalookup)
     return nothing
 end
 
-function optimize!(code::CodeInfo)
+function lookup_global_refs!(ex::Expr)
+    for (i, a) in enumerate(ex.args)
+        if isa(a, GlobalRef)
+            r = getfield(a.mod, a.name)
+            ex.args[i] = QuoteNode(r)
+        elseif isa(a, Expr)
+            lookup_global_refs!(a)
+        end
+    end
+end
+
+function optimize!(code::CodeInfo, mod::Module)
     code.inferred && error("optimization of inferred code not implemented")
     # TODO: because of builtins.jl, for CodeInfos like
     #   %1 = Core.apply_type
     #   %2 = (%1)(args...)
     # it would be best to *not* resolve the GlobalRef at %1
+
+    ## Replace GlobalRefs with QuoteNodes
+    for (i, stmt) in enumerate(code.code)
+        if isa(stmt, GlobalRef)
+            code.code[i] = QuoteNode(getfield(stmt.mod, stmt.name))
+        elseif isa(stmt, Expr)
+            if stmt.head == :call && isa(stmt.args[1], GlobalRef)
+                # Special handling of cglobal, which requires constants for its arguments
+                r = stmt.args[1]::GlobalRef
+                f = getfield(r.mod, r.name)
+                if f === Base.cglobal
+                    code.code[i] = QuoteNode(Core.eval(mod, stmt))
+                else
+                    lookup_global_refs!(stmt)
+                end
+            else
+                lookup_global_refs!(stmt)
+            end
+        end
+    end
 
     ## Un-nest :call expressions (so that there will be only one :call per line)
     # This will allow us to re-use args-buffers rather than having to allocate new ones each time.
@@ -499,7 +530,7 @@ end
 
 plain(stmt) = stmt
 
-function prepare_locals(framecode, argvals::Vector{Any}, generator = false)
+function prepare_locals(framecode, argvals::Vector{Any}, generator::Bool)
     meth, code = framecode.scope::Method, framecode.code
     ssavt = code.ssavaluetypes
     ng = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any})
