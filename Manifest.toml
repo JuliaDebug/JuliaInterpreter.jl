@@ -7,7 +7,7 @@ uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 deps = ["REPL"]
 git-tree-sha1 = "e4a4693fc3fd3924d469bb0fa46215672fd6d4b8"
 repo-rev = "master"
-repo-url = "https://github.com/Keno/DebuggerFramework.jl.git"
+repo-url = "https://github.com/JuliaDebug/DebuggerFramework.jl"
 uuid = "67417a49-6d77-5db2-98c7-c13144130cd2"
 version = "0.1.2+"
 

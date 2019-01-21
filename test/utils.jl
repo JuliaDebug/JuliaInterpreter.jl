@@ -1,7 +1,6 @@
 using Base.Meta: isexpr
 using ASTInterpreter2: JuliaStackFrame
 using ASTInterpreter2: pc_expr, plain, evaluate_call!, finish_and_return!, @eval_rhs
-using DebuggingUtilities
 
 # Steps through the whole expression using `s`
 function step_through(frame)
