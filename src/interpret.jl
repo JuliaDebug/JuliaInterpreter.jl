@@ -140,9 +140,10 @@ end
 function eval_rhs(stack, frame, node::Expr, pc)
     head = node.head
     if head == :new
-        new_expr = Expr(:new, map(x->QuoteNode(@eval_rhs(true, frame, x)),
-            node.args)...)
-        rhs = Core.eval(moduleof(frame), new_expr)
+        rhs = ccall(:jl_new_struct_uninit, Any, (Any,), @eval_rhs(true, frame, node.args[1]))
+        for i = 1:length(node.args) - 1
+            ccall(:jl_set_nth_field, Cvoid, (Any, Csize_t, Any), rhs, i-1, @eval_rhs(true, frame, node.args[i+1]))
+        end
     elseif head == :isdefined
         rhs = check_isdefined(frame, node.args[1])
     elseif head == :enter
