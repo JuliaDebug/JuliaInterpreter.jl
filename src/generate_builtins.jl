@@ -43,7 +43,7 @@ end
 
 # `io` is for the generated source file
 # `intrinsicsfile` is the path to Julia's `src/intrinsics.h` file
-function generate_builtins(io::IO, intrinsicsfile)
+function generate_builtins(io::IO)
     pat = r"(ADD_I|ALIAS)\((\w*),"
     print(io,
 """
@@ -111,11 +111,8 @@ function maybe_evaluate_builtin(frame, call_expr)
 """
     # Intrinsics
 """)
-    for line in readlines(intrinsicsfile)
-        m = match(pat, line)
-        m === nothing && continue
-        fname = m.captures[2]
-        fsym = Symbol(fname)
+    for fsym in names(Core.Intrinsics)
+        fsym == :Intrinsics && continue
         isdefined(Base, fsym) || (println("skipping ", fname); continue)
         f = getfield(Base, fsym)
         f isa Core.IntrinsicFunction || error("not an intrinsic")
