@@ -360,7 +360,7 @@ function prepare_call(f, allargs; enter_generated = false)
     if framecode === nothing
         if is_generated(method) && !enter_generated
             # If we're stepping into a staged function, we need to use
-            # the specialization, rather than stepping thorugh the
+            # the specialization, rather than stepping through the
             # unspecialized method.
             code = Core.Compiler.get_staged(Core.Compiler.code_for_method(method, argtypes, lenv, typemax(UInt), false))
             generator = false
@@ -627,8 +627,8 @@ function maybe_step_through_wrapper!(stack)
     stack1 = stack[1]
     is_kw = stack1.code.scope isa Method && startswith(String(Base.unwrap_unionall(stack1.code.scope.sig).parameters[1].name.name), "#kw")
     if is_kw || isexpr(last, :call) && any(x->x==SlotNumber(1), last.args)
-        # If the last expr calls #self# or passes it to an implemetnation method,
-        # this is a wrapper function that we might want to step though
+        # If the last expr calls #self# or passes it to an implementation method,
+        # this is a wrapper function that we might want to step through
         frame = stack1
         pc = frame.pc[]
         while pc != JuliaProgramCounter(length(frame.code.code.code)-1)
