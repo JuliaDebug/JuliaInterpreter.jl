@@ -19,9 +19,11 @@ which will cause all calls to be evaluated via the interpreter.
 """
 struct Compiled end
 
-Base.push!(::Compiled, frame) = frame
-Base.pop!(::Compiled) = nothing
+"""
+    JuliaProgramCounter(next_stmt::Int)
 
+A wrapper specifying the index of the next statement in the lowered code to be executed.
+"""
 struct JuliaProgramCounter
     next_stmt::Int
 end
@@ -37,6 +39,14 @@ end
 """
 `JuliaFrameCode` holds static information about a method or toplevel code.
 One `JuliaFrameCode` can be shared by many `JuliaFrameState` calling frames.
+
+Important fields:
+- `scope`: the `Method` or `Module` in which this frame is to be evaluated
+- `code`: the `CodeInfo` object storing (optimized) lowered code
+- `methodtables`: a vector, each entry potentially stores a "local method table" for the corresponding
+  `:call` expression in `code` (undefined entries correspond to statements that do not
+  contain `:call` expressions)
+- `used`: a `BitSet` storing the list of SSAValues that get referenced by later statements.
 """
 struct JuliaFrameCode
     scope::Union{Method,Module}
@@ -55,7 +65,20 @@ function JuliaFrameCode(frame::JuliaFrameCode; wrapper = frame.wrapper, generato
 end
 
 """
-`JuliaStackFrame` represents the execution state in a particular call frame.
+`JuliaStackFrame` represents the current execution state in a particular call frame.
+
+Important fields:
+- `code`: the [`JuliaFrameCode`](@ref) for this frame
+- `locals`: a vector containing the input arguments and named local variables for this frame.
+  The indexing corresponds to the names in `frame.code.code.slotnames`.
+- `ssavalues`: a vector containing the
+  [Static Single Assignment](https://en.wikipedia.org/wiki/Static_single_assignment_form)
+  values produced at the current state of execution
+- `sparams`: the static type parameters, e.g., for `f(x::Vector{T}) where T` this would store
+  the value of `T` given the particular input `x`.
+- `pc`: the [`JuliaProgramCounter`](@ref) that typically represents the current position
+  during execution. However, note that some internal functions instead maintain the `pc`
+  as a local variable, and only update the frame's `pc` when pushing a frame on the stack.
 """
 struct JuliaStackFrame
     code::JuliaFrameCode
@@ -86,8 +109,21 @@ end
 JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter; kwargs...) =
     JuliaStackFrame(frame.code, frame, pc; kwargs...)
 
+"""
+`framedict[method]` returns the `JuliaFrameCode` for `method`. For `@generated` methods,
+see [`genframedict`](@ref).
+"""
 const framedict = Dict{Method,JuliaFrameCode}()                # essentially a method table for lowered code
+"""
+`genframedict[(method,argtypes)]` returns the `JuliaFrameCode` for a `@generated` method `method`,
+for the particular argument types `argtypes`.
+
+The framecodes stored in `genframedict` are for the code returned by the generator
+(i.e, what will run when you call the method on particular argument types);
+for the generator itself, its framecode would be stored in [`framedict`](@ref).
+"""
 const genframedict = Dict{Tuple{Method,Type},JuliaFrameCode}() # the same for @generated functions
+
 const junk = JuliaStackFrame[]      # to allow re-use of allocated memory (this is otherwise a bottleneck)
 
 include("localmethtable.jl")
@@ -320,6 +356,33 @@ end
 kwpair(ex::Expr) = [ex.args[1]; ex.args[2]]
 kwpair(pr::Pair) = [pr.first; pr.second]
 
+"""
+    frun, allargs = prepare_args(fcall, fargs, kwargs)
+
+Prepare the complete argument sequence for a call to `fcall`. `fargs = [fcall, args...]` is a list
+containing both `fcall` (the `#self#` slot in lowered code) and the positional
+arguments supplied to `fcall`. `kwargs` is a list of keyword arguments, supplied either as
+list of expressions `:(kwname=kwval)` or pairs `:kwname=>kwval`.
+
+For non-keyword methods, `frun === fcall`, but for methods with keywords `frun` will be the
+keyword-sorter function for `fcall`.
+
+# Example
+
+```jldoctest
+julia> mymethod(x) = 1
+mymethod (generic function with 1 method)
+
+julia> mymethod(x, y; verbose=false) = nothing
+mymethod (generic function with 2 methods)
+
+julia> ASTInterpreter2.prepare_args(mymethod, [mymethod, 15], ())
+(mymethod, Any[mymethod, 15])
+
+julia> ASTInterpreter2.prepare_args(mymethod, [mymethod, 1, 2], [:verbose=>true])
+(getfield(Main, Symbol("#kw##mymethod"))(), Any[#kw##mymethod(), Any[:verbose, true], mymethod, 1, 2])
+```
+"""
 function prepare_args(f, allargs, kwargs)
     if !isempty(kwargs)
         of = f
@@ -333,6 +396,45 @@ function prepare_args(f, allargs, kwargs)
     return f, allargs
 end
 
+"""
+    framecode, frameargs, lenv, argtypes = prepare_call(f, allargs; enter_generated=false)
+
+Prepare all the information needed to execute lowered code for `f` given arguments `allargs`.
+`f` and `allargs` are the outputs of [`prepare_args`](@ref).
+For `@generated` methods, set `enter_generated=true` if you want to extract the lowered code
+of the generator itself.
+
+On return `framecode` is the [`JuliaFrameCode`](@ref) of the method.
+`frameargs` contains the actual arguments needed for executing this frame (for generators,
+this will be the types of `allargs`);
+`lenv` is the "environment", i.e., the static parameters for `f` given `allargs`.
+`argtypes` is the `Tuple`-type for this specific call (equivalent to the signature of the `MethodInstance`).
+
+# Example
+
+```jldoctest
+julia> mymethod(x::Vector{T}) where T = 1
+mymethod (generic function with 1 method)
+
+julia> framecode, frameargs, lenv, argtypes = ASTInterpreter2.prepare_call(mymethod, [mymethod, [1.0,2.0]]);
+
+julia> framecode
+ASTInterpreter2.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at REPL[2]:1, CodeInfo(
+1 ─     return 1
+), Core.TypeMapEntry[#undef], BitSet([]), false, false, true)
+
+julia> frameargs
+2-element Array{Any,1}:
+ mymethod
+ [1.0, 2.0]
+
+julia> lenv
+svec(Float64)
+
+julia> argtypes
+Tuple{typeof(mymethod),Array{Float64,1}}
+```
+"""
 function prepare_call(f, allargs; enter_generated = false)
     args = allargs[2:end]
     argtypes = Tuple{map(_Typeof,args)...}
@@ -387,6 +489,13 @@ function prepare_call(f, allargs; enter_generated = false)
     return framecode, args, lenv, argtypes
 end
 
+"""
+    framecode, frameargs, lenv, argtypes = determine_method_for_expr(expr; enter_generated = false)
+
+Prepare all the information needed to execute a particular `:call` expression `expr`.
+For example, try `ASTInterpreter2.determine_method_for_expr(:(sum([1,2])))`.
+See [`prepare_call`](@ref) for information about the outputs.
+"""
 function determine_method_for_expr(expr; enter_generated = false)
     f = to_function(expr.args[1])
     allargs = expr.args
@@ -478,6 +587,15 @@ function lookup_global_refs!(ex::Expr)
     end
 end
 
+"""
+    optimize!(code::CodeInfo, mod::Module)
+
+Perform minor optimizations on the lowered AST in `code` to reduce execution time
+of the interpreter.
+Currently it looks up `GlobalRef`s (for which it needs `mod` to know the scope in
+which this will run) and ensures that no statement includes nested `:call` expressions
+(splitting them out into multiple SSA-form statements if needed).
+"""
 function optimize!(code::CodeInfo, mod::Module)
     code.inferred && error("optimization of inferred code not implemented")
     # TODO: because of builtins.jl, for CodeInfos like
@@ -540,7 +658,7 @@ end
 
 plain(stmt) = stmt
 
-function prepare_locals(framecode, argvals::Vector{Any}, generator::Bool)
+function prepare_locals(framecode, argvals::Vector{Any})
     meth, code = framecode.scope::Method, framecode.code
     ssavt = code.ssavaluetypes
     ng = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any})
@@ -583,8 +701,14 @@ function prepare_locals(framecode, argvals::Vector{Any}, generator::Bool)
                     pc, last_reference, callargs)
 end
 
-function build_frame(framecode, args, lenv; enter_generated=false)
-    frame = prepare_locals(framecode, args, enter_generated)
+"""
+    frame = build_frame(framecode::JuliaFrameCode, frameargs, lenv)
+
+Construct a new `JuliaStackFrame` for `framecode`, given lowered-code arguments `frameargs` and
+static parameters `lenv`. See [`prepare_call`](@ref) for information about how to prepare the inputs.
+"""
+function build_frame(framecode, args, lenv)
+    frame = prepare_locals(framecode, args)
     # Add static parameters to environment
     for i = 1:length(lenv)
         frame.sparams[i] = lenv[i]
@@ -592,14 +716,81 @@ function build_frame(framecode, args, lenv; enter_generated=false)
     return frame
 end
 
+"""
+    frame = enter_call_expr(expr; enter_generated=false)
+
+Build a `JuliaStackFrame` ready to execute the expression `expr`. Set `enter_generated=true`
+if you want to execute the generator of a `@generated` function, rather than the code that
+would be created by the generator.
+
+# Example
+
+```jldoctest
+julia> mymethod(x) = x+1
+mymethod (generic function with 1 method)
+
+julia> ASTInterpreter2.enter_call_expr(:(\$mymethod(1)))
+JuliaStackFrame(ASTInterpreter2.JuliaFrameCode(mymethod(x) in Main at REPL[2]:1, CodeInfo(
+1 ─ %1 = (\$(QuoteNode(+)))(x, 1)
+└──      return %1
+), Core.TypeMapEntry[#undef, #undef], BitSet([1]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some(1)], Any[#undef, #undef], Any[], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{ASTInterpreter2.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict{Symbol,Int64}(), Any[])
+
+julia> mymethod(x::Vector{T}) where T = 1
+mymethod (generic function with 2 methods)
+
+julia> a = [1.0, 2.0]
+2-element Array{Float64,1}:
+ 1.0
+ 2.0
+
+julia> ASTInterpreter2.enter_call_expr(:(\$mymethod(\$a)))
+JuliaStackFrame(ASTInterpreter2.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at REPL[4]:1, CodeInfo(
+1 ─     return 1
+), Core.TypeMapEntry[#undef], BitSet([]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some([1.0, 2.0])], Any[#undef], Any[Float64], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{ASTInterpreter2.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict{Symbol,Int64}(), Any[])
+```
+
+See [`enter_call`](@ref) for a similar approach not based on expressions.
+"""
 function enter_call_expr(expr; enter_generated = false)
     r = determine_method_for_expr(expr; enter_generated = enter_generated)
     if r !== nothing
-        return build_frame(r[1:end-1]...; enter_generated=enter_generated)
+        return build_frame(r[1:end-1]...)
     end
     nothing
 end
 
+"""
+    frame = enter_call(f, args...; kwargs...)
+
+Build a `JuliaStackFrame` ready to execute `f` with the specified positional and keyword arguments.
+
+# Example
+
+```jldoctest
+julia> mymethod(x) = x+1
+mymethod (generic function with 1 method)
+
+julia> ASTInterpreter2.enter_call(mymethod, 1)
+JuliaStackFrame(ASTInterpreter2.JuliaFrameCode(mymethod(x) in Main at REPL[2]:1, CodeInfo(
+1 ─ %1 = ($(QuoteNode(+)))(x, 1)
+└──      return %1
+), Core.TypeMapEntry[#undef, #undef], BitSet([1]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some(1)], Any[#undef, #undef], Any[], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{ASTInterpreter2.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict{Symbol,Int64}(), Any[])
+
+julia> mymethod(x::Vector{T}) where T = 1
+mymethod (generic function with 2 methods)
+
+julia> ASTInterpreter2.enter_call(mymethod, [1.0, 2.0])
+JuliaStackFrame(ASTInterpreter2.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at REPL[4]:1, CodeInfo(
+1 ─     return 1
+), Core.TypeMapEntry[#undef], BitSet([]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some([1.0, 2.0])], Any[#undef], Any[Float64], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{ASTInterpreter2.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict{Symbol,Int64}(), Any[])
+```
+
+For a `@generated` function you can use `enter_call((f, true), args...; kwargs...)`
+to execute the generator of a `@generated` function, rather than the code that
+would be created by the generator.
+
+See [`enter_call_expr`](@ref) for a similar approach based on expressions.
+"""
 function enter_call(@nospecialize(finfo), @nospecialize(args...); kwargs...)
     if isa(finfo, Tuple)
         f = finfo[1]
@@ -615,7 +806,7 @@ function enter_call(@nospecialize(finfo), @nospecialize(args...); kwargs...)
     end
     r = prepare_call(f, allargs; enter_generated=enter_generated)
     if r !== nothing
-        return build_frame(r[1:end-1]...; enter_generated=enter_generated)
+        return build_frame(r[1:end-1]...)
     end
     return nothing
 end
@@ -717,6 +908,26 @@ macro enter(arg)
     end
 end
 
+"""
+    @interpret f(args; kwargs...)
+
+Evaluate `f` on the specified arguments using the interpreter.
+
+# Example
+
+```jldoctest
+julia> a = [1, 7]
+2-element Array{Int64,1}:
+ 1
+ 7
+
+julia> sum(a)
+8
+
+julia> @interpret sum(a)
+8
+```
+"""
 macro interpret(arg)
     args = try
         extract_args(__module__, arg)

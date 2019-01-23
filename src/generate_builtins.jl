@@ -58,11 +58,14 @@ function getargs(args, frame)
     return callargs
 end
 
+\"\"\"
+    ret = maybe_evaluate_builtin(frame, call_expr)
+
+If `call_expr` is to a builtin function, evaluate it, returning the result inside a `Some` wrapper.
+Otherwise, return `call_expr`.
+\"\"\"
 function maybe_evaluate_builtin(frame, call_expr)
-    # Builtin calls can't be handled by lowering, so we have to evaluate these directly.
-    # We do this based on the call expression rather than using `to_function` because
-    # both `to_function` and `isa(f, Core.Builtin)` are quite slow, as is the (dynamic)
-    # evaluation. By having each call appearing statically in the "switch" block below,
+    # By having each call appearing statically in the "switch" block below,
     # each gets call-site optimized.
 
     args = call_expr.args

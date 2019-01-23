@@ -29,7 +29,7 @@ This macro substitutes for a function call, as a performance optimization to avo
 It calls `lookup_var(frame, node)` when appropriate, otherwise:
 
 * with `flag=false` it throws an error (if `lookup_var` didn't already handle the call)
-* with `flag=true` it will additionally try `lookup_expr`, resolving `QuoteNode`s, and otherwise return `node`
+* with `flag=true` it will additionally try `lookup_expr`, resolve `QuoteNode`s, and otherwise return `node`
 * with `flag=Compiled()` it will additionally recurse into calls using Julia's normal compiled-code evaluation
 * with `flag=stack`, a vector of `JuliaStackFrames`, it will recurse via the interpreter
 
@@ -74,7 +74,13 @@ function collect_args(frame, call_expr)
     return args
 end
 
-function evaluate_foreigncall!(stack, frame, call_expr, pc)
+"""
+    ret = evaluate_foreigncall!(stack, frame::JuliaStackFrame, call_expr, pc)
+
+Evaluate a `:foreigncall` (from a `ccall`) statement `callexpr` in the context of `frame`.
+`stack` and `pc` are unused, but supplied for consistency with [`evaluate_call!`](@ref).
+"""
+function evaluate_foreigncall!(stack, frame::JuliaStackFrame, call_expr::Expr, pc)
     args = collect_args(frame, call_expr)
     for i = 1:length(args)
         arg = args[i]
@@ -91,7 +97,7 @@ function evaluate_foreigncall!(stack, frame, call_expr, pc)
     return Core.eval(moduleof(frame), Expr(:foreigncall, args...))
 end
 
-function evaluate_call!(::Compiled, frame, call_expr::Expr, pc)
+function evaluate_call!(::Compiled, frame::JuliaStackFrame, call_expr::Expr, pc)
     ret = maybe_evaluate_builtin(frame, call_expr)
     isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(frame, call_expr)
@@ -108,7 +114,7 @@ function evaluate_call!(::Compiled, frame, call_expr::Expr, pc)
     return ret
 end
 
-function evaluate_call!(stack, frame, call_expr::Expr, pc)
+function evaluate_call!(stack, frame::JuliaStackFrame, call_expr::Expr, pc)
     ret = maybe_evaluate_builtin(frame, call_expr)
     isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(frame, call_expr)
@@ -124,6 +130,16 @@ function evaluate_call!(stack, frame, call_expr::Expr, pc)
     push!(junk, newframe)  # rather than going through GC, just re-use it
     return ret
 end
+
+"""
+    ret = evaluate_call!(Compiled(), frame::JuliaStackFrame, call_expr, pc)
+    ret = evaluate_call!(stack,      frame::JuliaStackFrame, call_expr, pc)
+
+Evaluate a `:call` expression `call_expr` in the context of `frame`.
+The first causes it to be executed using Julia's normal dispatch (compiled code),
+whereas the second recurses in via the interpreter. `stack` should be a vector of [`JuliaStackFrame`](@ref).
+"""
+evaluate_call!
 
 function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
     if isa(lhs, SSAValue)
@@ -237,12 +253,27 @@ function _step_expr!(stack, frame, pc)
     return pc + 1
 end
 
+"""
+    pc = step_expr!(stack, frame)
+
+Execute the next statement in `frame`. `pc` is the new program counter, or `nothing`
+if execution terminates.
+`stack` controls call evaluation; `stack = Compiled()` evaluates :call expressions
+by normal dispatch, whereas a vector of `JuliaStackFrame`s will use recursive interpretation.
+"""
 function step_expr!(stack, frame)
     pc = _step_expr!(stack, frame, frame.pc[])
     pc === nothing && return nothing
     frame.pc[] = pc
 end
 
+"""
+    pc = finish!(stack, frame, pc=frame.pc[])
+
+Run `frame` until execution terminates. `pc` is the program counter for the final statement.
+`stack` controls call evaluation; `stack = Compiled()` evaluates :call expressions
+by normal dispatch, whereas a vector of `JuliaStackFrame`s will use recursive interpretation.
+"""
 function finish!(stack, frame, pc=frame.pc[])
     while true
         new_pc = _step_expr!(stack, frame, pc)
@@ -252,6 +283,13 @@ function finish!(stack, frame, pc=frame.pc[])
     frame.pc[] = pc
 end
 
+"""
+    ret = finish_and_return!(stack, frame, pc=frame.pc[])
+
+Run `frame` until execution terminates, and pass back the computed return value.
+`stack` controls call evaluation; `stack = Compiled()` evaluates :call expressions
+by normal dispatch, whereas a vector of `JuliaStackFrame`s will use recursive interpretation.
+"""
 function finish_and_return!(stack, frame, pc=frame.pc[])
     pc = finish!(stack, frame, pc)
     node = pc_expr(frame, pc)
@@ -264,6 +302,11 @@ function is_call(node)
     (isexpr(node, :(=)) && (isexpr(node.args[2], :call)))
 end
 
+"""
+    next_until!(predicate, stack, frame, pc=frame.pc[])
+
+Step through statements of `frame` until the next statement satifies `predicate(stmt)`.
+"""
 function next_until!(f, stack, frame, pc=frame.pc[])
     while (pc = _step_expr!(stack, frame, pc)) != nothing
         f(plain(pc_expr(frame, pc))) && (frame.pc[] = pc; return pc)
