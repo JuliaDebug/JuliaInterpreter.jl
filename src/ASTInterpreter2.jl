@@ -369,7 +369,7 @@ keyword-sorter function for `fcall`.
 
 # Example
 
-```jldoctest
+```jldoctest; setup=(using ASTInterpreter2; empty!(ASTInterpreter2.junk))
 julia> mymethod(x) = 1
 mymethod (generic function with 1 method)
 
@@ -380,7 +380,7 @@ julia> ASTInterpreter2.prepare_args(mymethod, [mymethod, 15], ())
 (mymethod, Any[mymethod, 15])
 
 julia> ASTInterpreter2.prepare_args(mymethod, [mymethod, 1, 2], [:verbose=>true])
-(getfield(Main, Symbol("#kw##mymethod"))(), Any[#kw##mymethod(), Any[:verbose, true], mymethod, 1, 2])
+(getfield( Symbol("#kw##mymethod"))(), Any[#kw##mymethod(), Any[:verbose, true], mymethod, 1, 2])
 ```
 """
 function prepare_args(f, allargs, kwargs)
@@ -412,14 +412,14 @@ this will be the types of `allargs`);
 
 # Example
 
-```jldoctest
+```jldoctest; setup=(using ASTInterpreter2; empty!(ASTInterpreter2.junk))
 julia> mymethod(x::Vector{T}) where T = 1
 mymethod (generic function with 1 method)
 
 julia> framecode, frameargs, lenv, argtypes = ASTInterpreter2.prepare_call(mymethod, [mymethod, [1.0,2.0]]);
 
 julia> framecode
-ASTInterpreter2.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at REPL[2]:1, CodeInfo(
+ASTInterpreter2.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(
 1 ─     return 1
 ), Core.TypeMapEntry[#undef], BitSet([]), false, false, true)
 
@@ -494,7 +494,7 @@ end
 
 Prepare all the information needed to execute a particular `:call` expression `expr`.
 For example, try `ASTInterpreter2.determine_method_for_expr(:(sum([1,2])))`.
-See [`prepare_call`](@ref) for information about the outputs.
+See [`ASTInterpreter2.prepare_call`](@ref) for information about the outputs.
 """
 function determine_method_for_expr(expr; enter_generated = false)
     f = to_function(expr.args[1])
@@ -705,7 +705,7 @@ end
     frame = build_frame(framecode::JuliaFrameCode, frameargs, lenv)
 
 Construct a new `JuliaStackFrame` for `framecode`, given lowered-code arguments `frameargs` and
-static parameters `lenv`. See [`prepare_call`](@ref) for information about how to prepare the inputs.
+static parameters `lenv`. See [`ASTInterpreter2.prepare_call`](@ref) for information about how to prepare the inputs.
 """
 function build_frame(framecode, args, lenv)
     frame = prepare_locals(framecode, args)
@@ -725,12 +725,12 @@ would be created by the generator.
 
 # Example
 
-```jldoctest
+```jldoctest; setup=(using ASTInterpreter2; empty!(ASTInterpreter2.junk))
 julia> mymethod(x) = x+1
 mymethod (generic function with 1 method)
 
 julia> ASTInterpreter2.enter_call_expr(:(\$mymethod(1)))
-JuliaStackFrame(ASTInterpreter2.JuliaFrameCode(mymethod(x) in Main at REPL[2]:1, CodeInfo(
+JuliaStackFrame(ASTInterpreter2.JuliaFrameCode(mymethod(x) in Main at none:1, CodeInfo(
 1 ─ %1 = (\$(QuoteNode(+)))(x, 1)
 └──      return %1
 ), Core.TypeMapEntry[#undef, #undef], BitSet([1]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some(1)], Any[#undef, #undef], Any[], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{ASTInterpreter2.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict{Symbol,Int64}(), Any[])
@@ -744,7 +744,7 @@ julia> a = [1.0, 2.0]
  2.0
 
 julia> ASTInterpreter2.enter_call_expr(:(\$mymethod(\$a)))
-JuliaStackFrame(ASTInterpreter2.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at REPL[4]:1, CodeInfo(
+JuliaStackFrame(ASTInterpreter2.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(
 1 ─     return 1
 ), Core.TypeMapEntry[#undef], BitSet([]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some([1.0, 2.0])], Any[#undef], Any[Float64], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{ASTInterpreter2.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict{Symbol,Int64}(), Any[])
 ```
@@ -766,12 +766,12 @@ Build a `JuliaStackFrame` ready to execute `f` with the specified positional and
 
 # Example
 
-```jldoctest
+```jldoctest; setup=(using ASTInterpreter2; empty!(ASTInterpreter2.junk))
 julia> mymethod(x) = x+1
 mymethod (generic function with 1 method)
 
 julia> ASTInterpreter2.enter_call(mymethod, 1)
-JuliaStackFrame(ASTInterpreter2.JuliaFrameCode(mymethod(x) in Main at REPL[2]:1, CodeInfo(
+JuliaStackFrame(ASTInterpreter2.JuliaFrameCode(mymethod(x) in Main at none:1, CodeInfo(
 1 ─ %1 = ($(QuoteNode(+)))(x, 1)
 └──      return %1
 ), Core.TypeMapEntry[#undef, #undef], BitSet([1]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some(1)], Any[#undef, #undef], Any[], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{ASTInterpreter2.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict{Symbol,Int64}(), Any[])
@@ -780,7 +780,7 @@ julia> mymethod(x::Vector{T}) where T = 1
 mymethod (generic function with 2 methods)
 
 julia> ASTInterpreter2.enter_call(mymethod, [1.0, 2.0])
-JuliaStackFrame(ASTInterpreter2.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at REPL[4]:1, CodeInfo(
+JuliaStackFrame(ASTInterpreter2.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(
 1 ─     return 1
 ), Core.TypeMapEntry[#undef], BitSet([]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some([1.0, 2.0])], Any[#undef], Any[Float64], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{ASTInterpreter2.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict{Symbol,Int64}(), Any[])
 ```
@@ -915,7 +915,7 @@ Evaluate `f` on the specified arguments using the interpreter.
 
 # Example
 
-```jldoctest
+```jldoctest; setup=(using ASTInterpreter2; empty!(ASTInterpreter2.junk))
 julia> a = [1, 7]
 2-element Array{Int64,1}:
  1
