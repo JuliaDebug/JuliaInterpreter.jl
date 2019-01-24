@@ -132,7 +132,6 @@ JuliaProgramCounter(3)
 julia> frame.ssavalues
 16-element Array{Any,1}:
  #undef
- #undef
     [1, 2, 5]
  #undef
  #undef
@@ -147,10 +146,8 @@ julia> frame.ssavalues
  #undef
  #undef
  #undef
+ #undef
 ```
-
-(The indexing is shifted by one, so index 3 corresponds to %2.) Since the first statement
-didn't result in an SSAValue that gets used later, it remains undefined.
 
 One can easily continue this until execution completes, which is indicated when `step_expr!`
 returns `nothing`.

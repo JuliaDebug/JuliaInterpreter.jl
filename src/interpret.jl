@@ -5,7 +5,7 @@ getlhs(pc) = SSAValue(pc.next_stmt)
 isassign(fr) = isassign(fr, fr.pc[])
 isassign(fr, pc) = (pc.next_stmt in fr.code.used)
 
-lookup_var(frame, val::SSAValue) = frame.ssavalues[val.id+1]
+lookup_var(frame, val::SSAValue) = frame.ssavalues[val.id]
 lookup_var(frame, ref::GlobalRef) = getfield(ref.mod, ref.name)
 function lookup_var(frame, slot::SlotNumber)
     val = frame.locals[slot.id]
@@ -143,7 +143,7 @@ evaluate_call!
 
 function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
     if isa(lhs, SSAValue)
-        frame.ssavalues[lhs.id+1] = rhs
+        frame.ssavalues[lhs.id] = rhs
     elseif isa(lhs, SlotNumber)
         frame.locals[lhs.id] = Some{Any}(rhs)
         frame.last_reference[frame.code.code.slotnames[lhs.id]] =
