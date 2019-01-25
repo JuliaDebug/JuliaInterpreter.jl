@@ -1,6 +1,6 @@
 using Base.Meta: isexpr
 using ASTInterpreter2: JuliaStackFrame
-using ASTInterpreter2: pc_expr, plain, evaluate_call!, finish_and_return!, @eval_rhs
+using ASTInterpreter2: pc_expr, plain, evaluate_call!, finish_and_return!, @lookup
 
 # Steps through the whole expression using `s`
 function step_through(frame)
@@ -9,7 +9,7 @@ function step_through(frame)
         execute_command(state, state.stack[1], Val{:s}(), "s")
     end
     lastframe = state.stack[end]
-    return @eval_rhs(true, lastframe, plain(pc_expr(lastframe)).args[1], lastframe.pc[])
+    return @lookup(lastframe, plain(pc_expr(lastframe)).args[1])
 end
 
 # Execute a frame using Julia's regular compiled-code dispatch for any :call expressions

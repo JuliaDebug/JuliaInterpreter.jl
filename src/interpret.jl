@@ -2,6 +2,8 @@
 
 getlhs(pc) = SSAValue(pc.next_stmt)
 
+get_binding(mod, name) = ccall(:jl_get_binding, Any, (Any, Any), mod, name)
+
 isassign(fr) = isassign(fr, fr.pc[])
 isassign(fr, pc) = (pc.next_stmt in fr.code.used)
 
@@ -13,43 +15,41 @@ function lookup_var(frame, slot::SlotNumber)
     error("slot ", slot, " not assigned")
 end
 
-function lookup_expr(frame, e::Expr, fallback::Bool)
+function lookup_expr(frame, e::Expr)
     head = e.head
     head == :the_exception && return frame.last_exception[]
-    head == :boundscheck && return true
     head == :static_parameter && return frame.sparams[e.args[1]::Int]
-    return fallback ? e : error()
+    head == :boundscheck && length(e.args) == 0 && return true
+    error("invalid lookup expr ", e)
 end
 
 """
-    rhs = @eval_rhs(flag, frame, node)
-    rhs = @eval_rhs(flag, frame, node, pc)
+    rhs = @lookup(frame, node)
+    rhs = @lookup(mod, frame, node)
 
-This macro substitutes for a function call, as a performance optimization to avoid dynamic dispatch.
-It calls `lookup_var(frame, node)` when appropriate, otherwise:
-
-* with `flag=false` it throws an error (if `lookup_var` didn't already handle the call)
-* with `flag=true` it will additionally try `lookup_expr`, resolve `QuoteNode`s, and otherwise return `node`
-* with `flag=Compiled()` it will additionally recurse into calls using Julia's normal compiled-code evaluation
-* with `flag=stack`, a vector of `JuliaStackFrames`, it will recurse via the interpreter
-
-If `flag` isn't a Bool you need to supply `pc`.
+This macro looks up previously-computed values referenced as SSAValues, SlotNumbers,
+GlobalRefs, QuoteNode, sparam or exception reference expression.
+It will also lookup symbols in `moduleof(frame)`; this can be supplied ahead-of-time via
+the 3-argument version.
+If none of the above apply, the value of `node` will be returned.
 """
-macro eval_rhs(flag, frame, rest...)
-    node = rest[1]
-    pc = length(rest) == 1 ? nothing : rest[2]
+macro lookup(args...)
+    length(args) == 2 || length(args) == 3 || error("invalid number of arguments ", length(args))
+    havemod = length(args) == 3
+    local mod
+    if havemod
+        mod, frame, node = args
+    else
+        frame, node = args
+    end
     nodetmp = gensym(:node)  # used to hoist, e.g., args[4]
-    if flag == true
+    if havemod
         fallback = quote
-            isa($nodetmp, QuoteNode) ? $nodetmp.value :
-            isa($nodetmp, Expr) ? lookup_expr($(esc(frame)), $nodetmp, true) : $nodetmp
+            isa($nodetmp, Symbol) ? getfield($(esc(mod)), $nodetmp) :
+            $nodetmp
         end
-    elseif flag == false
-        fallback = :(error("bad node ", $nodetmp))
     else
         fallback = quote
-            isa($nodetmp, QuoteNode) ? $nodetmp.value :
-            isa($nodetmp, Expr) ? eval_rhs($(esc(flag)), $(esc(frame)), $nodetmp, $(esc(pc))) :
             $nodetmp
         end
     end
@@ -58,6 +58,9 @@ macro eval_rhs(flag, frame, rest...)
         isa($nodetmp, SSAValue) ? lookup_var($(esc(frame)), $nodetmp) :
         isa($nodetmp, GlobalRef) ? lookup_var($(esc(frame)), $nodetmp) :
         isa($nodetmp, SlotNumber) ? lookup_var($(esc(frame)), $nodetmp) :
+        isa($nodetmp, QuoteNode) ? $nodetmp.value :
+        isa($nodetmp, Symbol) ? getfield(moduleof($(esc(frame))), $nodetmp) :
+        isa($nodetmp, Expr) ? lookup_expr($(esc(frame)), $nodetmp) :
         $fallback
     end
 end
@@ -68,8 +71,9 @@ instantiate_type_in_env(arg, spsig, spvals) =
 function collect_args(frame, call_expr)
     args = frame.callargs
     resize!(args, length(call_expr.args))
+    mod = moduleof(frame)
     for i = 1:length(args)
-        args[i] = @eval_rhs(true, frame, call_expr.args[i])
+        args[i] = @lookup(mod, frame, call_expr.args[i])
     end
     return args
 end
@@ -101,9 +105,7 @@ function evaluate_call!(::Compiled, frame::JuliaStackFrame, call_expr::Expr, pc)
     ret = maybe_evaluate_builtin(frame, call_expr)
     isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(frame, call_expr)
-    # Don't go through eval since this may have unquoted symbols and
-    # exprs
-    f = to_function(fargs[1])
+    f = fargs[1]
     if isa(f, CodeInfo)
         error("CodeInfo")
         ret = finish_and_return!(Compiled(), enter_call_expr(frame, call_expr))
@@ -118,6 +120,9 @@ function evaluate_call!(stack, frame::JuliaStackFrame, call_expr::Expr, pc)
     ret = maybe_evaluate_builtin(frame, call_expr)
     isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(frame, call_expr)
+    if fargs[1] === Core.eval
+        return Core.eval(fargs[2], fargs[3])  # not a builtin, but worth treating specially
+    end
     framecode, lenv = get_call_framecode(fargs, frame.code, pc.next_stmt)
     if lenv === nothing
         return framecode  # this was a Builtin
@@ -141,6 +146,70 @@ whereas the second recurses in via the interpreter. `stack` should be a vector o
 """
 evaluate_call!
 
+# The following come up only when evaluating toplevel code
+function evaluate_methoddef!(stack, frame, node, pc)
+    f = node.args[1]
+    if isa(f, Symbol)
+        mod = moduleof(frame)
+        f = isdefined(mod, f) ? getfield(mod, f) : Core.eval(moduleof(frame), Expr(:function, f))  # create a new function
+    end
+    length(node.args) == 1 && return f
+    sig = @lookup(frame, node.args[2])::SimpleVector
+    body = @lookup(frame, node.args[3])::CodeInfo
+    ccall(:jl_method_def, Cvoid, (Any, Any, Any), sig, body, moduleof(frame))
+    return nothing
+end
+
+function new_type(name, mod, supertype, params, fieldnames, fieldtypes, isabstr, ismutable, ninit)
+    tn = ccall(:jl_new_typename_in, Ref{TypeName}, (Any, Any), name, mod)
+    ndt = ccall(:jl_new_datatype, Any, (Any, Any, Any, Any, Any, Any, Cint, Cint, Cint),
+                name, mod, supertype, params, fieldnames, fieldtypes, isabstr, ismutable, ninit)
+    tn.wrapper = ndt.name.wrapper
+    ccall(:jl_set_const, Cvoid, (Any, Any, Any), tn.module, tn.name, tn.wrapper)
+    return ndt
+end
+
+function evaluate_structtype!(stack, frame, node, pc)
+    name, mod = structname(frame, node)
+    params = lookup_or_eval(stack, frame, node.args[2], pc)::SimpleVector
+    fieldnames = lookup_or_eval(stack, frame, node.args[3], pc)::SimpleVector
+    supertype = lookup_or_eval(stack, frame, node.args[4], pc)::Type
+    fieldtypes = lookup_or_eval(stack, frame, node.args[5], pc)::SimpleVector
+    ismutable = node.args[6]
+    ninit = node.args[7]
+    return new_type(name, mod, supertype, params, fieldnames, fieldtypes, false, ismutable, ninit)
+end
+
+function evaluate_abstracttype!(stack, frame, node, pc)
+    name, mod = structname(frame, node)
+    params = lookup_or_eval(stack, frame, node.args[2], pc)::SimpleVector
+    supertype = lookup_or_eval(stack, frame, node.args[3], pc)::Type
+    return new_type(name, mod, supertype, params, empty_svec, empty_svec, true, false, 0)
+end
+
+include("unlower.jl")
+
+function evaluate_primitivetype!(stack, frame, node, pc)
+    name, mod = structname(frame, node)
+    params = lookup_or_eval(stack, frame, node.args[2], pc)::SimpleVector
+    nbits = node.args[3]::Int
+    (nbits < 1 || (nbits & 7) != 0) && error("invalid number of bits ", nbits, " in primitive type ", name)
+    supertype = lookup_or_eval(stack, frame, node.args[4], pc)::Type
+    # Create by "un-lowering" and calling `eval` since we can't ccall jl_get_layout
+    typeex = asexpr(name, params)
+    stex = asexpr(supertype.name.name, supertype.parameters)
+    defex = Expr(:primitive, Expr(:(<:), typeex, stex), nbits)
+    ndt = Core.eval(mod, defex)
+    # ndt = ccall(:jl_new_datatype, Any, (Symbol, Module, Any, Any, Any, Any, Cint, Cint, Cint),
+    #             name, mod, supertype, params, Core.svec(), Core.svec(), false, false, 0)
+    # nbytes = floor(Int, (nbits+7)/8)
+    # ndt.isbitstype = ndt.isinlinealloc = isempty(params)
+    # ndt.size = nbtypes
+    # # FIXME: the following callee is static
+    # ndt.layout = ccall(:jl_get_layout, Any, (UInt32, UInt32, Cint, Any), 0, nextpow(2, nbytes), false, C_NULL)
+    return ndt
+end
+
 function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
     if isa(lhs, SSAValue)
         frame.ssavalues[lhs.id] = rhs
@@ -149,67 +218,77 @@ function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
         frame.last_reference[frame.code.code.slotnames[lhs.id]] =
             lhs.id
     elseif isa(lhs, GlobalRef)
-        Base.eval(lhs.mod,:($(lhs.name) = $(QuoteNode(rhs))))
+        Core.eval(lhs.mod, :($(lhs.name) = $(QuoteNode(rhs))))
+    elseif isa(lhs, Symbol)
+        Core.eval(moduleof(frame), :($lhs = $(QuoteNode(rhs))))
     end
 end
 
 function eval_rhs(stack, frame, node::Expr, pc)
     head = node.head
     if head == :new
-        rhs = ccall(:jl_new_struct_uninit, Any, (Any,), @eval_rhs(true, frame, node.args[1]))
+        mod = moduleof(frame)
+        rhs = ccall(:jl_new_struct_uninit, Any, (Any,), @lookup(mod, frame, node.args[1]))
         for i = 1:length(node.args) - 1
-            ccall(:jl_set_nth_field, Cvoid, (Any, Csize_t, Any), rhs, i-1, @eval_rhs(true, frame, node.args[i+1]))
+            ccall(:jl_set_nth_field, Cvoid, (Any, Csize_t, Any), rhs, i-1, @lookup(mod, frame, node.args[i+1]))
         end
+        return rhs
     elseif head == :isdefined
-        rhs = check_isdefined(frame, node.args[1])
-    elseif head == :enter
-        rhs = length(frame.exception_frames)
+        return check_isdefined(frame, node.args[1])
     elseif head == :call
-        rhs = evaluate_call!(stack, frame, node, pc)
+        return evaluate_call!(stack, frame, node, pc)
     elseif head == :foreigncall
-        rhs = evaluate_foreigncall!(stack, frame, node, pc)
-    else
-        rhs = lookup_expr(frame, node, false)
+        return evaluate_foreigncall!(stack, frame, node, pc)
+    elseif head == :copyast
+        qn = node.args[1]::QuoteNode
+        return copy(qn.value::Expr)
+    elseif head == :enter
+        return length(frame.exception_frames)
+    elseif head == :boundscheck
+        return true
+    elseif head == :meta || head == :inbounds || head == :simdloop || head == :gc_preserve_begin || head == :gc_preserve_end
+        return nothing
+    elseif head == :method && length(node.args) == 1
+        return evaluate_methoddef!(stack, frame, node, pc)
     end
-    if isa(rhs, QuoteNode)
-        rhs = rhs.value
-    end
-    return rhs
+    return lookup_expr(frame, node)
 end
 
-check_isdefined(frame, node::Slot) = isassigned(frame.locals, slot.id)
-function check_isdefined(frame, node::Expr)
-    node.head == :static_parameter && return isassigned(frame.sparams, node.args[1])
+function check_isdefined(frame, node)
+    if isa(node, SlotNumber)
+        return isassigned(frame.locals, slot.id)
+    elseif isexpr(node, :static_parameter)
+        return isassigned(frame.sparams, node.args[1]::Int)
+    elseif isa(node, GlobalRef)
+        return isdefined(ref.mod, ref.name)
+    elseif isa(node, Symbol)
+        return isdefined(moduleof(frame), node)
+    end
+    error("unrecognized isdefined node ", node)
 end
 
-function _step_expr!(stack, frame, pc)
-    node = pc_expr(frame, pc)
+
+function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter, istoplevel::Bool)
     local rhs
     try
         if isa(node, Expr)
             if node.head == :(=)
                 lhs = node.args[1]
-                rhs = @eval_rhs(stack, frame, node.args[2], pc)
+                rhs = node.args[2]
+                if isa(rhs, Expr)
+                    rhs = eval_rhs(stack, frame, rhs, pc)
+                else
+                    rhs = istoplevel ? @lookup(moduleof(frame), frame, rhs) : @lookup(frame, rhs)
+                end
                 do_assignment!(frame, lhs, rhs)
-                # Special case hack for readability.
-                # ret = rhs
             elseif node.head == :gotoifnot
-                arg = @eval_rhs(stack, frame, node.args[1], pc)
+                arg = @lookup(frame, node.args[1])
                 if !isa(arg, Bool)
                     throw(TypeError(nameof(frame), "if", Bool, node.args[1]))
                 end
                 if !arg
                     return JuliaProgramCounter(node.args[2])
                 end
-            elseif node.head == :call
-                rhs = evaluate_call!(stack, frame, node, pc)
-            elseif node.head ==  :foreigncall
-                rhs = evaluate_foreigncall!(stack, frame, node, pc)
-            elseif node.head == :new
-                rhs = eval_rhs(stack, frame, node, pc)
-            elseif node.head == :static_typeof || node.head == :type_goto
-                error(node, ", despite the docs, still exists")
-            elseif node.head == :meta || node.head == :inbounds || node.head == :simdloop
             elseif node.head == :enter
                 rhs = node.args[1]
                 push!(frame.exception_frames, rhs)
@@ -220,23 +299,63 @@ function _step_expr!(stack, frame, pc)
             elseif node.head == :pop_exception
                 n = lookup_var(frame, node.args[1])
                 deleteat!(frame.exception_frames, n+1:length(frame.exception_frames))
-            elseif node.head == :isdefined
-                rhs = check_isdefined(frame, node.args[1])
-            elseif node.head == :static_parameter
-                rhs = frame.sparams[node.args[1]]
-            elseif node.head == :gc_preserve_end || node.head == :gc_preserve_begin
-                rhs = @eval_rhs(true, frame, node.args[1])
             elseif node.head == :return
                 return nothing
+            elseif node.head == :const
+                g = node.args[1]
+                if isa(g, GlobalRef)
+                    mod, name = g.module, g.name
+                else
+                    mod, name = moduleof(frame), g::Symbol
+                end
+                # FIXME
+                # binding = get_binding(mod, name)
+                # ccall(:jl_declare_constant, Cvoid, (Any,), binding)
+            elseif istoplevel
+                if node.head == :method && length(node.args) > 1
+                    evaluate_methoddef!(stack, frame, node, pc)
+                elseif node.head == :struct_type
+                    evaluate_structtype!(stack, frame, node, pc)
+                elseif node.head == :abstract_type
+                    evaluate_abstracttype!(stack, frame, node, pc)
+                elseif node.head == :primitive_type
+                    evaluate_primitivetype!(stack, frame, node, pc)
+                elseif node.head == :module
+                    error("fixme")
+                elseif node.head == :using || node.head == :import
+                    error("fixme")
+                elseif node.head == :export
+                    Core.eval(moduleof(frame), node)
+                elseif node.head == :thunk
+                    newframe = prepare_thunk(moduleof(frame), node)
+                    frame.pc[] = pc
+                    push!(stack, frame)
+                    finish!(stack, newframe, true)
+                    pop!(stack)
+                    push!(junk, newframe)  # rather than going through GC, just re-use it
+                elseif node.head == :global
+                    # error("fixme")
+                elseif node.head == :toplevel
+                    error("fixme")
+                elseif node.head == :error
+                    error("fixme")
+                elseif node.head == :incomplete
+                    error("fixme")
+                else
+                    rhs = eval_rhs(stack, frame, node, pc)
+                end
             else
-                ret = eval(node)
+                rhs = eval_rhs(stack, frame, node, pc)
             end
         elseif isa(node, GotoNode)
             return JuliaProgramCounter(node.label)
-        elseif isa(node, QuoteNode)
-            rhs = node.value
+        elseif isa(node, NewvarNode)
+            # FIXME: undefine the slot?
+        elseif istoplevel && isa(node, LineNumberNode)
+        elseif istoplevel && isa(node, Symbol)
+            rhs = getfield(moduleof(frame), node)
         else
-            rhs = @eval_rhs(stack, frame, node, pc)
+            rhs = @lookup(frame, node)
         end
     catch err
         isempty(frame.exception_frames) && rethrow(err)
@@ -253,6 +372,9 @@ function _step_expr!(stack, frame, pc)
     return pc + 1
 end
 
+_step_expr!(stack, frame, pc::JuliaProgramCounter, istoplevel::Bool=false) =
+    _step_expr!(stack, frame, pc_expr(frame, pc), pc, istoplevel)
+
 """
     pc = step_expr!(stack, frame)
 
@@ -261,8 +383,8 @@ if execution terminates.
 `stack` controls call evaluation; `stack = Compiled()` evaluates :call expressions
 by normal dispatch, whereas a vector of `JuliaStackFrame`s will use recursive interpretation.
 """
-function step_expr!(stack, frame)
-    pc = _step_expr!(stack, frame, frame.pc[])
+function step_expr!(stack, frame, istoplevel::Bool=false)
+    pc = _step_expr!(stack, frame, frame.pc[], istoplevel)
     pc === nothing && return nothing
     frame.pc[] = pc
 end
@@ -274,14 +396,15 @@ Run `frame` until execution terminates. `pc` is the program counter for the fina
 `stack` controls call evaluation; `stack = Compiled()` evaluates :call expressions
 by normal dispatch, whereas a vector of `JuliaStackFrame`s will use recursive interpretation.
 """
-function finish!(stack, frame, pc=frame.pc[])
+function finish!(stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::Bool=false)
     while true
-        new_pc = _step_expr!(stack, frame, pc)
+        new_pc = _step_expr!(stack, frame, pc, istoplevel)
         new_pc == nothing && break
         pc = new_pc
     end
     frame.pc[] = pc
 end
+finish!(stack, frame, istoplevel::Bool) = finish!(stack, frame, frame.pc[], istoplevel)
 
 """
     ret = finish_and_return!(stack, frame, pc=frame.pc[])
@@ -290,12 +413,13 @@ Run `frame` until execution terminates, and pass back the computed return value.
 `stack` controls call evaluation; `stack = Compiled()` evaluates :call expressions
 by normal dispatch, whereas a vector of `JuliaStackFrame`s will use recursive interpretation.
 """
-function finish_and_return!(stack, frame, pc=frame.pc[])
-    pc = finish!(stack, frame, pc)
+function finish_and_return!(stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::Bool=false)
+    pc = finish!(stack, frame, pc, istoplevel)
     node = pc_expr(frame, pc)
     isexpr(node, :return) || error("unexpected node ", node)
-    return @eval_rhs(stack, frame, (node::Expr).args[1], pc)
+    return @lookup(frame, (node::Expr).args[1])
 end
+finish_and_return!(stack, frame, istoplevel::Bool) = finish_and_return!(stack, frame, frame.pc[], istoplevel)
 
 function is_call(node)
     isexpr(node, :call) ||
@@ -307,12 +431,13 @@ end
 
 Step through statements of `frame` until the next statement satifies `predicate(stmt)`.
 """
-function next_until!(f, stack, frame, pc=frame.pc[])
-    while (pc = _step_expr!(stack, frame, pc)) != nothing
+function next_until!(f, stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::Bool=false)
+    while (pc = _step_expr!(stack, frame, pc, istoplevel)) != nothing
         f(plain(pc_expr(frame, pc))) && (frame.pc[] = pc; return pc)
     end
     return nothing
 end
+next_until!(f, stack, frame, istoplevel::Bool) = next_until!(f, stack, frame, frame.pc[], istoplevel)
 next_call!(stack, frame, pc=frame.pc[]) = next_until!(node->is_call(node)||isexpr(node,:return), stack, frame, pc)
 
 function changed_line!(expr, line, fls)
@@ -349,6 +474,11 @@ function find_used(code::CodeInfo)
     stmts = code.code
     for stmt in stmts
         Core.Compiler.scan_ssa_use!(push!, used, plain(stmt))
+        if isexpr(stmt, :struct_type)  # this one is missed
+            for a in stmt.args
+                Core.Compiler.scan_ssa_use!(push!, used, a)
+            end
+        end
     end
     return used
 end
@@ -356,7 +486,7 @@ end
 function maybe_next_call!(stack, frame, pc)
     call_or_return(node) = is_call(node) || isexpr(node, :return)
     call_or_return(plain(pc_expr(frame, pc))) ||
-        (pc = next_until!(call_or_return, stack, frame, pc))
+        (pc = next_until!(call_or_return, stack, frame, pc, false))
     pc
 end
 maybe_next_call!(stack, frame) = maybe_next_call!(stack, frame, frame.pc[])
@@ -387,7 +517,7 @@ function next_line!(stack, frame, dbstack = nothing)
                 dbstack[1] = JuliaStackFrame(JuliaFrameCode(frame.code; wrapper = true), frame, pc)
                 call_expr = plain(pc_expr(frame, pc))
                 isexpr(call_expr, :(=)) && (call_expr = call_expr.args[2])
-                call_expr = Expr(:call, map(x->@eval_rhs(true, frame, x, pc), call_expr.args)...)
+                call_expr = Expr(:call, map(x->@lookup(frame, x), call_expr.args)...)
                 new_frame = enter_call_expr(call_expr)
                 if new_frame !== nothing
                     pushfirst!(dbstack, new_frame)

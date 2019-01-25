@@ -21,7 +21,7 @@ function generate_fcall(f, table, id)
             end
             argcall = ""
             for i = 1:nargs
-                argcall *= "@eval_rhs(true, frame, args[$(i+1)])"
+                argcall *= "@lookup(frame, args[$(i+1)])"
                 if i < nargs
                     argcall *= ", "
                 end
@@ -53,7 +53,7 @@ function getargs(args, frame)
     nargs = length(args)-1  # skip f
     callargs = resize!(frame.callargs, nargs)
     for i = 1:nargs
-        callargs[i] = @eval_rhs(true, frame, args[i+1])
+        callargs[i] = @lookup(frame, args[i+1])
     end
     return callargs
 end
@@ -74,7 +74,7 @@ function maybe_evaluate_builtin(frame, call_expr)
     if isa(fex, QuoteNode)
         f = fex.value
     else
-        f = @eval_rhs(true, frame, fex)
+        f = @lookup(frame, fex)
     end
     # Builtins and intrinsics have empty method tables. We can circumvent
     # a long "switch" check by looking for this.
@@ -97,7 +97,7 @@ function maybe_evaluate_builtin(frame, call_expr)
             print(io,
 """
     $head f === $f
-        return Some{Any}(ntuple(i->@eval_rhs(true, frame, args[i+1]), length(args)-1))
+        return Some{Any}(ntuple(i->@lookup(frame, args[i+1]), length(args)-1))
 """)
             continue
         end

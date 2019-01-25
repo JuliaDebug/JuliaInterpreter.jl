@@ -7,7 +7,7 @@ using REPL.LineEdit
 using REPL
 import Base: +, convert, isless
 using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfoNode, GotoNode, Slot,
-            GeneratedFunctionStub, MethodInstance
+            GeneratedFunctionStub, MethodInstance, NewvarNode, TypeName
 using Markdown
 
 export @enter, @make_stack, @interpret, Compiled, JuliaStackFrame
@@ -134,6 +134,8 @@ for the generator itself, its framecode would be stored in [`framedict`](@ref).
 const genframedict = Dict{Tuple{Method,Type},JuliaFrameCode}() # the same for @generated functions
 
 const junk = JuliaStackFrame[]      # to allow re-use of allocated memory (this is otherwise a bottleneck)
+
+const empty_svec = Core.svec()
 
 include("localmethtable.jl")
 include("interpret.jl")
@@ -280,7 +282,7 @@ function DebuggerFramework.print_next_state(io::IO, state, frame::JuliaStackFram
         expr = expr.args[2]
     end
     if isexpr(expr, :call) || isexpr(expr, :return)
-        expr.args = map(var->maybe_quote(@eval_rhs(true, frame, var, frame.pc[])), expr.args)
+        expr.args = map(var->maybe_quote(@lookup(frame, var)), expr.args)
     end
     if isa(expr, Expr)
         for (i, arg) in enumerate(expr.args)
@@ -518,6 +520,27 @@ function prepare_call(f, allargs; enter_generated = false)
     return framecode, args, lenv, argtypes
 end
 
+function prepare_thunk(mod::Module, thunk::Expr)
+    if isexpr(thunk, :thunk)
+        framecode = JuliaFrameCode(mod, thunk.args[1])
+    elseif isa(thunk, Expr)
+        error("expected thunk or module, got ", thunk.head)
+    else
+        error("expected expression, got ", typeof(thunk))
+    end
+    return prepare_locals(framecode, [])
+end
+
+function prepare_toplevel(mod::Module, expr::Expr)
+    if expr.head == :using || expr.head == :import || expr.head == :export
+        Core.eval(mod, expr)
+        return nothing
+    else
+        thunk = Meta.lower(mod, expr)
+    end
+    return prepare_thunk(mod, thunk)
+end
+
 """
     framecode, frameargs, lenv, argtypes = determine_method_for_expr(expr; enter_generated = false)
 
@@ -598,6 +621,24 @@ function replace_ssa!(stmt, ssalookup)
     return nothing
 end
 
+function renumber_ssa!(stmts::Vector{Any}, ssalookup)
+    for (i, stmt) in enumerate(stmts)
+        if isa(stmt, GotoNode)
+            new_code[i] = GotoNode(ssalookup[stmt.label])
+        elseif isa(stmt, SSAValue)
+            new_code[i] = SSAValue(ssalookup[stmt.id])
+        elseif isa(stmt, NewSSAValue)
+            new_code[i] = SSAValue(stmt.id)
+        elseif isa(stmt, Expr)
+            replace_ssa!(stmt, ssalookup)
+            if stmt.head == :gotoifnot && isa(stmt.args[2], Int)
+                stmt.args[2] = ssalookup[stmt.args[2]]
+            end
+        end
+    end
+    return stmts
+end
+
 function lookup_global_refs!(ex::Expr)
     for (i, a) in enumerate(ex.args)
         if isa(a, GlobalRef)
@@ -645,41 +686,28 @@ function optimize!(code::CodeInfo, mod::Module)
         end
     end
 
-    ## Un-nest :call expressions (so that there will be only one :call per line)
-    # This will allow us to re-use args-buffers rather than having to allocate new ones each time.
-    old_code, old_codelocs = code.code, code.codelocs
-    code.code = new_code = eltype(old_code)[]
-    code.codelocs = new_codelocs = Int32[]
-    ssainc = fill(1, length(old_code))
-    for (i, stmt) in enumerate(old_code)
-        loc = old_codelocs[i]
-        inner = extract_inner_call!(stmt, length(new_code)+1)
-        while inner !== nothing
-            push!(new_code, inner)
-            push!(new_codelocs, loc)
-            ssainc[i] += 1
-            inner = extract_inner_call!(stmt, length(new_code)+1)
-        end
-        push!(new_code, stmt)
-        push!(new_codelocs, loc)
-    end
-    # Fix all the SSAValues and GotoNodes
-    ssalookup = cumsum(ssainc)
-    for (i, stmt) in enumerate(new_code)
-        if isa(stmt, GotoNode)
-            new_code[i] = GotoNode(ssalookup[stmt.label])
-        elseif isa(stmt, SSAValue)
-            new_code[i] = SSAValue(ssalookup[stmt.id])
-        elseif isa(stmt, NewSSAValue)
-            new_code[i] = SSAValue(stmt.id)
-        elseif isa(stmt, Expr)
-            replace_ssa!(stmt, ssalookup)
-            if stmt.head == :gotoifnot && isa(stmt.args[2], Int)
-                stmt.args[2] = ssalookup[stmt.args[2]]
-            end
-        end
-    end
-    code.ssavaluetypes = length(new_code)
+    # ## Un-nest :call expressions (so that there will be only one :call per line)
+    # # This will allow us to re-use args-buffers rather than having to allocate new ones each time.
+    # old_code, old_codelocs = code.code, code.codelocs
+    # code.code = new_code = eltype(old_code)[]
+    # code.codelocs = new_codelocs = Int32[]
+    # ssainc = fill(1, length(old_code))
+    # for (i, stmt) in enumerate(old_code)
+    #     loc = old_codelocs[i]
+    #     inner = extract_inner_call!(stmt, length(new_code)+1)
+    #     while inner !== nothing
+    #         push!(new_code, inner)
+    #         push!(new_codelocs, loc)
+    #         ssainc[i] += 1
+    #         inner = extract_inner_call!(stmt, length(new_code)+1)
+    #     end
+    #     push!(new_code, stmt)
+    #     push!(new_codelocs, loc)
+    # end
+    # # Fix all the SSAValues and GotoNodes
+    # ssalookup = cumsum(ssainc)
+    # renumber_ssa!(new_code, ssalookup)
+    # code.ssavaluetypes = length(new_code)
     return code
 end
 
@@ -868,7 +896,7 @@ function maybe_step_through_wrapper!(stack)
             pc = next_call!(Compiled(), frame, pc)
         end
         stack[1] = JuliaStackFrame(JuliaFrameCode(frame.code; wrapper=true), frame, pc)
-        newcall = Expr(:call, map(x->@eval_rhs(true, frame, x, pc), last.args)...)
+        newcall = Expr(:call, map(x->@lookup(frame, x), last.args)...)
         pushfirst!(stack, enter_call_expr(newcall))
         return maybe_step_through_wrapper!(stack)
     end
@@ -876,6 +904,29 @@ function maybe_step_through_wrapper!(stack)
 end
 
 lower(mod, arg) = false ? expand(arg) : Meta.lower(mod, arg)
+
+function interpret!(stack, mod::Module, expr::Expr)
+    if expr.head != :toplevel
+        expr = Expr(:toplevel, expr)
+    end
+    local ret
+    for arg in expr.args
+        if isexpr(arg, :module)
+            # Create the module
+            innermod = Core.eval(mod, Expr(:module, arg.args[1], arg.args[2], quote end))
+            # Interpret the module body at toplevel inside the new module
+            modbody = Expr(:toplevel)
+            modbody.args = arg.args[3].args
+            ret = interpret!(stack, innermod, modbody)
+        elseif isa(arg, Expr)
+            frame = ASTInterpreter2.prepare_toplevel(mod, arg)
+            frame === nothing && continue
+            ret = ASTInterpreter2.finish_and_return!(stack, frame, true)
+        end
+    end
+
+    return ret
+end
 
 # This is a version of gen_call_with_extracted_types, except that is passes back the call expression
 # for further processing.

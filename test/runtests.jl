@@ -10,5 +10,6 @@ using DebuggerFramework
     include("stepping.jl")
     include("interpret.jl")
     include("misc.jl")
+    include("toplevel.jl")
 end
 include("ui.jl")
