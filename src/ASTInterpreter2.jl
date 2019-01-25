@@ -686,43 +686,55 @@ end
 plain(stmt) = stmt
 
 function prepare_locals(framecode, argvals::Vector{Any})
-    meth, code = framecode.scope::Method, framecode.code
-    ssavt = code.ssavaluetypes
-    ng = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any})
-    nargs = length(argvals)
-    if !isempty(junk)
-        oldframe = pop!(junk)
-        locals, ssavalues, sparams = oldframe.locals, oldframe.ssavalues, oldframe.sparams
-        exception_frames, last_reference = oldframe.exception_frames, oldframe.last_reference
-        callargs = oldframe.callargs
-        last_exception, pc = oldframe.last_exception, oldframe.pc
-        resize!(locals, length(code.slotflags))
-        resize!(ssavalues, ng)
-        resize!(sparams, length(meth.sparam_syms))
-        empty!(exception_frames)
-        empty!(last_reference)
-        last_exception[] = nothing
-        pc[] = JuliaProgramCounter(1)
+    if isa(framecode.scope, Method)
+        meth, code = framecode.scope::Method, framecode.code
+        ssavt = code.ssavaluetypes
+        ng = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any})
+        nargs = length(argvals)
+        if !isempty(junk)
+            oldframe = pop!(junk)
+            locals, ssavalues, sparams = oldframe.locals, oldframe.ssavalues, oldframe.sparams
+            exception_frames, last_reference = oldframe.exception_frames, oldframe.last_reference
+            callargs = oldframe.callargs
+            last_exception, pc = oldframe.last_exception, oldframe.pc
+            resize!(locals, length(code.slotflags))
+            resize!(ssavalues, ng)
+            resize!(sparams, length(meth.sparam_syms))
+            empty!(exception_frames)
+            empty!(last_reference)
+            last_exception[] = nothing
+            pc[] = JuliaProgramCounter(1)
+        else
+            locals = Vector{Union{Nothing,Some{Any}}}(undef, length(code.slotflags))
+            ssavalues = Vector{Any}(undef, ng)
+            sparams = Vector{Any}(undef, length(meth.sparam_syms))
+            exception_frames = Int[]
+            last_reference = Dict{Symbol,Int}()
+            callargs = Any[]
+            last_exception = Ref{Any}(nothing)
+            pc = Ref(JuliaProgramCounter(1))
+        end
+        for i = 1:meth.nargs
+            if meth.isva && i == meth.nargs
+                locals[i] = nargs < i ? Some{Any}(()) : (let i=i; Some{Any}(ntuple(k->argvals[i+k-1], nargs-i+1)); end)
+                break
+            end
+            locals[i] = nargs >= i ? Some{Any}(argvals[i]) : Some{Any}(())
+        end
+        # add local variables initially undefined
+        for i = (meth.nargs+1):length(code.slotnames)
+            locals[i] = nothing
+        end
     else
+        code = framecode.code
         locals = Vector{Union{Nothing,Some{Any}}}(undef, length(code.slotflags))
-        ssavalues = Vector{Any}(undef, ng)
-        sparams = Vector{Any}(undef, length(meth.sparam_syms))
+        ssavalues = Vector{Any}(undef, length(code.code))
+        sparams = Any[]
         exception_frames = Int[]
         last_reference = Dict{Symbol,Int}()
         callargs = Any[]
         last_exception = Ref{Any}(nothing)
         pc = Ref(JuliaProgramCounter(1))
-    end
-    for i = 1:meth.nargs
-        if meth.isva && i == meth.nargs
-            locals[i] = nargs < i ? Some{Any}(()) : (let i=i; Some{Any}(ntuple(k->argvals[i+k-1], nargs-i+1)); end)
-            break
-        end
-        locals[i] = nargs >= i ? Some{Any}(argvals[i]) : Some{Any}(())
-    end
-    # add local variables initially undefined
-    for i = (meth.nargs+1):length(code.slotnames)
-        locals[i] = nothing
     end
     JuliaStackFrame(framecode, locals, ssavalues, sparams, exception_frames, last_exception,
                     pc, last_reference, callargs)
