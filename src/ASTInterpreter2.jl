@@ -641,15 +641,20 @@ function optimize!(code::CodeInfo, mod::Module)
         push!(new_code, stmt)
         push!(new_codelocs, loc)
     end
-    # Fix all the SSAValues
+    # Fix all the SSAValues and GotoNodes
     ssalookup = cumsum(ssainc)
     for (i, stmt) in enumerate(new_code)
-        if isa(stmt, SSAValue)
+        if isa(stmt, GotoNode)
+            new_code[i] = GotoNode(ssalookup[stmt.label])
+        elseif isa(stmt, SSAValue)
             new_code[i] = SSAValue(ssalookup[stmt.id])
         elseif isa(stmt, NewSSAValue)
             new_code[i] = SSAValue(stmt.id)
         elseif isa(stmt, Expr)
             replace_ssa!(stmt, ssalookup)
+            if stmt.head == :gotoifnot && isa(stmt.args[2], Int)
+                stmt.args[2] = ssalookup[stmt.args[2]]
+            end
         end
     end
     code.ssavaluetypes = length(new_code)
