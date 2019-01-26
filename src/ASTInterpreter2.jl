@@ -5,7 +5,7 @@ using DebuggerFramework: FileLocInfo, BufferLocInfo, Suppressed
 using Base.Meta
 using REPL.LineEdit
 using REPL
-import Base: +, deepcopy_internal
+import Base: +
 using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfoNode, GotoNode, Slot,
             GeneratedFunctionStub, MethodInstance
 using Markdown
@@ -526,22 +526,15 @@ function get_source(g::GeneratedFunctionStub)
     return eval(b)
 end
 
-function Base.deepcopy_internal(x::LineInfoNode, stackdict::IdDict)
-    if haskey(stackdict, x)
-        return stackdict[x]
-    end
-    deeper(x) = deepcopy_internal(x, stackdict)
-    stackdict[x] = LineInfoNode(x.mod, deeper(x.method),
-        deeper(x.file), deeper(x.line), deeper(x.inlined_at))
-end
-
 function copy_codeinfo(code::CodeInfo)
-    old_code = code.code
-    code.code = UInt8[]
-    new_codeinfo = deepcopy(code)
-    new_codeinfo.code = old_code
-    code.code = old_code
-    new_codeinfo
+    newcode = ccall(:jl_new_struct_uninit, Any, (Any,), CodeInfo)::CodeInfo
+    for (i, name) in enumerate(fieldnames(CodeInfo))
+        if isdefined(code, name)
+            val = getfield(code, name)
+            ccall(:jl_set_nth_field, Cvoid, (Any, Csize_t, Any), newcode, i-1, val===nothing ? val : copy(val))
+        end
+    end
+    return newcode
 end
 
 const calllike = Set([:call, :struct_type])
