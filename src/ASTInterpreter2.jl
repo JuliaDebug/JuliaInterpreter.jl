@@ -5,7 +5,7 @@ using DebuggerFramework: FileLocInfo, BufferLocInfo, Suppressed
 using Base.Meta
 using REPL.LineEdit
 using REPL
-import Base: +
+import Base: +, convert, isless
 using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfoNode, GotoNode, Slot,
             GeneratedFunctionStub, MethodInstance
 using Markdown
@@ -28,6 +28,8 @@ struct JuliaProgramCounter
     next_stmt::Int
 end
 +(x::JuliaProgramCounter, y::Integer) = JuliaProgramCounter(x.next_stmt+y)
+convert(::Type{Int}, pc::JuliaProgramCounter) = pc.next_stmt
+isless(x::JuliaProgramCounter, y::Integer) = isless(x.next_stmt, y)
 
 Base.show(io::IO, pc::JuliaProgramCounter) = print(io, "JuliaProgramCounter(", pc.next_stmt, ')')
 
@@ -62,6 +64,13 @@ end
 function JuliaFrameCode(frame::JuliaFrameCode; wrapper = frame.wrapper, generator=frame.generator, fullpath=frame.fullpath)
     JuliaFrameCode(frame.scope, frame.code, frame.methodtables, frame.used,
                    wrapper, generator, fullpath)
+end
+
+function JuliaFrameCode(scope, code::CodeInfo; wrapper=false, generator=false, fullpath=true)
+    code = optimize!(copy_codeinfo(code), moduleof(scope))
+    used = find_used(code)
+    methodtables = Vector{TypeMapEntry}(undef, length(code.code))
+    return JuliaFrameCode(scope, code, methodtables, used, wrapper, generator, fullpath)
 end
 
 """
@@ -130,7 +139,14 @@ include("localmethtable.jl")
 include("interpret.jl")
 include("builtins.jl")
 
-moduleof(frame) = isa(frame.code.scope, Method) ? frame.code.scope.module : frame.code.scope
+function moduleof(x)
+    if isa(x, JuliaStackFrame)
+        x = x.code.scope
+    end
+    return _moduleof(x)
+end
+_moduleof(scope::Method) = scope.module
+_moduleof(scope::Module) = scope
 Base.nameof(frame) = isa(frame.code.scope, Method) ? frame.code.scope.name : nameof(frame.code.scope)
 
 is_loc_meta(expr, kind) = isexpr(expr, :meta) && length(expr.args) >= 1 && expr.args[1] === kind
@@ -476,10 +492,7 @@ function prepare_call(f, allargs; enter_generated = false)
                 generator = false
             end
         end
-        code = optimize!(copy_codeinfo(code), method.module)
-        used = find_used(code)
-        methodtables = Vector{TypeMapEntry}(undef, length(code.code))
-        framecode = JuliaFrameCode(method, code, methodtables, used, false, generator, true)
+        framecode = JuliaFrameCode(method, code; generator=generator)
         if is_generated(method) && !enter_generated
             genframedict[(method, argtypes)] = framecode
         else
