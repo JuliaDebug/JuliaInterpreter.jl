@@ -4,6 +4,7 @@ using REPL
 
 using DebuggerFramework
 
+include("utils.jl")
 include("evaling.jl")
 include("stepping.jl")
 include("interpret.jl")

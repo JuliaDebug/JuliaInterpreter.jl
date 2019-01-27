@@ -15,3 +15,8 @@ state = dummy_state(stack)
 execute_command(state, state.stack[1], Val{:n}(), "n")
 execute_command(state, state.stack[1], Val{:finish}(), "finish")
 @test isempty(state.stack)
+
+@test runframe(ASTInterpreter2.enter_call(complicated_keyword_stuff, 1, 2)) ==
+      runframe(@make_stack(complicated_keyword_stuff(1, 2))[1])
+@test runframe(ASTInterpreter2.enter_call(complicated_keyword_stuff, 1, 2; x=7, y=33)) ==
+      runframe(@make_stack(complicated_keyword_stuff(1, 2; x=7, y=33))[1])
