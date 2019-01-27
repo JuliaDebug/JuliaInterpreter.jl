@@ -22,7 +22,7 @@ function my_gcd(a::T, b::T) where T<:Union{Int8,UInt8,Int16,UInt16,Int32,UInt32,
     r % T
 end
 
-if Sys.isunix()
+if Sys.isunix() && VERSION >= v"1.1.0"
     using TerminalRegressionTests
 
     const thisdir = dirname(@__FILE__)

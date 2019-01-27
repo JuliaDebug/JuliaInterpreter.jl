@@ -3,36 +3,17 @@
 [[Base64]]
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 
-[[ColorTypes]]
-deps = ["FixedPointNumbers", "Random", "Test"]
-git-tree-sha1 = "f73b0e10f2a5756de7019818a41654686da06b09"
-uuid = "3da002f7-5984-5a60-b8a6-cbb66c0b333f"
-version = "0.7.5"
-
 [[DebuggerFramework]]
 deps = ["REPL"]
 git-tree-sha1 = "e4a4693fc3fd3924d469bb0fa46215672fd6d4b8"
 repo-rev = "master"
-repo-url = "https://github.com/JuliaDebug/DebuggerFramework.jl"
+repo-url = "https://github.com/JuliaDebug/DebuggerFramework.jl.git"
 uuid = "67417a49-6d77-5db2-98c7-c13144130cd2"
 version = "0.1.2+"
-
-[[Distributed]]
-deps = ["Random", "Serialization", "Sockets"]
-uuid = "8ba89e20-285c-5b6f-9357-94700520ee1b"
-
-[[FixedPointNumbers]]
-deps = ["Test"]
-git-tree-sha1 = "b8045033701c3b10bf2324d7203404be7aef88ba"
-uuid = "53c48c17-4a7d-5ca2-90c5-79b7896eea93"
-version = "0.5.3"
 
 [[InteractiveUtils]]
 deps = ["Markdown"]
 uuid = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
-
-[[Logging]]
-uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
 
 [[Markdown]]
 deps = ["Base64"]
@@ -42,32 +23,5 @@ uuid = "d6f4376e-aef5-505a-96c1-9c027394607a"
 deps = ["InteractiveUtils", "Markdown", "Sockets"]
 uuid = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 
-[[Random]]
-deps = ["Serialization"]
-uuid = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
-
-[[Serialization]]
-uuid = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
-
 [[Sockets]]
 uuid = "6462fe0b-24de-5631-8697-dd941f90decc"
-
-[[TerminalRegressionTests]]
-deps = ["REPL", "VT100"]
-git-tree-sha1 = "ae98e67995a259464d20b67ec2d5c8ebbe9ab53e"
-repo-rev = "master"
-repo-url = "https://github.com/KristofferC/TerminalRegressionTests.jl"
-uuid = "98bfdc55-cc95-5876-a49a-74609291cbe0"
-version = "0.1.0+"
-
-[[Test]]
-deps = ["Distributed", "InteractiveUtils", "Logging", "Random"]
-uuid = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-
-[[VT100]]
-deps = ["ColorTypes", "FixedPointNumbers", "REPL", "Test"]
-git-tree-sha1 = "b15606f470e02061183738dd8d6d3ad5e115ed76"
-repo-rev = "master"
-repo-url = "https://github.com/KristofferC/VT100.jl"
-uuid = "7774df62-37c0-5c21-b34d-f6d7f98f54bc"
-version = "0.3.1+"
