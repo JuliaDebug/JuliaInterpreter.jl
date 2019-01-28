@@ -4,9 +4,11 @@ using REPL
 
 using DebuggerFramework
 
-include("utils.jl")
-include("evaling.jl")
-include("stepping.jl")
-include("interpret.jl")
+@testset "Main tests" begin
+    include("utils.jl")
+    include("evaling.jl")
+    include("stepping.jl")
+    include("interpret.jl")
+    include("misc.jl")
+end
 include("ui.jl")
-include("misc.jl")
