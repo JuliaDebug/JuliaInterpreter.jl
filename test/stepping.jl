@@ -199,3 +199,13 @@ try
 catch e
     @assert isa(e, ErrorException)
 end
+
+# Issue #17
+struct B{T} end
+function (::B)(y)
+    x = 42*y
+    return x + y
+end
+
+B_inst = B{Int}()
+step_through(ASTInterpreter2.enter_call_expr(:($(B_inst)(10))))
