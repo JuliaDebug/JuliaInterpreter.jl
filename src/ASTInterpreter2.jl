@@ -369,8 +369,25 @@ function is_generated(meth)
     isdefined(meth, :generator)
 end
 
-kwpair(ex::Expr) = [ex.args[1]; ex.args[2]]
-kwpair(pr::Pair) = [pr.first; pr.second]
+function namedtuple(kwargs)
+    names, types, vals = Symbol[], [], []
+    for pr in kwargs
+        if isa(pr, Expr)
+            push!(names, pr.args[1])
+            val = pr.args[2]
+            push!(types, typeof(val))
+            push!(vals, val)
+        elseif isa(pr, Pair)
+            push!(names, pr.first)
+            val = pr.second
+            push!(types, typeof(val))
+            push!(vals, val)
+        else
+            error("unhandled entry type ", typeof(pr))
+        end
+    end
+    return NamedTuple{(names...,), Tuple{types...}}(vals)
+end
 
 """
     frun, allargs = prepare_args(fcall, fargs, kwargs)
@@ -403,8 +420,7 @@ function prepare_args(f, allargs, kwargs)
     if !isempty(kwargs)
         of = f
         f = Core.kwfunc(f)
-        allargs = [f,reduce(vcat,Any[kwpair(ex) for ex in kwargs]),of,
-            allargs[2:end]...]
+        allargs = [f,namedtuple(kwargs),allargs...]
     elseif f === Core._apply
         f = to_function(allargs[2])
         allargs = Base.append_any((allargs[2],), allargs[3:end]...)

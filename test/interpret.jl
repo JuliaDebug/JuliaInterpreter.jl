@@ -99,3 +99,6 @@ function fbc()
 end
 @test @interpret(fbc()) == fbc()
 @test @interpret(repr("hi")) == repr("hi")  # this tests kwargs and @generated functions
+
+fkw(x::Int8; y=0, z="hello") = y
+@test @interpret(fkw(Int8(1); y=22, z="world")) == fkw(Int8(1); y=22, z="world")
