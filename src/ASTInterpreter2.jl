@@ -697,9 +697,10 @@ function prepare_locals(framecode, argvals::Vector{Any})
             exception_frames, last_reference = oldframe.exception_frames, oldframe.last_reference
             callargs = oldframe.callargs
             last_exception, pc = oldframe.last_exception, oldframe.pc
-            resize!(locals, length(code.slotflags))
+            # for check_isdefined to work properly, we need locals and sparams to start out unassigned
+            resize!(resize!(locals, 0), length(code.slotflags))
             resize!(ssavalues, ng)
-            resize!(sparams, length(meth.sparam_syms))
+            resize!(resize!(sparams, 0), length(meth.sparam_syms))
             empty!(exception_frames)
             empty!(last_reference)
             last_exception[] = nothing
@@ -750,7 +751,9 @@ function build_frame(framecode, args, lenv)
     frame = prepare_locals(framecode, args)
     # Add static parameters to environment
     for i = 1:length(lenv)
-        frame.sparams[i] = lenv[i]
+        T = lenv[i]
+        isa(T, TypeVar) && continue  # only fill concrete types
+        frame.sparams[i] = T
     end
     return frame
 end
