@@ -523,6 +523,8 @@ end
 function prepare_thunk(mod::Module, thunk::Expr)
     if isexpr(thunk, :thunk)
         framecode = JuliaFrameCode(mod, thunk.args[1])
+    elseif isexpr(thunk, :error)
+        error("lowering returned an error, ", thunk)
     elseif isa(thunk, Expr)
         error("expected thunk or module, got ", thunk.head)
     else
@@ -905,19 +907,54 @@ end
 
 lower(mod, arg) = false ? expand(arg) : Meta.lower(mod, arg)
 
+cant_be_lowered(head) = head == :module || head == :toplevel
+
+function checkfor_head(f, arg)
+    isa(arg, Expr) || return false
+    if f(arg.head)
+        return true
+    end
+    for a in arg.args
+        if isa(a, Expr)
+            checkfor_head(f, a) && return true
+        end
+    end
+    return false
+end
+
+"""
+    interpret!(stack, mod::Module, expr::Expr)
+
+Interpret `expr` at top-level in `mod`. This should be used for handling expressions
+that define structures, methods, or otherwise look like code that defines modules.
+"""
 function interpret!(stack, mod::Module, expr::Expr)
     if expr.head != :toplevel
         expr = Expr(:toplevel, expr)
     end
     local ret
     for arg in expr.args
-        if isexpr(arg, :module)
-            # Create the module
-            innermod = Core.eval(mod, Expr(:module, arg.args[1], arg.args[2], quote end))
-            # Interpret the module body at toplevel inside the new module
-            modbody = Expr(:toplevel)
-            modbody.args = arg.args[3].args
-            ret = interpret!(stack, innermod, modbody)
+        isa(arg, Expr) || continue
+        if checkfor_head(cant_be_lowered, arg)
+            head = arg.head
+            if head == :module
+                # Create the module
+                innermod = Core.eval(mod, Expr(:module, arg.args[1], arg.args[2], quote end))
+                # Interpret the module body at toplevel inside the new module
+                modbody = Expr(:toplevel)
+                modbody.args = arg.args[3].args
+                ret = interpret!(stack, innermod, modbody)
+            elseif head == :toplevel
+                ret = interpret!(stack, mod, arg)
+            elseif head == :block
+                for a in arg.args
+                    if isa(a, Expr)
+                        ret = interpret!(stack, mod, a)
+                    end
+                end
+            else
+                error("fixme unhandled ", arg)
+            end
         elseif isa(arg, Expr)
             frame = ASTInterpreter2.prepare_toplevel(mod, arg)
             frame === nothing && continue

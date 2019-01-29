@@ -321,10 +321,8 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 elseif node.head == :primitive_type
                     evaluate_primitivetype!(stack, frame, node, pc)
                 elseif node.head == :module
-                    error("fixme")
-                elseif node.head == :using || node.head == :import
-                    error("fixme")
-                elseif node.head == :export
+                    error("this should have been handled by interpret!")
+                elseif node.head == :using || node.head == :import || node.head == :export
                     Core.eval(moduleof(frame), node)
                 elseif node.head == :thunk
                     newframe = prepare_thunk(moduleof(frame), node)
@@ -336,11 +334,11 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 elseif node.head == :global
                     # error("fixme")
                 elseif node.head == :toplevel
-                    error("fixme")
+                    error("this should have been handled by interpret!")
                 elseif node.head == :error
-                    error("fixme")
+                    error("unexpected error statement ", node)
                 elseif node.head == :incomplete
-                    error("fixme")
+                    error("incomplete statement ", node)
                 else
                     rhs = eval_rhs(stack, frame, node, pc)
                 end
