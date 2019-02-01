@@ -2,8 +2,6 @@
 
 getlhs(pc) = SSAValue(pc.next_stmt)
 
-get_binding(mod, name) = ccall(:jl_get_binding, Any, (Any, Any), mod, name)
-
 isassign(fr) = isassign(fr, fr.pc[])
 isassign(fr, pc) = (pc.next_stmt in fr.code.used)
 
@@ -308,9 +306,9 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 else
                     mod, name = moduleof(frame), g::Symbol
                 end
-                # FIXME
-                # binding = get_binding(mod, name)
-                # ccall(:jl_declare_constant, Cvoid, (Any,), binding)
+                if VERSION >= v"1.2.0-DEV.239"  # depends on https://github.com/JuliaLang/julia/pull/30893
+                    Core.eval(mod, Expr(:const, name))
+                end
             elseif istoplevel
                 if node.head == :method && length(node.args) > 1
                     evaluate_methoddef!(stack, frame, node, pc)

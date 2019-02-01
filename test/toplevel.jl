@@ -46,7 +46,11 @@ module Toplevel end
     @test s("hello") == [2.0]
     @test Toplevel.Struct{Float32}(Dict(1=>"two")) == 4
     @test Toplevel.first_two_funcs == (Toplevel.f1, Toplevel.f2)
-    @test_broken isconst(Toplevel, :first_two_funcs)
+    if VERSION >= v"1.2.0-DEV.239"
+        @test isconst(Toplevel, :first_two_funcs)
+    else
+        @test_broken isconst(Toplevel, :first_two_funcs)
+    end
     @test Toplevel.myint isa Toplevel.MyInt8
     @test_throws UndefVarError Toplevel.ffalse(1)
     @test Toplevel.ftrue(1) == 3
