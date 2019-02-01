@@ -63,6 +63,46 @@ macro lookup(args...)
     end
 end
 
+# This is used only for new struct/abstract/primitive nodes.
+# The most important issue is that in these expressions, :call Exprs can be nested,
+# and hence our re-use of the `callargs` field of JuliaStackFrame would introduce
+# bugs. Since these nodes use a very limited repertoire of calls, we can special-case
+# this quite easily.
+function lookup_or_eval(stack, frame, node, pc)
+    if isa(node, SSAValue)
+        return lookup_var(frame, node)
+    elseif isa(node, SlotNumber)
+        return lookup_var(frame, node)
+    elseif isa(node, Symbol)
+        return getfield(moduleof(frame), node)
+    elseif isa(node, Int)
+        return node
+    elseif isa(node, QuoteNode)
+        return node.value
+    elseif isa(node, Expr)
+        ex = Expr(node.head)
+        for arg in node.args
+            push!(ex.args, lookup_or_eval(stack, frame, arg, pc))
+        end
+        if ex.head == :call
+            f = ex.args[1]
+            if f === Core.svec
+                return Core.svec(ex.args[2:end]...)
+            elseif f === Core.apply_type
+                return Core.apply_type(ex.args[2:end]...)
+            elseif f === Core.typeof
+                return Core.typeof(ex.args[2])
+            else
+                error("unknown call f ", f)
+            end
+        else
+            dump(ex)
+            error("unknown expr ", ex)
+        end
+    end
+    return eval_rhs(stack, frame, node, pc)
+end
+
 instantiate_type_in_env(arg, spsig, spvals) =
     ccall(:jl_instantiate_type_in_env, Any, (Any, Any, Ptr{Any}), arg, spsig, spvals)
 
@@ -158,14 +198,22 @@ function evaluate_methoddef!(stack, frame, node, pc)
     return nothing
 end
 
-function new_type(name, mod, supertype, params, fieldnames, fieldtypes, isabstr, ismutable, ninit)
-    tn = ccall(:jl_new_typename_in, Ref{TypeName}, (Any, Any), name, mod)
-    ndt = ccall(:jl_new_datatype, Any, (Any, Any, Any, Any, Any, Any, Cint, Cint, Cint),
-                name, mod, supertype, params, fieldnames, fieldtypes, isabstr, ismutable, ninit)
-    tn.wrapper = ndt.name.wrapper
-    ccall(:jl_set_const, Cvoid, (Any, Any, Any), tn.module, tn.name, tn.wrapper)
-    return ndt
+function structname(frame, node)
+    name = node.args[1]
+    if isa(name, GlobalRef)
+        mod, name = name.module, name.name
+    else
+        mod = moduleof(frame)
+        name = name::Symbol
+    end
+    return name, mod
 end
+
+function set_structtype_const(mod::Module, name::Symbol)
+    dt = Base.unwrap_unionall(getfield(mod, name))
+    ccall(:jl_set_const, Cvoid, (Any, Any, Any), mod, dt.name.name, dt.name.wrapper)
+end
+
 
 function evaluate_structtype!(stack, frame, node, pc)
     name, mod = structname(frame, node)
@@ -175,37 +223,25 @@ function evaluate_structtype!(stack, frame, node, pc)
     fieldtypes = lookup_or_eval(stack, frame, node.args[5], pc)::SimpleVector
     ismutable = node.args[6]
     ninit = node.args[7]
-    return new_type(name, mod, supertype, params, fieldnames, fieldtypes, false, ismutable, ninit)
+    Core.eval(mod, Expr(:struct_type, name, params, fieldnames, supertype, fieldtypes, ismutable, ninit))
+    VERSION < v"1.2.0-DEV.239" && set_structtype_const(mod, name)
 end
 
 function evaluate_abstracttype!(stack, frame, node, pc)
     name, mod = structname(frame, node)
     params = lookup_or_eval(stack, frame, node.args[2], pc)::SimpleVector
     supertype = lookup_or_eval(stack, frame, node.args[3], pc)::Type
-    return new_type(name, mod, supertype, params, empty_svec, empty_svec, true, false, 0)
+    Core.eval(mod, Expr(:abstract_type, name, params, supertype))
+    VERSION < v"1.2.0-DEV.239" && set_structtype_const(mod, name)
 end
-
-include("unlower.jl")
 
 function evaluate_primitivetype!(stack, frame, node, pc)
     name, mod = structname(frame, node)
     params = lookup_or_eval(stack, frame, node.args[2], pc)::SimpleVector
     nbits = node.args[3]::Int
-    (nbits < 1 || (nbits & 7) != 0) && error("invalid number of bits ", nbits, " in primitive type ", name)
     supertype = lookup_or_eval(stack, frame, node.args[4], pc)::Type
-    # Create by "un-lowering" and calling `eval` since we can't ccall jl_get_layout
-    typeex = asexpr(name, params)
-    stex = asexpr(supertype.name.name, supertype.parameters)
-    defex = Expr(:primitive, Expr(:(<:), typeex, stex), nbits)
-    ndt = Core.eval(mod, defex)
-    # ndt = ccall(:jl_new_datatype, Any, (Symbol, Module, Any, Any, Any, Any, Cint, Cint, Cint),
-    #             name, mod, supertype, params, Core.svec(), Core.svec(), false, false, 0)
-    # nbytes = floor(Int, (nbits+7)/8)
-    # ndt.isbitstype = ndt.isinlinealloc = isempty(params)
-    # ndt.size = nbtypes
-    # # FIXME: the following callee is static
-    # ndt.layout = ccall(:jl_get_layout, Any, (UInt32, UInt32, Cint, Any), 0, nextpow(2, nbytes), false, C_NULL)
-    return ndt
+    Core.eval(mod, Expr(:primitive_type, name, params, nbits, supertype))
+    VERSION < v"1.2.0-DEV.239" && set_structtype_const(mod, name)
 end
 
 function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
@@ -299,16 +335,6 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 deleteat!(frame.exception_frames, n+1:length(frame.exception_frames))
             elseif node.head == :return
                 return nothing
-            elseif node.head == :const
-                g = node.args[1]
-                if isa(g, GlobalRef)
-                    mod, name = g.module, g.name
-                else
-                    mod, name = moduleof(frame), g::Symbol
-                end
-                if VERSION >= v"1.2.0-DEV.239"  # depends on https://github.com/JuliaLang/julia/pull/30893
-                    Core.eval(mod, Expr(:const, name))
-                end
             elseif istoplevel
                 if node.head == :method && length(node.args) > 1
                     evaluate_methoddef!(stack, frame, node, pc)
@@ -322,6 +348,16 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                     error("this should have been handled by interpret!")
                 elseif node.head == :using || node.head == :import || node.head == :export
                     Core.eval(moduleof(frame), node)
+                elseif node.head == :const
+                    g = node.args[1]
+                    if isa(g, GlobalRef)
+                        mod, name = g.module, g.name
+                    else
+                        mod, name = moduleof(frame), g::Symbol
+                    end
+                    if VERSION >= v"1.2.0-DEV.239"  # depends on https://github.com/JuliaLang/julia/pull/30893
+                        Core.eval(mod, Expr(:const, name))
+                    end
                 elseif node.head == :thunk
                     newframe = prepare_thunk(moduleof(frame), node)
                     frame.pc[] = pc

@@ -11,6 +11,10 @@ module Toplevel end
     stack = ASTInterpreter2.JuliaStackFrame[]
     ASTInterpreter2.interpret!(stack, Toplevel, read_and_parse("toplevel_script.jl"))
 
+    @test isconst(Toplevel, :StructParent)
+    @test isconst(Toplevel, :Struct)
+    @test isconst(Toplevel, :MyInt8)
+
     s = Toplevel.Struct([2.0])
 
     @test Toplevel.f1(0) == 1
