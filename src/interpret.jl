@@ -487,8 +487,6 @@ function changed_line!(expr, line, fls)
     end
 end
 
-isgotonode(node) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
-
 """
 Determine whether we are calling a function for which the current function
 is a wrapper (either because of optional arguments or becaue of keyword arguments).
@@ -515,13 +513,7 @@ function find_used(code::CodeInfo)
     return used
 end
 
-function maybe_next_call!(stack, frame, pc)
-    call_or_return(node) = is_call(node) || isexpr(node, :return)
-    call_or_return(plain(pc_expr(frame, pc))) ||
-        (pc = next_until!(call_or_return, stack, frame, pc, false))
-    pc
-end
-maybe_next_call!(stack, frame) = maybe_next_call!(stack, frame, frame.pc[])
+isgotonode(node) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
 
 location(frame) = location(frame, frame.pc[])
 function location(frame, pc)
@@ -569,3 +561,11 @@ function next_line!(stack, frame, dbstack = nothing)
     end
     maybe_next_call!(stack, frame, pc)
 end
+
+function maybe_next_call!(stack, frame, pc)
+    call_or_return(node) = is_call(node) || isexpr(node, :return)
+    call_or_return(plain(pc_expr(frame, pc))) ||
+        (pc = next_until!(call_or_return, stack, frame, pc, false))
+    pc
+end
+maybe_next_call!(stack, frame) = maybe_next_call!(stack, frame, frame.pc[])

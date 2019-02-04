@@ -17,9 +17,5 @@ script:
                         Pkg.build();
                         Pkg.test()'
 
-# matrix:
-#    allow_failures:
-#    - julia: nightly
-
 notifications:
   email: false
