@@ -1,6 +1,6 @@
 using Base.Meta: isexpr
-using ASTInterpreter2: JuliaStackFrame
-using ASTInterpreter2: pc_expr, plain, evaluate_call!, finish_and_return!, @lookup
+using JuliaInterpreter: JuliaStackFrame
+using JuliaInterpreter: pc_expr, plain, evaluate_call!, finish_and_return!, @lookup
 
 # Steps through the whole expression using `s`
 function step_through(frame)

@@ -14,7 +14,7 @@ end
 A = [1, 2, 5]
 ```
 
-ASTIntepreter2 uses the lowered representation of code:
+JuliaInterpreter uses the lowered representation of code:
 
 ```julia
 julia> code = @code_lowered summer(A)

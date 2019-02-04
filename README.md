@@ -1,20 +1,20 @@
-# ASTInterpreter2
+# JuliaInterpreter
 
-[![Build Status](https://travis-ci.org/JuliaDebug/ASTInterpreter2.jl.svg?branch=master)](https://travis-ci.org/JuliaDebug/ASTInterpreter2.jl)
-[![codecov.io](http://codecov.io/github/JuliaDebug/ASTInterpreter2.jl/coverage.svg?branch=master)](http://codecov.io/github/JuliaDebug/ASTInterpreter2.jl?branch=master)
+[![Build Status](https://travis-ci.org/JuliaDebug/JuliaInterpreter.jl.svg?branch=master)](https://travis-ci.org/JuliaDebug/JuliaInterpreter.jl)
+[![codecov.io](http://codecov.io/github/JuliaDebug/JuliaInterpreter.jl/coverage.svg?branch=master)](http://codecov.io/github/JuliaDebug/JuliaInterpreter.jl?branch=master)
 
 ## Installation
 
 ```jl
 using Pkg
-]add ASTInterpreter2#master
+]add JuliaInterpreter#master
 ]add DebuggerFramework#master
 ```
 
 ## Usage
 
 ```
-using ASTInterpreter2
+using JuliaInterpreter
 
 function foo(n)
     x = n+1

@@ -1,4 +1,4 @@
-using ASTInterpreter2, Test
+using JuliaInterpreter, Test
 
 function read_and_parse(filename)
     src = read(filename, String)
@@ -8,8 +8,8 @@ end
 module Toplevel end
 
 @testset "toplevel" begin
-    stack = ASTInterpreter2.JuliaStackFrame[]
-    ASTInterpreter2.interpret!(stack, Toplevel, read_and_parse("toplevel_script.jl"))
+    stack = JuliaInterpreter.JuliaStackFrame[]
+    JuliaInterpreter.interpret!(stack, Toplevel, read_and_parse("toplevel_script.jl"))
 
     @test isconst(Toplevel, :StructParent)
     @test isconst(Toplevel, :Struct)
@@ -145,10 +145,10 @@ module Toplevel end
     ex = quote
        module Testing
        if true
-           using ASTInterpreter2
+           using JuliaInterpreter
        end
        end
    end
-   ASTInterpreter2.interpret!(stack, Toplevel, ex)
+   JuliaInterpreter.interpret!(stack, Toplevel, ex)
    @test Toplevel.Testing.JuliaStackFrame === JuliaStackFrame
 end

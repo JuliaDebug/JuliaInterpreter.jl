@@ -1,5 +1,5 @@
 
-using ASTInterpreter2
+using JuliaInterpreter
 using Base.Meta
 using REPL
 using DebuggerFramework: execute_command, dummy_state
@@ -7,16 +7,16 @@ using DebuggerFramework: execute_command, dummy_state
 struct DummyState; end
 REPL.LineEdit.transition(s::DummyState, _) = nothing
 
-@assert step_through(ASTInterpreter2.enter_call_expr(:($(+)(1,2.5)))) == 3.5
-@assert step_through(ASTInterpreter2.enter_call_expr(:($(sin)(1)))) == sin(1)
-@assert step_through(ASTInterpreter2.enter_call_expr(:($(gcd)(10,20)))) == gcd(10, 20)
+@assert step_through(JuliaInterpreter.enter_call_expr(:($(+)(1,2.5)))) == 3.5
+@assert step_through(JuliaInterpreter.enter_call_expr(:($(sin)(1)))) == sin(1)
+@assert step_through(JuliaInterpreter.enter_call_expr(:($(gcd)(10,20)))) == gcd(10, 20)
 
 # Step into generated functions
 @generated function generatedfoo(T)
     :(return $T)
 end
 callgenerated() = generatedfoo(1)
-frame = ASTInterpreter2.enter_call_expr(:($(callgenerated)()))
+frame = JuliaInterpreter.enter_call_expr(:($(callgenerated)()))
 state = dummy_state([frame])
 
 # Step into the generated function itself
@@ -37,7 +37,7 @@ function optional(n = sin(1))
     cos(x)
 end
 
-frame = ASTInterpreter2.enter_call_expr(:($(optional)()))
+frame = JuliaInterpreter.enter_call_expr(:($(optional)()))
 state = dummy_state([frame])
 # First call steps in
 execute_command(state, state.stack[1], Val{:n}(), "n")
@@ -68,7 +68,7 @@ function test_macro()
 end
 ""","file.jl")
 
-frame = ASTInterpreter2.enter_call_expr(:($(test_macro)()))
+frame = JuliaInterpreter.enter_call_expr(:($(test_macro)()))
 state = dummy_state([frame])
 # a = sin(5)
 execute_command(state, state.stack[1], Val{:n}(), "n")
@@ -86,7 +86,7 @@ execute_command(state, state.stack[1], Val{:n}(), "n")
 # Test stepping into functions with keyword arguments
 f(x; b = 1) = x+b
 g() = f(1; b = 2)
-frame = ASTInterpreter2.enter_call_expr(:($(g)()));
+frame = JuliaInterpreter.enter_call_expr(:($(g)()));
 state = dummy_state([frame])
 # Step to the actual call
 execute_command(state, state.stack[1], Val{:nc}(), "nc")
@@ -208,4 +208,4 @@ function (::B)(y)
 end
 
 B_inst = B{Int}()
-step_through(ASTInterpreter2.enter_call_expr(:($(B_inst)(10))))
+step_through(JuliaInterpreter.enter_call_expr(:($(B_inst)(10))))

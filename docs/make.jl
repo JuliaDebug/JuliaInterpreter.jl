@@ -1,10 +1,10 @@
-using Documenter, ASTInterpreter2
+using Documenter, JuliaInterpreter
 
 makedocs(
-    modules = [ASTInterpreter2],
+    modules = [JuliaInterpreter],
     clean = false,
     format = Documenter.HTML(prettyurls = get(ENV, "CI", nothing) == "true"),
-    sitename = "ASTInterpreter2.jl",
+    sitename = "JuliaInterpreter.jl",
     authors = "Keno Fischer, Tim Holy, and others",
     linkcheck = !("skiplinks" in ARGS),
     pages = [
@@ -16,5 +16,5 @@ makedocs(
 )
 
 deploydocs(
-    repo = "github.com/JuliaDebug/ASTInterpreter2.jl.git",
+    repo = "github.com/JuliaDebug/JuliaInterpreter.jl.git",
 )

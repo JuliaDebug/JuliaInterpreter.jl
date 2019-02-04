@@ -1,4 +1,4 @@
-The ASTInterpreter2.jl package is licensed under the MIT "Expat" License:
+The JuliaInterpreter.jl package is licensed under the MIT "Expat" License:
 
 > Copyright (c) 2017: Keno Fischer.
 > 

@@ -1,5 +1,5 @@
-using ASTInterpreter2
-using ASTInterpreter2: enter_call_expr
+using JuliaInterpreter
+using JuliaInterpreter: enter_call_expr
 using Test
 
 function CallTest()
@@ -85,8 +85,8 @@ function summer(A)
 end
 
 A = [0.12, -.99]
-frame = ASTInterpreter2.enter_call(summer, A)
-frame2 = ASTInterpreter2.enter_call(summer, A)
+frame = JuliaInterpreter.enter_call(summer, A)
+frame2 = JuliaInterpreter.enter_call(summer, A)
 @test summer(A) == something(runframe(frame)) == something(runstack(frame2))
 
 A = rand(1000)

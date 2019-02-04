@@ -1,4 +1,4 @@
-using ASTInterpreter2
+using JuliaInterpreter
 using Test
 using REPL
 

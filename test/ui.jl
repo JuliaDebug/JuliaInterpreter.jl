@@ -1,4 +1,4 @@
-using ASTInterpreter2, REPL
+using JuliaInterpreter, REPL
 
 # From base, but copied here to make sure we don't fail bacause base changed
 function my_gcd(a::T, b::T) where T<:Union{Int8,UInt8,Int16,UInt16,Int32,UInt32,Int64,UInt64,Int128,UInt128}
@@ -32,8 +32,8 @@ if Sys.isunix() && VERSION >= v"1.1.0"
         repl = REPL.LineEditREPL(emuterm, true)
         repl.interface = REPL.setup_interface(repl)
         repl.specialdisplay = REPL.REPLDisplay(repl)
-        stack = ASTInterpreter2.@make_stack my_gcd(10, 20)
-        stack[1] = ASTInterpreter2.JuliaStackFrame(stack[1], stack[1].pc[]; fullpath=false)
+        stack = JuliaInterpreter.@make_stack my_gcd(10, 20)
+        stack[1] = JuliaInterpreter.JuliaStackFrame(stack[1], stack[1].pc[]; fullpath=false)
         DebuggerFramework.RunDebugger(stack, repl, emuterm)
     end
 else
