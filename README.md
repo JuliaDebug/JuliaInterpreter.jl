@@ -13,13 +13,13 @@
 ```
 
 [docs-dev-img]: https://img.shields.io/badge/docs-dev-blue.svg
-[docs-dev-url]: https://juliadebug.github.io/JuliaInterpreter.jl/latest
+[docs-dev-url]: https://JuliaDebug.github.io/JuliaInterpreter.jl/latest
 
 [docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
-[docs-stable-url]: https://juliadebug.github.io/JuliaInterpreter.jl/stable
+[docs-stable-url]: https://JuliaDebug.github.io/JuliaInterpreter.jl/stable
 
-[travis-img]: https://travis-ci.org/juliadebug/JuliaInterpreter.jl.svg?branch=master
-[travis-url]: https://travis-ci.org/juliadebug/JuliaInterpreter.jl
+[travis-img]: https://travis-ci.org/JuliaDebug/JuliaInterpreter.jl.svg?branch=master
+[travis-url]: https://travis-ci.org/JuliaDebug/JuliaInterpreter.jl
 
-[codecov-img]: https://codecov.io/gh/juliadebug/JuliaInterpreter.jl/branch/master/graph/badge.svg
-[codecov-url]: https://codecov.io/gh/juliadebug/JuliaInterpreter.jl
+[codecov-img]: https://codecov.io/gh/JuliaDebug/JuliaInterpreter.jl/branch/master/graph/badge.svg
+[codecov-url]: https://codecov.io/gh/JuliaDebug/JuliaInterpreter.jl
