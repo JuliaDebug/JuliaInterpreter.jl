@@ -213,7 +213,7 @@ julia> JuliaInterpreter.prepare_args(mymethod, [mymethod, 15], ())
 (mymethod, Any[mymethod, 15])
 
 julia> JuliaInterpreter.prepare_args(mymethod, [mymethod, 1, 2], [:verbose=>true])
-(getfield( Symbol("#kw##mymethod"))(), Any[#kw##mymethod(), Any[:verbose, true], mymethod, 1, 2])
+(getfield( Symbol("#kw##mymethod"))(), Any[#kw##mymethod(), (verbose = true,), mymethod, 1, 2])
 ```
 """
 function prepare_args(f, allargs, kwargs)

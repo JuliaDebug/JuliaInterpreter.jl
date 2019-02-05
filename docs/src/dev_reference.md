@@ -30,7 +30,6 @@ JuliaInterpreter.next_until!
 JuliaInterpreter.evaluate_call!
 JuliaInterpreter.evaluate_foreigncall!
 JuliaInterpreter.maybe_evaluate_builtin
-JuliaInterpreter.@eval_rhs
 ```
 
 ## Types
