@@ -29,3 +29,7 @@ end
 
 fkw(x::Int8; y=0, z="hello") = y
 @test @interpret(fkw(Int8(1); y=22, z="world")) == fkw(Int8(1); y=22, z="world")
+
+# issue #3
+@test @interpret(joinpath("/home/julia/base", "sysimg.jl")) == "/home/julia/base/sysimg.jl"
+@test @interpret(10.0^4) == 10.0^4
