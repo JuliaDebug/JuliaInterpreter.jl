@@ -1,5 +1,13 @@
 # This file generates builtins.jl.
 
+function scopedname(f)
+    fstr = string(f)
+    occursin('.', fstr) && return fstr
+    tn = typeof(f).name
+    Base.isexported(tn.module, Symbol(fstr)) && return fstr
+    return string(tn.module) * '.' * fstr
+end
+
 # Look up the expected number of arguments in Core.Compiler.tfunc data
 function generate_fcall(f, table, id)
     if id !== nothing
@@ -13,6 +21,7 @@ function generate_fcall(f, table, id)
         minarg = 2
     end
     # Generate a separate call for each number of arguments
+    fname = scopedname(f)
     if maxarg < typemax(Int)
         wrapper = minarg == maxarg ? "" : "if nargs == "
         for nargs = minarg:maxarg
@@ -26,7 +35,7 @@ function generate_fcall(f, table, id)
                     argcall *= ", "
                 end
             end
-            wrapper *= "return Some{Any}($f($argcall))"
+            wrapper *= "return Some{Any}($fname($argcall))"
             if nargs < maxarg
                 wrapper *= "\n        elseif nargs == "
             end
@@ -38,7 +47,7 @@ function generate_fcall(f, table, id)
     end
     # A built-in with arbitrary or unknown number of arguments.
     # This will (unfortunately) use dynamic dispatch.
-    return "return Some{Any}($f(getargs(args, frame)...))"
+    return "return Some{Any}($fname(getargs(args, frame)...))"
 end
 
 # `io` is for the generated source file
@@ -91,12 +100,13 @@ function maybe_evaluate_builtin(frame, call_expr)
         head = firstcall ? "if" : "elseif"
         firstcall = false
         f = ft.instance
+        fname = scopedname(f)
         # Tuple is common, especially for returned values from calls. It's worth avoiding
         # dynamic dispatch through a call to `ntuple`.
         if f === tuple
             print(io,
 """
-    $head f === $f
+    $head f === tuple
         return Some{Any}(ntuple(i->@lookup(frame, args[i+1]), length(args)-1))
 """)
             continue
@@ -105,7 +115,7 @@ function maybe_evaluate_builtin(frame, call_expr)
         fcall = generate_fcall(f, Core.Compiler.T_FFUNC_VAL, id)
         print(io,
 """
-    $head f === $f
+    $head f === $fname
         $fcall
 """)
         firstcall = false
