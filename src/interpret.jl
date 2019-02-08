@@ -450,11 +450,14 @@ end
 finish!(stack, frame, istoplevel::Bool) = finish!(stack, frame, frame.pc[], istoplevel)
 
 """
-    ret = finish_and_return!(stack, frame, pc=frame.pc[])
+    ret = finish_and_return!(stack, frame, istoplevel::Bool=false)
+    ret = finish_and_return!(stack, frame, pc, istoplevel::Bool)
 
 Run `frame` until execution terminates, and pass back the computed return value.
 `stack` controls call evaluation; `stack = Compiled()` evaluates :call expressions
 by normal dispatch, whereas a vector of `JuliaStackFrame`s will use recursive interpretation.
+
+Optionally supply the starting `pc`, if you don't want to start at the current location in `frame`.
 """
 function finish_and_return!(stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::Bool=false)
     pc = finish!(stack, frame, pc, istoplevel)
