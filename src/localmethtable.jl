@@ -52,6 +52,9 @@ function get_call_framecode(fargs, parentframe::JuliaFrameCode, idx::Int)
         # See TODO in optimize!
         return f(fargs[2:end]...), nothing  # for code that has a direct call to a builtin
     end
+    if f === getproperty && isa(fargs[2], Type) && fargs[2] <: Vararg # https://github.com/JuliaLang/julia/issues/30995
+        return getproperty(fargs[2:end]...), nothing
+    end
     # HACK: don't recurse into inference. Inference sometimes returns SSAValue objects and this
     # seems to confuse lookup_var.
     if f === Base._return_type
