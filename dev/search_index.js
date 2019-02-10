@@ -181,7 +181,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.finish_and_return!",
     "category": "function",
-    "text": "ret = finish_and_return!(stack, frame, pc=frame.pc[])\n\nRun frame until execution terminates, and pass back the computed return value. stack controls call evaluation; stack = Compiled() evaluates :call expressions by normal dispatch, whereas a vector of JuliaStackFrames will use recursive interpretation.\n\n\n\n\n\n"
+    "text": "ret = finish_and_return!(stack, frame, istoplevel::Bool=false)\nret = finish_and_return!(stack, frame, pc, istoplevel::Bool)\n\nRun frame until execution terminates, and pass back the computed return value. stack controls call evaluation; stack = Compiled() evaluates :call expressions by normal dispatch, whereas a vector of JuliaStackFrames will use recursive interpretation.\n\nOptionally supply the starting pc, if you don\'t want to start at the current location in frame.\n\n\n\n\n\n"
 },
 
 {
