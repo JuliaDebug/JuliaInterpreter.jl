@@ -68,7 +68,7 @@ end
 # and hence our re-use of the `callargs` field of JuliaStackFrame would introduce
 # bugs. Since these nodes use a very limited repertoire of calls, we can special-case
 # this quite easily.
-function lookup_or_eval(stack, frame, node, pc)
+function lookup_or_eval(stack, frame, @nospecialize(node), pc)
     if isa(node, SSAValue)
         return lookup_var(frame, node)
     elseif isa(node, SlotNumber)
@@ -106,7 +106,7 @@ end
 instantiate_type_in_env(arg, spsig, spvals) =
     ccall(:jl_instantiate_type_in_env, Any, (Any, Any, Ptr{Any}), arg, spsig, spvals)
 
-function resolvefc(expr)
+function resolvefc(@nospecialize expr)
     (isa(expr, Symbol) || isa(expr, String) || isa(expr, QuoteNode)) && return expr
     if isexpr(expr, :call)
         a = expr.args[1]
