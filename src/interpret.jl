@@ -278,6 +278,10 @@ function eval_rhs(stack, frame, node::Expr, pc)
             ccall(:jl_set_nth_field, Cvoid, (Any, Csize_t, Any), rhs, i-1, @lookup(mod, frame, node.args[i+1]))
         end
         return rhs
+    elseif head == :splatnew  # Julia 1.2+
+        mod = moduleof(frame)
+        rhs = ccall(:jl_new_structt, Any, (Any, Any), @lookup(mod, frame, node.args[1]), @lookup(mod, frame, node.args[2]))
+        return rhs
     elseif head == :isdefined
         return check_isdefined(frame, node.args[1])
     elseif head == :call
