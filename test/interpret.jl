@@ -33,3 +33,8 @@ fkw(x::Int8; y=0, z="hello") = y
 # issue #3
 @test @interpret(joinpath("/home/julia/base", "sysimg.jl")) == "/home/julia/base/sysimg.jl"
 @test @interpret(10.0^4) == 10.0^4
+# issue #6
+@test @interpret(Array.body.body.name) === Array.body.body.name
+@test @interpret(Vararg.body.body.name) === Vararg.body.body.name
+frame = JuliaInterpreter.prepare_toplevel(Main, :(Vararg.body.body.name))
+@test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) === Vararg.body.body.name

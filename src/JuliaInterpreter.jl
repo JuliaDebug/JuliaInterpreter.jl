@@ -358,10 +358,12 @@ function determine_method_for_expr(expr; enter_generated = false)
     end
     f, allargs = prepare_args(f, allargs, kwargs.args)
     # Can happen for thunks created by generated functions
-    if !isa(f, Core.Builtin) && !isa(f, Core.IntrinsicFunction)
-        return prepare_call(f, allargs; enter_generated=enter_generated)
+    if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
+        return nothing
+    elseif f === getproperty && allargs[2] <: Vararg
+        return nothing  # https://github.com/JuliaLang/julia/issues/30995
     end
-    nothing
+    return prepare_call(f, allargs; enter_generated=enter_generated)
 end
 
 function get_source(meth)
@@ -779,6 +781,8 @@ function extract_args(__module__, ex0)
                 Expr(:call, NamedTuple{names,typeof(values)}, values),
                 map(x->isexpr(x, :parameters) ? QuoteNode(x) : x,
                 filter(x->!isexpr(x, :kw),ex0.args))...)
+        elseif ex0.head == :.
+            return Expr(:tuple, :getproperty, ex0.args...)
         else
             return Expr(:tuple,
                 map(x->isexpr(x,:parameters) ? QuoteNode(x) : x, ex0.args)...)
@@ -858,6 +862,9 @@ macro interpret(arg)
         theargs = $(esc(args))
         stack = JuliaStackFrame[]
         frame = JuliaInterpreter.enter_call_expr(Expr(:call,theargs...))
+        if frame === nothing
+            return eval(Expr(:call, map(QuoteNode, theargs)...))
+        end
         empty!(framedict)  # start fresh each time; kind of like bumping the world age at the REPL prompt
         empty!(genframedict)
         finish_and_return!(stack, frame)
