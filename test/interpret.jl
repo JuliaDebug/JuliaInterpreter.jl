@@ -38,3 +38,12 @@ fkw(x::Int8; y=0, z="hello") = y
 @test @interpret(Vararg.body.body.name) === Vararg.body.body.name
 frame = JuliaInterpreter.prepare_toplevel(Main, :(Vararg.body.body.name))
 @test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) === Vararg.body.body.name
+
+ex = quote
+    if sizeof(JLOptions) === ccall(:jl_sizeof_jl_options, Int, ())
+    else
+        ccall(:jl_throw, Cvoid, (Any,), "Option structure mismatch")
+    end
+end
+frame = JuliaInterpreter.prepare_toplevel(Base, ex)
+JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)

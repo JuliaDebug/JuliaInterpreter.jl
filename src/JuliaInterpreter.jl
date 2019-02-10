@@ -391,13 +391,16 @@ function copy_codeinfo(code::CodeInfo)
     return newcode
 end
 
-const calllike = Set([:call, :struct_type])
+const calllike = Set([:call, :foreigncall])
 
 function extract_inner_call!(stmt, idx, once::Bool=false)
     isa(stmt, Expr) || return nothing
     once |= stmt.head ∈ calllike
     for (i, a) in enumerate(stmt.args)
         isa(a, Expr) || continue
+        if stmt.head == :foreigncall && i == 1
+            continue
+        end
         ret = extract_inner_call!(a, idx, once) # doing this first extracts innermost calls
         ret !== nothing && return ret
         iscalllike = a.head ∈ calllike
@@ -488,28 +491,28 @@ function optimize!(code::CodeInfo, mod::Module)
         end
     end
 
-    # ## Un-nest :call expressions (so that there will be only one :call per line)
-    # # This will allow us to re-use args-buffers rather than having to allocate new ones each time.
-    # old_code, old_codelocs = code.code, code.codelocs
-    # code.code = new_code = eltype(old_code)[]
-    # code.codelocs = new_codelocs = Int32[]
-    # ssainc = fill(1, length(old_code))
-    # for (i, stmt) in enumerate(old_code)
-    #     loc = old_codelocs[i]
-    #     inner = extract_inner_call!(stmt, length(new_code)+1)
-    #     while inner !== nothing
-    #         push!(new_code, inner)
-    #         push!(new_codelocs, loc)
-    #         ssainc[i] += 1
-    #         inner = extract_inner_call!(stmt, length(new_code)+1)
-    #     end
-    #     push!(new_code, stmt)
-    #     push!(new_codelocs, loc)
-    # end
-    # # Fix all the SSAValues and GotoNodes
-    # ssalookup = cumsum(ssainc)
-    # renumber_ssa!(new_code, ssalookup)
-    # code.ssavaluetypes = length(new_code)
+    ## Un-nest :call expressions (so that there will be only one :call per line)
+    # This will allow us to re-use args-buffers rather than having to allocate new ones each time.
+    old_code, old_codelocs = code.code, code.codelocs
+    code.code = new_code = eltype(old_code)[]
+    code.codelocs = new_codelocs = Int32[]
+    ssainc = fill(1, length(old_code))
+    for (i, stmt) in enumerate(old_code)
+        loc = old_codelocs[i]
+        inner = extract_inner_call!(stmt, length(new_code)+1)
+        while inner !== nothing
+            push!(new_code, inner)
+            push!(new_codelocs, loc)
+            ssainc[i] += 1
+            inner = extract_inner_call!(stmt, length(new_code)+1)
+        end
+        push!(new_code, stmt)
+        push!(new_codelocs, loc)
+    end
+    # Fix all the SSAValues and GotoNodes
+    ssalookup = cumsum(ssainc)
+    renumber_ssa!(new_code, ssalookup)
+    code.ssavaluetypes = length(new_code)
     return code
 end
 
