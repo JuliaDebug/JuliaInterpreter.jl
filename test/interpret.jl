@@ -39,6 +39,7 @@ fkw(x::Int8; y=0, z="hello") = y
 frame = JuliaInterpreter.prepare_toplevel(Main, :(Vararg.body.body.name))
 @test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) === Vararg.body.body.name
 
+# issue #8
 ex = quote
     if sizeof(JLOptions) === ccall(:jl_sizeof_jl_options, Int, ())
     else
@@ -46,4 +47,13 @@ ex = quote
     end
 end
 frame = JuliaInterpreter.prepare_toplevel(Base, ex)
+JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
+
+# ccall with two Symbols
+ex = quote
+    @testset "Some tests" begin
+       @test 2 > 1
+    end
+end
+frame = JuliaInterpreter.prepare_toplevel(Main, ex)
 JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)

@@ -108,6 +108,7 @@ instantiate_type_in_env(arg, spsig, spvals) =
 
 function resolvefc(@nospecialize expr)
     (isa(expr, Symbol) || isa(expr, String) || isa(expr, QuoteNode)) && return expr
+    isa(expr, Tuple{Symbol,Symbol}) && return expr
     if isexpr(expr, :call)
         a = expr.args[1]
         (isa(a, QuoteNode) && a.value == Core.tuple) || error("unexpected ccall to ", expr)
