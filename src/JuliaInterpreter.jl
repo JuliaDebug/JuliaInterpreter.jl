@@ -216,7 +216,7 @@ julia> JuliaInterpreter.prepare_args(mymethod, [mymethod, 1, 2], [:verbose=>true
 (getfield( Symbol("#kw##mymethod"))(), Any[#kw##mymethod(), (verbose = true,), mymethod, 1, 2])
 ```
 """
-function prepare_args(f, allargs, kwargs)
+function prepare_args(@nospecialize(f), allargs, kwargs)
     if !isempty(kwargs)
         of = f
         f = Core.kwfunc(f)
@@ -267,7 +267,7 @@ julia> argtypes
 Tuple{typeof(mymethod),Array{Float64,1}}
 ```
 """
-function prepare_call(f, allargs; enter_generated = false)
+function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     args = allargs[2:end]
     argtypes = Tuple{map(_Typeof,args)...}
     method = try
@@ -870,5 +870,8 @@ macro interpret(arg)
         finish_and_return!(stack, frame)
     end
 end
+
+include("precompile.jl")
+_precompile_()
 
 end # module
