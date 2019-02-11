@@ -40,37 +40,37 @@ end
         # empty!(JuliaInterpreter.genframedict)
         return JuliaInterpreter.finish_and_return!(stack, frame, true)
     end
-    function dotest!(failed, test)
+    function dotest!(test)
         println("Working on ", test, "...")
-        ex = read_and_parse(joinpath(testdir, test)*".jl")
+        fullpath = joinpath(testdir, test)*".jl"
+        ex = read_and_parse(fullpath)
+        # so `include` works properly, we have to set up the relative path
+        oldpath = current_task().storage[:SOURCE_PATH]
         if isexpr(ex, :error)
-            @warn "error parsing $test: $ex"
+            @error "error parsing $test: $ex"
         else
             try
+                current_task().storage[:SOURCE_PATH] = fullpath
                 lower_incrementally(runtest, JuliaTests, ex)
-                println("Succeeded on ", test)
-            catch err
-                @show test err
-                push!(failed, (test, err))
-                # rethrow(err)
+                # Core.eval(JuliaTests, ex)
+                println("Finished ", test)
+            finally
+                current_task().storage[:SOURCE_PATH] = oldpath
             end
         end
     end
     if isdir(testdir)
         tests, _ = choosetests()
         delayed = []
-        failed = []
         for test in tests
             if startswith(test, "compiler") || test == "subarray"
                 push!(delayed, test)
             else
-                dotest!(failed, test)
+                dotest!(test)
             end
         end
         for test in delayed
             dotest!(failed, test)
         end
-        @show failed
-        @test isempty(failed)
     end
 end
