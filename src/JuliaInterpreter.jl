@@ -234,6 +234,12 @@ function prepare_args(@nospecialize(f), allargs, kwargs)
     return f, allargs
 end
 
+function whichtt(tt)
+    m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), tt, typemax(UInt))
+    m === nothing && return nothing
+    return m.func::Method
+end
+
 """
     framecode, frameargs, lenv, argtypes = prepare_call(f, allargs; enter_generated=false)
 
@@ -274,17 +280,12 @@ Tuple{typeof(mymethod),Array{Float64,1}}
 ```
 """
 function prepare_call(@nospecialize(f), allargs; enter_generated = false)
-    args = allargs[2:end]
-    argtypes = Tuple{map(_Typeof,args)...}
-    method = try
-        which(f, argtypes)
-    catch err
-        @show typeof(f)
-        println(f)
-        println(argtypes)
-        rethrow(err)
+    argtypes = Tuple{map(_Typeof,allargs)...}
+    method = whichtt(argtypes)
+    if method === nothing
+        # Call it to generate the exact error
+        f(allargs[2:end]...)
     end
-    argtypes = Tuple{_Typeof(f), argtypes.parameters...}
     args = allargs
     sig = method.sig
     isa(method, TypeMapEntry) && (method = method.func)
