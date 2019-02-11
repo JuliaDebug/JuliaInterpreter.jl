@@ -76,7 +76,7 @@ function lower!(@nospecialize(f), docexprs, mod::Module, ex::Expr)
     lwr = Meta.lower(mod, ex)
     if isexpr(lwr, :thunk)
         frame = JuliaInterpreter.prepare_thunk(mod, lwr)
-        f(frame)
+        Base.invokelatest(f, frame)  # if previous thunks define new methods, we need to update world age
     elseif isa(lwr, Expr) && (lwr.head == :export || lwr.head == :using || lwr.head == :import)
     elseif isa(lwr, Symbol) || isa(lwr, Nothing)
     else
