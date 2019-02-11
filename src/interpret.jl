@@ -406,6 +406,17 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
             rhs = @lookup(frame, node)
         end
     catch err
+        # Check for world age errors, which generally indicate a failure to go back to toplevel
+        if isa(err, MethodError)
+            is_arg_types = isa(err.args, DataType)
+            arg_types = is_arg_types ? err.args : Base.typesof(err.args...)
+            if (err.world != typemax(UInt) &&
+                hasmethod(err.f, arg_types) &&
+                !hasmethod(err.f, arg_types, world = err.world))
+                @warn "likely failure to return to toplevel, try Base.invokelatest"
+                rethrow(err)
+            end
+        end
         isempty(frame.exception_frames) && rethrow(err)
         frame.last_exception[] = err
         return JuliaProgramCounter(frame.exception_frames[end])

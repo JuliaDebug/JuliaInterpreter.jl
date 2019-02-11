@@ -13,14 +13,16 @@ else
     @warn "Julia's test/ directory not found, skipping Julia tests"
 end
 
-module JuliaTests end
+module JuliaTests
+using Test
+end
 
 @testset "Julia tests" begin
     stack = JuliaStackFrame[]
     function runtest(frame)
         empty!(stack)
-        empty!(JuliaInterpreter.framedict)
-        empty!(JuliaInterpreter.genframedict)
+        # empty!(JuliaInterpreter.framedict)
+        # empty!(JuliaInterpreter.genframedict)
         return JuliaInterpreter.finish_and_return!(stack, frame, true)
     end
     function dotest!(failed, test)
@@ -29,13 +31,13 @@ module JuliaTests end
         if isexpr(ex, :error)
             @warn "error parsing $test: $ex"
         else
-            ex = Expr(:toplevel, :(using Test), ex)
             try
                 lower_incrementally(runtest, JuliaTests, ex)
                 println("Succeeded on ", test)
             catch err
                 @show test err
                 push!(failed, (test, err))
+                # rethrow(err)
             end
         end
     end
@@ -44,7 +46,7 @@ module JuliaTests end
         delayed = []
         failed = []
         for test in tests
-            if startswith(test, "compiler")
+            if startswith(test, "compiler") || test == "subarray"
                 push!(delayed, test)
             else
                 dotest!(failed, test)
