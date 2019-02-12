@@ -455,8 +455,8 @@ function renumber_ssa!(stmts::Vector{Any}, ssalookup)
             stmts[i] = SSAValue(stmt.id)
         elseif isa(stmt, Expr)
             replace_ssa!(stmt, ssalookup)
-            if stmt.head == :gotoifnot && isa(stmt.args[2], Int)
-                stmt.args[2] = ssalookup[stmt.args[2]]
+            if (stmt.head == :gotoifnot || stmt.head == :enter) && isa(stmt.args[end], Int)
+                stmt.args[end] = ssalookup[stmt.args[end]]
             end
         end
     end

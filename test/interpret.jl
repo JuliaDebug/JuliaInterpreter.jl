@@ -135,6 +135,21 @@ end
 frame = JuliaInterpreter.prepare_toplevel(Main, ex)
 @test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) == 1
 
+# From Julia's test/ambiguous.jl. This tests whether we renumber :enter statements correctly.
+ambig(x, y) = 1
+ambig(x::Integer, y) = 2
+ambig(x, y::Integer) = 3
+ambig(x::Int, y::Int) = 4
+ambig(x::Number, y) = 5
+ex = quote
+    let
+        cf = @eval @cfunction(ambig, Int, (UInt8, Int))
+        @test_throws(MethodError, ccall(cf, Int, (UInt8, Int), 1, 2))
+    end
+end
+frame = JuliaInterpreter.prepare_toplevel(Main, ex)
+JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
+
 # Core.Compiler
 ex = quote
     length(code_typed(fcfun, (Int, Int)))
