@@ -143,6 +143,53 @@ include("localmethtable.jl")
 include("interpret.jl")
 include("builtins.jl")
 
+function Base.show(io::IO, framecode::JuliaFrameCode)
+    show_scope(io, framecode.scope)
+    show(io, framecode.code)
+end
+
+function show_scope(io::IO, scope)
+    if isa(scope, Method)
+        printstyled(io, scope, '\n'; color=:light_magenta)
+    else
+        printstyled(io, "Toplevel in module ", scope, '\n'; color=:light_magenta)
+    end
+end
+
+function Base.show(io::IO, frame::JuliaStackFrame)
+    show_scope(io, frame.code.scope)
+    print_locals(io, frame)
+    show(io, frame.code.code)
+    print(io, '\n')
+    print(io, "Stored program counter: ", convert(Int, frame.pc[]))
+end
+
+function print_locals(io::IO, frame)
+    for i = 1:length(frame.locals)
+        isassigned(frame.locals, i) || continue
+        val = frame.locals[i]
+        val === nothing && continue
+        val = something(val)
+        if frame.code.code.slotnames[i] == Symbol("#self#") && (isa(val, Type) || sizeof(val) == 0)
+            continue
+        end
+        print_var(io, frame.code.code.slotnames[i], val)
+    end
+end
+
+function print_var(io::IO, name, val)
+    T = typeof(val)
+    try
+        val = repr(val)
+        if length(val) > 150
+            val = Suppressed("$(length(val)) bytes of output")
+        end
+    catch
+        val = Suppressed("printing error")
+    end
+    println(io, "  ", name, "::", T, " = ", val)
+end
+
 function show_stackloc(io::IO, stack, frame, pc=frame.pc[])
     indent = ""
     for f in stack
