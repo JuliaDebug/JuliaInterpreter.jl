@@ -30,6 +30,64 @@ end
 fkw(x::Int8; y=0, z="hello") = y
 @test @interpret(fkw(Int8(1); y=22, z="world")) == fkw(Int8(1); y=22, z="world")
 
+# Throwing exceptions across frames
+function f_exc_inner()
+    error("inner")
+end
+
+f_exc_inner2() = f_exc_inner()
+
+const caught = Ref(false)
+function f_exc_outer1()
+    try
+        f_exc_inner()
+    catch err    # with an explicit err capture
+        caught[] = true
+        rethrow(err)
+    end
+end
+
+function f_exc_outer2()
+    try
+        f_exc_inner()
+    catch        # implicit err capture
+        caught[] = true
+        rethrow()
+    end
+end
+
+function f_exc_outer3(f)
+    try
+        f()
+    catch err
+        return err
+    end
+end
+
+@test !caught[]
+ret = @interpret f_exc_outer3(f_exc_outer1)
+@test ret == ErrorException("inner")
+@test caught[]
+
+caught[] = false
+ret = @interpret f_exc_outer3(f_exc_outer2)
+@test ret == ErrorException("inner")
+@test caught[]
+
+caught[] = false
+ret = @interpret f_exc_outer3(f_exc_inner2)
+@test ret == ErrorException("inner")
+@test !caught[]
+
+
+stc = try f_exc_outer1() catch
+    stacktrace(catch_backtrace())
+end
+sti = try @interpret(f_exc_outer1()) catch
+    stacktrace(catch_backtrace())
+end
+@test_broken stc == sti
+
 # issue #3
 @test @interpret(joinpath("/home/julia/base", "sysimg.jl")) == "/home/julia/base/sysimg.jl"
 @test @interpret(10.0^4) == 10.0^4

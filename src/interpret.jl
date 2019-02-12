@@ -172,6 +172,9 @@ function evaluate_call!(stack, frame::JuliaStackFrame, call_expr::Expr, pc)
     fargs = collect_args(frame, call_expr)
     if fargs[1] === Core.eval
         return Core.eval(fargs[2], fargs[3])  # not a builtin, but worth treating specially
+    elseif fargs[1] === Base.rethrow
+        err = length(fargs) > 1 ? fargs[2] : frame.last_exception[]
+        throw(err)
     end
     framecode, lenv = get_call_framecode(fargs, frame.code, pc.next_stmt)
     if lenv === nothing
