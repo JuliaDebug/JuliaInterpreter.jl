@@ -115,3 +115,5 @@ ex = quote
 end
 frame = JuliaInterpreter.prepare_toplevel(Main, ex)
 JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
+
+@test @interpret Base.Math.DoubleFloat64(-0.5707963267948967, 4.9789962508669555e-17).hi ≈ -0.5707963267948967
