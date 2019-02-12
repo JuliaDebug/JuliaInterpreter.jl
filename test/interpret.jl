@@ -79,6 +79,15 @@ ret = @interpret f_exc_outer3(f_exc_inner2)
 @test ret == ErrorException("inner")
 @test !caught[]
 
+
+stc = try f_exc_outer1() catch
+    stacktrace(catch_backtrace())
+end
+sti = try @interpret(f_exc_outer1()) catch
+    stacktrace(catch_backtrace())
+end
+@test_broken stc == sti
+
 # issue #3
 @test @interpret(joinpath("/home/julia/base", "sysimg.jl")) == "/home/julia/base/sysimg.jl"
 @test @interpret(10.0^4) == 10.0^4
