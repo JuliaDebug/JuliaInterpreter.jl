@@ -134,3 +134,10 @@ ex = quote
 end
 frame = JuliaInterpreter.prepare_toplevel(Main, ex)
 @test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) == 1
+
+# Core.Compiler
+ex = quote
+    length(code_typed(fcfun, (Int, Int)))
+end
+frame = JuliaInterpreter.prepare_toplevel(Main, ex)
+@test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) == 1
