@@ -143,6 +143,15 @@ include("localmethtable.jl")
 include("interpret.jl")
 include("builtins.jl")
 
+function show_stackloc(io::IO, stack, frame, pc=frame.pc[])
+    indent = ""
+    for f in stack
+        println(io, indent, f.code.scope)
+        indent *= "  "
+    end
+    println(io, indent, frame.code.scope, ", pc = ", convert(Int, pc))
+end
+
 function moduleof(x)
     if isa(x, JuliaStackFrame)
         x = x.code.scope
