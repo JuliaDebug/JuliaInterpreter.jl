@@ -170,7 +170,7 @@ function evaluate_call!(stack, frame::JuliaStackFrame, call_expr::Expr, pc)
     ret = maybe_evaluate_builtin(frame, call_expr)
     isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(frame, call_expr)
-    if fargs[1] === Core.eval
+    if (f = fargs[1]) === Core.eval
         return Core.eval(fargs[2], fargs[3])  # not a builtin, but worth treating specially
     elseif fargs[1] === Base.rethrow
         err = length(fargs) > 1 ? fargs[2] : frame.last_exception[]
@@ -178,6 +178,10 @@ function evaluate_call!(stack, frame::JuliaStackFrame, call_expr::Expr, pc)
     end
     framecode, lenv = get_call_framecode(fargs, frame.code, pc.next_stmt)
     if lenv === nothing
+        if isa(framecode, Compiled)
+            popfirst!(fargs)  # now it's really just `args`
+            return f(fargs...)
+        end
         return framecode  # this was a Builtin
     end
     frame.pc[] = pc  # to mark position in the frame (e.g., if we hit breakpoint or error)

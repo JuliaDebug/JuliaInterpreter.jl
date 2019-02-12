@@ -118,6 +118,7 @@ JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter; kwargs...) =
 see [`genframedict`](@ref).
 """
 const framedict = Dict{Method,JuliaFrameCode}()                # essentially a method table for lowered code
+
 """
 `genframedict[(method,argtypes)]` returns the `JuliaFrameCode` for a `@generated` method `method`,
 for the particular argument types `argtypes`.
@@ -127,6 +128,12 @@ The framecodes stored in `genframedict` are for the code returned by the generat
 for the generator itself, its framecode would be stored in [`framedict`](@ref).
 """
 const genframedict = Dict{Tuple{Method,Type},JuliaFrameCode}() # the same for @generated functions
+
+"""
+`meth ∈ compiled_methods` indicates that `meth` should be run using [`Compiled`](@ref)
+rather than recursed into via the interpreter.
+"""
+const compiled_methods = Set{Method}()
 
 const junk = JuliaStackFrame[]      # to allow re-use of allocated memory (this is otherwise a bottleneck)
 
@@ -147,7 +154,6 @@ _moduleof(scope::Module) = scope
 Base.nameof(frame) = isa(frame.code.scope, Method) ? frame.code.scope.name : nameof(frame.code.scope)
 
 is_loc_meta(expr, kind) = isexpr(expr, :meta) && length(expr.args) >= 1 && expr.args[1] === kind
-
 
 
 function to_function(x)
@@ -282,6 +288,9 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     args = allargs
     sig = method.sig
     isa(method, TypeMapEntry) && (method = method.func)
+    if method ∈ compiled_methods
+        return Compiled()
+    end
     # Get static parameters
     (ti, lenv::SimpleVector) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
                         argtypes, sig)::SimpleVector

@@ -60,7 +60,11 @@ function get_call_framecode(fargs, parentframe::JuliaFrameCode, idx::Int)
     if f === Base._return_type
         return Base._return_type(fargs[2:end]...), nothing
     end
-    framecode, args, env, argtypes = prepare_call(f, fargs)
+    ret = prepare_call(f, fargs)
+    if isa(ret, Compiled)
+        return ret, nothing
+    end
+    framecode, args, env, argtypes = ret
     # Store the results of the method lookup in the local method table
     tme = ccall(:jl_new_struct_uninit, Any, (Any,), TypeMapEntry)::TypeMapEntry
     tme.func = mi = ccall(:jl_new_struct_uninit, Any, (Any,), MethodInstance)::MethodInstance

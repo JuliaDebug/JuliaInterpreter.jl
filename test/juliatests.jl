@@ -1,5 +1,5 @@
 using JuliaInterpreter
-using Test
+using Test, Random
 
 if !isdefined(Main, :read_and_parse)
     include("utils.jl")
@@ -18,6 +18,21 @@ using Test
 end
 
 @testset "Julia tests" begin
+    # To do this efficiently, certain methods must be run in Compiled mode
+    cm = JuliaInterpreter.compiled_methods
+    empty!(cm)
+    push!(cm, which(Test.eval_test, Tuple{Expr, Expr, LineNumberNode}))
+    push!(cm, which(Test.finish, Tuple{Test.DefaultTestSet}))
+    push!(cm, which(Test.get_testset, Tuple{}))
+    push!(cm, which(Test.push_testset, Tuple{Test.AbstractTestSet}))
+    push!(cm, which(Test.pop_testset, Tuple{}))
+    push!(cm, which(Random.seed!, Tuple{Union{Integer,Vector{UInt32}}}))
+    push!(cm, which(copy!, Tuple{Random.MersenneTwister, Random.MersenneTwister}))
+    push!(cm, which(copy, Tuple{Random.MersenneTwister}))
+    push!(cm, which(Base.include, Tuple{Module, String}))
+    push!(cm, which(Base.show_backtrace, Tuple{IO, Vector}))
+    push!(cm, which(Base.show_backtrace, Tuple{IO, Vector{Any}}))
+
     stack = JuliaStackFrame[]
     function runtest(frame)
         empty!(stack)
