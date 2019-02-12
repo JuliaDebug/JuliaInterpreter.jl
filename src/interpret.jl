@@ -106,9 +106,15 @@ end
 instantiate_type_in_env(arg, spsig, spvals) =
     ccall(:jl_instantiate_type_in_env, Any, (Any, Any, Ptr{Any}), arg, spsig, spvals)
 
-function resolvefc(@nospecialize expr)
-    (isa(expr, Symbol) || isa(expr, String) || isa(expr, QuoteNode)) && return expr
+function resolvefc(frame, @nospecialize expr)
+    if isa(expr, SlotNumber)
+        expr = lookup_var(frame, expr)
+    end
+    (isa(expr, Symbol) || isa(expr, String) || isa(expr, Ptr) || isa(expr, QuoteNode)) && return expr
     isa(expr, Tuple{Symbol,Symbol}) && return expr
+    isa(expr, Tuple{String,String}) && return expr
+    isa(expr, Tuple{Symbol,String}) && return expr
+    isa(expr, Tuple{String,Symbol}) && return expr
     if isexpr(expr, :call)
         a = expr.args[1]
         (isa(a, QuoteNode) && a.value == Core.tuple) || error("unexpected ccall to ", expr)
@@ -121,7 +127,7 @@ function collect_args(frame, call_expr; isfc=false)
     args = frame.callargs
     resize!(args, length(call_expr.args))
     mod = moduleof(frame)
-    args[1] = isfc ? resolvefc(call_expr.args[1]) : @lookup(mod, frame, call_expr.args[1])
+    args[1] = isfc ? resolvefc(frame, call_expr.args[1]) : @lookup(mod, frame, call_expr.args[1])
     for i = 2:length(args)
         args[i] = @lookup(mod, frame, call_expr.args[i])
     end
@@ -136,7 +142,7 @@ Evaluate a `:foreigncall` (from a `ccall`) statement `callexpr` in the context o
 """
 function evaluate_foreigncall!(stack, frame::JuliaStackFrame, call_expr::Expr, pc)
     args = collect_args(frame, call_expr; isfc=true)
-    for i = 1:length(args)
+    for i = 2:length(args)
         arg = args[i]
         args[i] = isa(arg, Symbol) ? QuoteNode(arg) : arg
     end

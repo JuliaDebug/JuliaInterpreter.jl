@@ -117,3 +117,20 @@ frame = JuliaInterpreter.prepare_toplevel(Main, ex)
 JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
 
 @test @interpret Base.Math.DoubleFloat64(-0.5707963267948967, 4.9789962508669555e-17).hi ≈ -0.5707963267948967
+
+# ccall with cfunction
+fcfun(x::Int, y::Int) = 1
+ex = quote   # in lowered code, cf is a Symbol
+    cf = @eval @cfunction(fcfun, Int, (Int, Int))
+    ccall(cf, Int, (Int, Int), 1, 2)
+end
+frame = JuliaInterpreter.prepare_toplevel(Main, ex)
+@test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) == 1
+ex = quote
+    let   # in lowered code, cf is a SlotNumber
+        cf = @eval @cfunction(fcfun, Int, (Int, Int))
+        ccall(cf, Int, (Int, Int), 1, 2)
+    end
+end
+frame = JuliaInterpreter.prepare_toplevel(Main, ex)
+@test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) == 1
