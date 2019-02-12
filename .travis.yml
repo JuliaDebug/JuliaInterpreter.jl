@@ -17,6 +17,14 @@ branches:
 notifications:
   email: false
 
+script:
+    - export JULIA_PROJECT=""
+    - julia --project -e 'using Pkg; Pkg.build(); Pkg.test();'
+    - julia --color=yes -e 'using Pkg; Pkg.develop(PackageSpec(path=".")); 
+                                       Pkg.add(PackageSpec(url="https://github.com/JuliaDebug/Debugger.jl"));
+                                       Pkg.add(PackageSpec(url="https://github.com/Keno/TerminalRegressionTests.jl"));
+                                       Pkg.test("Debugger")'
+
 jobs:
   include:
     - stage: "Documentation"
