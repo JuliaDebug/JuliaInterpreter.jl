@@ -10,7 +10,7 @@ lookup_var(frame, ref::GlobalRef) = getfield(ref.mod, ref.name)
 function lookup_var(frame, slot::SlotNumber)
     val = frame.locals[slot.id]
     val !== nothing && return val.value
-    error("slot ", slot, " not assigned")
+    error("slot ", slot, " with name ", frame.code.code.slotnames[slot.id], " not assigned")
 end
 
 function lookup_expr(frame, e::Expr)
@@ -313,7 +313,7 @@ end
 
 function check_isdefined(frame, node)
     if isa(node, SlotNumber)
-        return isassigned(frame.locals, slot.id)
+        return frame.locals[node.id] !== nothing
     elseif isexpr(node, :static_parameter)
         return isassigned(frame.sparams, node.args[1]::Int)
     elseif isa(node, GlobalRef)

@@ -540,9 +540,9 @@ function prepare_locals(framecode, argvals::Vector{Any})
             exception_frames, last_reference = oldframe.exception_frames, oldframe.last_reference
             callargs = oldframe.callargs
             last_exception, pc = oldframe.last_exception, oldframe.pc
-            # for check_isdefined to work properly, we need locals and sparams to start out unassigned
-            resize!(resize!(locals, 0), length(code.slotflags))
+            resize!(locals, length(code.slotflags))
             resize!(ssavalues, ng)
+            # for check_isdefined to work properly, we need sparams to start out unassigned
             resize!(resize!(sparams, 0), length(meth.sparam_syms))
             empty!(exception_frames)
             empty!(last_reference)
@@ -572,6 +572,7 @@ function prepare_locals(framecode, argvals::Vector{Any})
     else
         code = framecode.code
         locals = Vector{Union{Nothing,Some{Any}}}(undef, length(code.slotflags))
+        fill!(locals, nothing)
         ssavalues = Vector{Any}(undef, length(code.code))
         sparams = Any[]
         exception_frames = Int[]
