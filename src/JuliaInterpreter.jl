@@ -360,7 +360,7 @@ function determine_method_for_expr(expr; enter_generated = false)
     # Can happen for thunks created by generated functions
     if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
         return nothing
-    elseif f === getproperty && allargs[2] <: Vararg
+    elseif f === getproperty && allargs[2] isa Type && allargs[2] <: Vararg
         return nothing  # https://github.com/JuliaLang/julia/issues/30995
     end
     return prepare_call(f, allargs; enter_generated=enter_generated)
