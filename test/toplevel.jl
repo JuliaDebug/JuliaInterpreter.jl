@@ -152,3 +152,28 @@ module Toplevel end
    JuliaInterpreter.interpret!(stack, Toplevel, ex)
    @test Toplevel.Testing.JuliaStackFrame === JuliaStackFrame
 end
+
+module LowerAnon
+ret = Ref{Any}(nothing)
+end
+
+@testset "Anonymous functions" begin
+    ex1 = quote
+        f = x -> parse(Int16, x)
+        ret[] = map(f, AbstractString[])
+    end
+    ex2 = quote
+        ret[] = map(x->parse(Int16, x), AbstractString[])
+    end
+    stack = JuliaStackFrame[]
+    function runtest(frame)
+        empty!(stack)
+        return JuliaInterpreter.finish_and_return!(stack, frame, true)
+    end
+    lower_incrementally(runtest, LowerAnon, ex1)
+    @test isa(LowerAnon.ret[], Vector{Int16})
+    LowerAnon.ret[] = nothing
+    lower_incrementally(runtest, LowerAnon, ex2)
+    @test isa(LowerAnon.ret[], Vector{Int16})
+    LowerAnon.ret[] = nothing
+end
