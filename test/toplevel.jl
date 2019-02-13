@@ -98,7 +98,7 @@ module Toplevel end
     @test @interpret(Toplevel.f3(1, :hi)) == 2
     @test @interpret(Toplevel.f3(UInt16(1), :hi)) == Symbol
     @test @interpret(Toplevel.f3(rand(2, 2), :hi, :there)) == 2
-    @test_throws ErrorException("no unique matching method found for the specified argument types") @interpret(Toplevel.f3([1.0], :hi, :there))
+    @test_throws MethodError @interpret(Toplevel.f3([1.0], :hi, :there))
     @test @interpret(Toplevel.f4(1, 1.0)) == 1
     @test @interpret(Toplevel.f4(1, 1)) == @interpret(Toplevel.f4(1)) == 2
     @test @interpret(Toplevel.f4(UInt(1), "hey", 2)) == 3
@@ -127,7 +127,7 @@ module Toplevel end
     @test @interpret(Toplevel.fouter(1)) === 2
     @test @interpret(Toplevel.feval1(1.0)) === 1
     @test @interpret(Toplevel.feval1(1.0f0)) === 1
-    @test_throws ErrorException("no unique matching method found for the specified argument types") @interpret(Toplevel.feval1(1))
+    @test_throws MethodError @interpret(Toplevel.feval1(1))
     @test @interpret(Toplevel.feval2(1.0, Int8(1))) == 2
     @test @interpret(length(s)) === nothing
     @test @interpret(size(s)) === nothing
@@ -151,4 +151,29 @@ module Toplevel end
    end
    JuliaInterpreter.interpret!(stack, Toplevel, ex)
    @test Toplevel.Testing.JuliaStackFrame === JuliaStackFrame
+end
+
+module LowerAnon
+ret = Ref{Any}(nothing)
+end
+
+@testset "Anonymous functions" begin
+    ex1 = quote
+        f = x -> parse(Int16, x)
+        ret[] = map(f, AbstractString[])
+    end
+    ex2 = quote
+        ret[] = map(x->parse(Int16, x), AbstractString[])
+    end
+    stack = JuliaStackFrame[]
+    function runtest(frame)
+        empty!(stack)
+        return JuliaInterpreter.finish_and_return!(stack, frame, true)
+    end
+    lower_incrementally(runtest, LowerAnon, ex1)
+    @test isa(LowerAnon.ret[], Vector{Int16})
+    LowerAnon.ret[] = nothing
+    lower_incrementally(runtest, LowerAnon, ex2)
+    @test isa(LowerAnon.ret[], Vector{Int16})
+    LowerAnon.ret[] = nothing
 end

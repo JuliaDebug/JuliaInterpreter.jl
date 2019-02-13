@@ -55,6 +55,16 @@ function lower_incrementally!(@nospecialize(f), docexprs, lex:: Expr, mod::Modul
             lower_incrementally!(f, docexprs, lex, mod, body)
         end
     else
+        # For map(x->x^2, a) we need to split out the anonymous function so that it
+        # gets defined prior to using it (essentially a world-age issue for inference)
+        if ex.head == :call || ex.head == :(=) && isa(ex.args[2], Expr) && ex.args[2].head == :call
+            fas = split_anonymous!(ex)
+            for fa in fas
+                lex1 = copy(lex)
+                push!(lex1.args, fa)
+                lower!(f, docexprs, mod, lex1)
+            end
+        end
         push!(lex.args, ex)
         lower!(f, docexprs, mod, lex)
         empty!(lex.args)
@@ -84,4 +94,20 @@ function lower!(@nospecialize(f), docexprs, mod::Module, ex::Expr)
         error("lowering did not produce a :thunk Expr")
     end
     return docexprs
+end
+
+split_anonymous!(ex) = split_anonymous!(Expr[], ex)
+function split_anonymous!(fs, ex)
+    for (i,a) in enumerate(ex.args)
+        if isa(a, Expr)
+            if a.head == :->
+                gs = gensym()
+                push!(fs, Expr(:(=), gs, a))
+                ex.args[i] = gs
+            else
+                split_anonymous!(fs, a)
+            end
+        end
+    end
+    return fs
 end

@@ -143,6 +143,15 @@ include("localmethtable.jl")
 include("interpret.jl")
 include("builtins.jl")
 
+function show_stackloc(io::IO, stack, frame, pc=frame.pc[])
+    indent = ""
+    for f in stack
+        println(io, indent, f.code.scope)
+        indent *= "  "
+    end
+    println(io, indent, frame.code.scope, ", pc = ", convert(Int, pc))
+end
+
 function moduleof(x)
     if isa(x, JuliaStackFrame)
         x = x.code.scope
@@ -234,6 +243,12 @@ function prepare_args(@nospecialize(f), allargs, kwargs)
     return f, allargs
 end
 
+function whichtt(tt)
+    m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), tt, typemax(UInt))
+    m === nothing && return nothing
+    return m.func::Method
+end
+
 """
     framecode, frameargs, lenv, argtypes = prepare_call(f, allargs; enter_generated=false)
 
@@ -274,21 +289,16 @@ Tuple{typeof(mymethod),Array{Float64,1}}
 ```
 """
 function prepare_call(@nospecialize(f), allargs; enter_generated = false)
-    args = allargs[2:end]
-    argtypes = Tuple{map(_Typeof,args)...}
-    method = try
-        which(f, argtypes)
-    catch err
-        @show typeof(f)
-        println(f)
-        println(argtypes)
-        rethrow(err)
+    argtypes = Tuple{map(_Typeof,allargs)...}
+    method = whichtt(argtypes)
+    if method === nothing
+        # Call it to generate the exact error
+        f(allargs[2:end]...)
     end
-    argtypes = Tuple{_Typeof(f), argtypes.parameters...}
     args = allargs
     sig = method.sig
     isa(method, TypeMapEntry) && (method = method.func)
-    if method ∈ compiled_methods
+    if method.module == Core.Compiler || method ∈ compiled_methods
         return Compiled()
     end
     # Get static parameters
@@ -445,8 +455,8 @@ function renumber_ssa!(stmts::Vector{Any}, ssalookup)
             stmts[i] = SSAValue(stmt.id)
         elseif isa(stmt, Expr)
             replace_ssa!(stmt, ssalookup)
-            if stmt.head == :gotoifnot && isa(stmt.args[2], Int)
-                stmt.args[2] = ssalookup[stmt.args[2]]
+            if (stmt.head == :gotoifnot || stmt.head == :enter) && isa(stmt.args[end], Int)
+                stmt.args[end] = ssalookup[stmt.args[end]]
             end
         end
     end
@@ -454,6 +464,7 @@ function renumber_ssa!(stmts::Vector{Any}, ssalookup)
 end
 
 function lookup_global_refs!(ex::Expr)
+    isexpr(ex, :isdefined) && return nothing
     for (i, a) in enumerate(ex.args)
         if isa(a, GlobalRef)
             r = getfield(a.mod, a.name)
@@ -462,6 +473,7 @@ function lookup_global_refs!(ex::Expr)
             lookup_global_refs!(a)
         end
     end
+    return nothing
 end
 
 """
@@ -539,9 +551,9 @@ function prepare_locals(framecode, argvals::Vector{Any})
             exception_frames, last_reference = oldframe.exception_frames, oldframe.last_reference
             callargs = oldframe.callargs
             last_exception, pc = oldframe.last_exception, oldframe.pc
-            # for check_isdefined to work properly, we need locals and sparams to start out unassigned
-            resize!(resize!(locals, 0), length(code.slotflags))
+            resize!(locals, length(code.slotflags))
             resize!(ssavalues, ng)
+            # for check_isdefined to work properly, we need sparams to start out unassigned
             resize!(resize!(sparams, 0), length(meth.sparam_syms))
             empty!(exception_frames)
             empty!(last_reference)
@@ -571,6 +583,7 @@ function prepare_locals(framecode, argvals::Vector{Any})
     else
         code = framecode.code
         locals = Vector{Union{Nothing,Some{Any}}}(undef, length(code.slotflags))
+        fill!(locals, nothing)
         ssavalues = Vector{Any}(undef, length(code.code))
         sparams = Any[]
         exception_frames = Int[]

@@ -117,3 +117,42 @@ frame = JuliaInterpreter.prepare_toplevel(Main, ex)
 JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
 
 @test @interpret Base.Math.DoubleFloat64(-0.5707963267948967, 4.9789962508669555e-17).hi ≈ -0.5707963267948967
+
+# ccall with cfunction
+fcfun(x::Int, y::Int) = 1
+ex = quote   # in lowered code, cf is a Symbol
+    cf = @eval @cfunction(fcfun, Int, (Int, Int))
+    ccall(cf, Int, (Int, Int), 1, 2)
+end
+frame = JuliaInterpreter.prepare_toplevel(Main, ex)
+@test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) == 1
+ex = quote
+    let   # in lowered code, cf is a SlotNumber
+        cf = @eval @cfunction(fcfun, Int, (Int, Int))
+        ccall(cf, Int, (Int, Int), 1, 2)
+    end
+end
+frame = JuliaInterpreter.prepare_toplevel(Main, ex)
+@test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) == 1
+
+# From Julia's test/ambiguous.jl. This tests whether we renumber :enter statements correctly.
+ambig(x, y) = 1
+ambig(x::Integer, y) = 2
+ambig(x, y::Integer) = 3
+ambig(x::Int, y::Int) = 4
+ambig(x::Number, y) = 5
+ex = quote
+    let
+        cf = @eval @cfunction(ambig, Int, (UInt8, Int))
+        @test_throws(MethodError, ccall(cf, Int, (UInt8, Int), 1, 2))
+    end
+end
+frame = JuliaInterpreter.prepare_toplevel(Main, ex)
+JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
+
+# Core.Compiler
+ex = quote
+    length(code_typed(fcfun, (Int, Int)))
+end
+frame = JuliaInterpreter.prepare_toplevel(Main, ex)
+@test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) == 1
