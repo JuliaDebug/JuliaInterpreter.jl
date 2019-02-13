@@ -1,8 +1,9 @@
+using JuliaInterpreter
 using JuliaInterpreter: JuliaStackFrame, JuliaProgramCounter, @lookup
 using JuliaInterpreter: finish_and_return!, @lookup, evaluate_call!, _step_expr!,
                         do_assignment!, getlhs, isassign, pc_expr, handle_err
 using Base.Meta: isexpr
-using Test
+using Test, Random
 
 # Execute a frame using Julia's regular compiled-code dispatch for any :call expressions
 runframe(frame, pc=frame.pc[]) = Some{Any}(finish_and_return!(Compiled(), frame, pc))
@@ -138,8 +139,10 @@ function abortline(ex::Expr)
             error("no LineNumberNodes in ", ex, "\nwith ", length(ex.args), " args")
         end
         abortline(ex.args[i])
-    elseif ex.head == :let || ex.head == :for
+    elseif ex.head == :let || ex.head == :for || ex.head == :if
         abortline(ex.args[2])
+    elseif ex.head == :call
+        error("aborted while running ", ex)
     else
         error("unhandled expr head ", ex.head, ":\n", ex)
     end
@@ -206,9 +209,95 @@ end
 limited_finish_and_return!(stack, frame, nstmts::Int, istoplevel::Bool) =
     limited_finish_and_return!(stack, frame, nstmts, frame.pc[], istoplevel)
 
-
 function limited_exec!(stack, newframe, refnstmts)
     ret, nleft = limited_finish_and_return!(stack, newframe, refnstmts[], newframe.pc[], false)
     refnstmts[] = nleft
     return ret
+end
+
+### Functions needed on workers for running tests
+
+function configure_test()
+    # To run tests efficiently, certain methods must be run in Compiled mode,
+    # in particular those that are used by the Test infrastructure
+    cm = JuliaInterpreter.compiled_methods
+    empty!(cm)
+    push!(cm, which(Test.eval_test, Tuple{Expr, Expr, LineNumberNode}))
+    push!(cm, which(Test.get_testset, Tuple{}))
+    push!(cm, which(Test.push_testset, Tuple{Test.AbstractTestSet}))
+    push!(cm, which(Test.pop_testset, Tuple{}))
+    for f in (Test.record, Test.finish)
+        for m in methods(f)
+            push!(cm, m)
+        end
+    end
+    push!(cm, which(Random.seed!, Tuple{Union{Integer,Vector{UInt32}}}))
+    push!(cm, which(copy!, Tuple{Random.MersenneTwister, Random.MersenneTwister}))
+    push!(cm, which(copy, Tuple{Random.MersenneTwister}))
+    push!(cm, which(Base.include, Tuple{Module, String}))
+    push!(cm, which(Base.show_backtrace, Tuple{IO, Vector}))
+    push!(cm, which(Base.show_backtrace, Tuple{IO, Vector{Any}}))
+end
+
+function runtest(frame, nstmts)
+    stack = JuliaStackFrame[]
+    # empty!(JuliaInterpreter.framedict)
+    # empty!(JuliaInterpreter.genframedict)
+    ret, nstmts = limited_finish_and_return!(stack, frame, nstmts, true)
+    return ret
+end
+
+function dotest(test, fullpath, nstmts)
+    println("Working on ", test, "...")
+    mod = Core.eval(Main, :(
+        module JuliaTests
+        using Test, Random
+        end
+        ))
+    ex = read_and_parse(fullpath)
+    isexpr(ex, :error) && @error "error parsing $test: $ex"
+    # so `include` works properly, we have to set up the relative path
+    # oldpath = current_task().storage[:SOURCE_PATH]
+    local ts, aborts
+    try
+        # current_task().storage[:SOURCE_PATH] = fullpath
+        cd(dirname(fullpath)) do
+            ts = Test.DefaultTestSet(test)
+            Test.push_testset(ts)
+            docexprs, aborts = lower_incrementally(frame->runtest(frame, nstmts), mod, ex)
+            # Core.eval(JuliaTests, ex)
+        end
+    finally
+        # current_task().storage[:SOURCE_PATH] = oldpath
+    end
+    println("Finished ", test)
+    return ts, aborts
+end
+
+# Run a test in process id 1 (i.e., the main Julia process)
+function dotest1(test, fullpath, nstmts)
+    println("Working on ", test, "...")
+    mod = Core.eval(Main, :(
+        module JuliaTests
+        using Test, Random
+        end
+        ))
+    ex = read_and_parse(fullpath)
+    isexpr(ex, :error) && @error "error parsing $test: $ex"
+    # so `include` works properly, we have to set up the relative path
+    oldpath = current_task().storage[:SOURCE_PATH]
+    local ts, aborts
+    try
+        current_task().storage[:SOURCE_PATH] = fullpath
+        cd(dirname(fullpath)) do
+            ts = Test.DefaultTestSet(test)
+            Test.push_testset(ts)
+            docexprs, aborts = lower_incrementally(frame->runtest(frame, nstmts), mod, ex)
+            # Core.eval(JuliaTests, ex)
+        end
+    finally
+        current_task().storage[:SOURCE_PATH] = oldpath
+    end
+    println("Finished ", test)
+    return ts, aborts
 end

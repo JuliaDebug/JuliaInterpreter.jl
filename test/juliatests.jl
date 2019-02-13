@@ -1,5 +1,7 @@
 using JuliaInterpreter
-using Test, Random, InteractiveUtils
+using Test, Random, InteractiveUtils, Distributed
+
+# Much of this file is taken from Julia's test/runtests.jl file.
 
 if !isdefined(Main, :read_and_parse)
     include("utils.jl")
@@ -11,6 +13,19 @@ if isdir(testdir)
     include(joinpath(testdir, "choosetests.jl"))
 else
     @error "Julia's test/ directory not found, can't run Julia tests"
+end
+
+function test_path(test)
+    t = split(test, '/')
+    if t[1] in STDLIBS
+        if length(t) == 2
+            return joinpath(STDLIB_DIR, t[1], "test", t[2])
+        else
+            return joinpath(STDLIB_DIR, t[1], "test", "runtests")
+        end
+    else
+        return joinpath(testdir, test)
+    end
 end
 
 nstmts = 10^4  # very quick, aborts a lot
@@ -26,91 +41,83 @@ while i <= length(ARGS)
     end
 end
 
-module JuliaTests
-using Test
+tests, _, exit_on_error, seed = choosetests(ARGS)
+
+function spin_up_workers(n)
+    procs = addprocs(n)
+    @sync begin
+        @async for p in procs
+            remotecall_wait(include, p, "utils.jl")
+            remotecall_wait(configure_test, p)
+        end
+    end
+    return procs
 end
 
+# Really, we're just going to skip all the tests that run on node1
+const node1_tests = String[]
+function move_to_node1(t)
+    if t in tests
+        splice!(tests, findfirst(isequal(t), tests))
+        push!(node1_tests, t)
+    end
+    nothing
+end
+move_to_node1("precompile")
+move_to_node1("SharedArrays")
+move_to_node1("stress")
+move_to_node1("Distributed")
+
 @testset "Julia tests" begin
-    # To do this efficiently, certain methods must be run in Compiled mode
-    cm = JuliaInterpreter.compiled_methods
-    empty!(cm)
-    push!(cm, which(Test.eval_test, Tuple{Expr, Expr, LineNumberNode}))
-    push!(cm, which(Test.get_testset, Tuple{}))
-    push!(cm, which(Test.push_testset, Tuple{Test.AbstractTestSet}))
-    push!(cm, which(Test.pop_testset, Tuple{}))
-    for f in (Test.record, Test.finish)
-        for m in methods(f)
-            push!(cm, m)
-        end
-    end
-    push!(cm, which(Random.seed!, Tuple{Union{Integer,Vector{UInt32}}}))
-    push!(cm, which(copy!, Tuple{Random.MersenneTwister, Random.MersenneTwister}))
-    push!(cm, which(copy, Tuple{Random.MersenneTwister}))
-    push!(cm, which(Base.include, Tuple{Module, String}))
-    push!(cm, which(Base.show_backtrace, Tuple{IO, Vector}))
-    push!(cm, which(Base.show_backtrace, Tuple{IO, Vector{Any}}))
-
-    function runtest(frame, nstmts)
-        stack = JuliaStackFrame[]
-        # empty!(JuliaInterpreter.framedict)
-        # empty!(JuliaInterpreter.genframedict)
-        ret, nstmts = limited_finish_and_return!(stack, frame, nstmts, true)
-        return ret
-    end
-    function dotest!(test, nstmts)
-        println("Working on ", test, "...")
-        fullpath = joinpath(testdir, test)*".jl"
-        ex = read_and_parse(fullpath)
-        # so `include` works properly, we have to set up the relative path
-        oldpath = current_task().storage[:SOURCE_PATH]
-        if isexpr(ex, :error)
-            @error "error parsing $test: $ex"
-        else
-            local ts, aborts
-            try
-                current_task().storage[:SOURCE_PATH] = fullpath
-                ts = Test.DefaultTestSet(test)
-                Test.push_testset(ts)
-                docexprs, aborts = lower_incrementally(frame->runtest(frame, nstmts), JuliaTests, ex)
-                # Core.eval(JuliaTests, ex)
-                println("Finished ", test)
-            finally
-                current_task().storage[:SOURCE_PATH] = oldpath
-            end
-            return ts, aborts
-        end
-    end
-
-    allts = Test.DefaultTestSet[]
-    allaborts = Vector{LineNumberNode}[]
-    succeeded = Bool[]
-    if isdir(testdir)
-        tests, _ = choosetests(ARGS)
-        for test in tests
-            try
-                ts, aborts = dotest!(test, nstmts)
-                push!(allts, ts)
-                push!(allaborts, aborts)
-                push!(succeeded, true)
-            catch err
-                push!(allts, Test.DefaultTestSet(test))
-                push!(allaborts, LineNumberNode[])
-                push!(succeeded, false)
+    nworkers = min(Sys.CPU_THREADS, length(tests))
+    println("Using $nworkers workers")
+    procs = spin_up_workers(nworkers)
+    results = Dict{String,Any}()
+    tests0 = copy(tests)
+    @sync begin
+        for p in procs
+            @async begin
+                while length(tests) > 0
+                    test = popfirst!(tests)
+                    local resp
+                    wrkr = p
+                    fullpath = test_path(test*".jl")
+                    try
+                        resp = remotecall_fetch(dotest, p, test, fullpath, nstmts)
+                    catch e
+                        isa(e, InterruptException) && return
+                        resp = e
+                        if isa(e, ProcessExitedException)
+                            p = spin_up_workers(1)[1]
+                        end
+                    end
+                    results[test] = resp
+                    if resp isa Exception && exit_on_error
+                        skipped = length(tests)
+                        empty!(tests)
+                    end
+                end
             end
         end
     end
+
     open("results.md", "w") do io
         versioninfo(io)
         println(io, "Maximum number of statements per lowered expression: ", nstmts)
         println(io)
         println(io, "| Test file | Passes | Fails | Errors | Broken | Aborted blocks |")
         println(io, "| --------- | ------:| -----:| ------:| ------:| --------------:|")
-        for (test, ts, aborts, succ) in zip(tests, allts, allaborts, succeeded)
-            if succ
+        for test in tests0
+            result = results[test]
+            if isa(result, Tuple{Test.AbstractTestSet, Vector})
+                ts, aborts = result
                 passes, fails, errors, broken, c_passes, c_fails, c_errors, c_broken = Test.get_test_counts(ts)
                 naborts = length(aborts)
                 println(io, "| ", test, " | ", passes+c_passes, " | ", fails+c_fails, " | ", errors+c_errors, " | ", broken+c_broken, " | ", naborts, " |")
+            elseif isa(result, ProcessExitedException)
+                println(io, "| ", test, " | ☠️ | ☠️ | ☠️ | ☠️ | ☠️ |")
             else
+                println(test, " => ", result)
                 println(io, "| ", test, " | X | X | X | X | X |")
             end
         end
