@@ -157,7 +157,7 @@ function evaluate_foreigncall!(stack, frame::JuliaStackFrame, call_expr::Expr, p
     return Core.eval(moduleof(frame), Expr(:foreigncall, args...))
 end
 
-function evaluate_call!(::Compiled, frame::JuliaStackFrame, call_expr::Expr, pc)
+function evaluate_call!(::Compiled, frame::JuliaStackFrame, call_expr::Expr, pc;  #=unused=# exec!::Function=finish_and_return!)
     ret = maybe_evaluate_builtin(frame, call_expr)
     isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(frame, call_expr)
@@ -172,7 +172,7 @@ function evaluate_call!(::Compiled, frame::JuliaStackFrame, call_expr::Expr, pc)
     return ret
 end
 
-function evaluate_call!(stack, frame::JuliaStackFrame, call_expr::Expr, pc)
+function evaluate_call!(stack, frame::JuliaStackFrame, call_expr::Expr, pc; exec!::Function=finish_and_return!)
     ret = maybe_evaluate_builtin(frame, call_expr)
     isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(frame, call_expr)
@@ -193,7 +193,7 @@ function evaluate_call!(stack, frame::JuliaStackFrame, call_expr::Expr, pc)
     frame.pc[] = pc  # to mark position in the frame (e.g., if we hit breakpoint or error)
     push!(stack, frame)
     newframe = build_frame(framecode, fargs, lenv)
-    ret = finish_and_return!(stack, newframe)
+    ret = exec!(stack, newframe)
     pop!(stack)
     push!(junk, newframe)  # rather than going through GC, just re-use it
     return ret
@@ -419,20 +419,7 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
             rhs = @lookup(frame, node)
         end
     catch err
-        # Check for world age errors, which generally indicate a failure to go back to toplevel
-        if isa(err, MethodError)
-            is_arg_types = isa(err.args, DataType)
-            arg_types = is_arg_types ? err.args : Base.typesof(err.args...)
-            if (err.world != typemax(UInt) &&
-                hasmethod(err.f, arg_types) &&
-                !hasmethod(err.f, arg_types, world = err.world))
-                @warn "likely failure to return to toplevel, try Base.invokelatest"
-                rethrow(err)
-            end
-        end
-        isempty(frame.exception_frames) && rethrow(err)
-        frame.last_exception[] = err
-        return JuliaProgramCounter(frame.exception_frames[end])
+        return handle_err(frame, err)
     end
     if isassign(frame, pc)
         if !@isdefined(rhs)
@@ -459,6 +446,23 @@ function step_expr!(stack, frame, istoplevel::Bool=false)
     pc = _step_expr!(stack, frame, frame.pc[], istoplevel)
     pc === nothing && return nothing
     frame.pc[] = pc
+end
+
+function handle_err(frame, err)
+    # Check for world age errors, which generally indicate a failure to go back to toplevel
+    if isa(err, MethodError)
+        is_arg_types = isa(err.args, DataType)
+        arg_types = is_arg_types ? err.args : Base.typesof(err.args...)
+        if (err.world != typemax(UInt) &&
+            hasmethod(err.f, arg_types) &&
+            !hasmethod(err.f, arg_types, world = err.world))
+            @warn "likely failure to return to toplevel, try Base.invokelatest"
+            rethrow(err)
+        end
+    end
+    isempty(frame.exception_frames) && rethrow(err)
+    frame.last_exception[] = err
+    return JuliaProgramCounter(frame.exception_frames[end])
 end
 
 """
@@ -491,7 +495,7 @@ Optionally supply the starting `pc`, if you don't want to start at the current l
 function finish_and_return!(stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::Bool=false)
     pc = finish!(stack, frame, pc, istoplevel)
     node = pc_expr(frame, pc)
-    isexpr(node, :return) || error("unexpected node ", node)
+    isexpr(node, :return) || error("unexpected return statement ", node)
     return @lookup(frame, (node::Expr).args[1])
 end
 finish_and_return!(stack, frame, istoplevel::Bool) = finish_and_return!(stack, frame, frame.pc[], istoplevel)

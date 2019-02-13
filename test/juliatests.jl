@@ -38,7 +38,8 @@ end
         empty!(stack)
         # empty!(JuliaInterpreter.framedict)
         # empty!(JuliaInterpreter.genframedict)
-        return JuliaInterpreter.finish_and_return!(stack, frame, true)
+        ret, nstmts = limited_finish_and_return!(stack, frame, 10^4, true)
+        return ret
     end
     function dotest!(test)
         println("Working on ", test, "...")

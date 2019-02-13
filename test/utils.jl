@@ -1,4 +1,6 @@
-using JuliaInterpreter: JuliaStackFrame, finish_and_return!
+using JuliaInterpreter: JuliaStackFrame, JuliaProgramCounter, @lookup
+using JuliaInterpreter: finish_and_return!, @lookup, evaluate_call!, _step_expr!,
+                        do_assignment!, getlhs, isassign, pc_expr, handle_err
 using Base.Meta: isexpr
 
 # Execute a frame using Julia's regular compiled-code dispatch for any :call expressions
@@ -62,7 +64,7 @@ function lower_incrementally!(@nospecialize(f), docexprs, lex:: Expr, mod::Modul
             for fa in fas
                 lex1 = copy(lex)
                 push!(lex1.args, fa)
-                lower!(f, docexprs, mod, lex1)
+                lower!(f, docexprs, aborts, mod, lex1)
             end
         end
         push!(lex.args, ex)
@@ -86,7 +88,8 @@ function lower!(@nospecialize(f), docexprs, mod::Module, ex::Expr)
     lwr = Meta.lower(mod, ex)
     if isexpr(lwr, :thunk)
         frame = JuliaInterpreter.prepare_thunk(mod, lwr)
-        Base.invokelatest(f, frame)  # if previous thunks define new methods, we need to update world age
+        ret = Base.invokelatest(f, frame)  # if previous thunks define new methods, we need to update world age
+        isa(ret, Aborted) && abortwarn(ex)
     elseif isa(lwr, Expr) && (lwr.head == :export || lwr.head == :using || lwr.head == :import)
     elseif isa(lwr, Symbol) || isa(lwr, Nothing)
     else
@@ -110,4 +113,91 @@ function split_anonymous!(fs, ex)
         end
     end
     return fs
+end
+
+struct Aborted end  # for signaling that some statement or test blocks were interrupted
+
+function abortwarn(ex::Expr)
+    if ex.head == :macrocall
+        abortwarn(ex.args[2])
+    elseif ex.head == :block
+        i = findfirst(x->isa(x, LineNumberNode), ex.args)
+        if i === nothing
+            length(ex.args) == 1 && return abortwarn(ex.args[1])
+            error("no LineNumberNodes in ", ex, "\nwith ", length(ex.args), " args")
+        end
+        abortwarn(ex.args[i])
+    elseif ex.head == :let || ex.head == :for
+        abortwarn(ex.args[2])
+    else
+        error("unhandled expr head ", ex.head, ":\n", ex)
+    end
+end
+abortwarn(lnn::LineNumberNode) = @warn("Aborted at $lnn")
+
+"""
+    ret = limited_finish_and_return!(stack, frame, nstmts, istoplevel::Bool)
+
+Run `frame` until execution terminates or more than `nstmts` have been executed,
+and pass back the computed return value. `stack` controls call evaluation; `stack = Compiled()`
+evaluates :call expressions by normal dispatch, whereas a vector of `JuliaStackFrames`
+will use recursive interpretation.
+"""
+function limited_finish_and_return!(stack, frame, nstmts::Int, pc::JuliaProgramCounter, istoplevel::Bool)
+    refnstmts = Ref(nstmts)
+    limexec!(s,f) = limited_exec!(s, f, refnstmts)
+    # The following is like finish!, except we intercept :call expressions so that we can run them
+    # with limexec! rather than the default finish_and_return!
+    while nstmts > 0
+        stmt = pc_expr(frame, pc)
+        if isa(stmt, Expr)
+            if stmt.head == :call
+                refnstmts[] = nstmts
+                try
+                    rhs = evaluate_call!(stack, frame, stmt, pc; exec! = limexec!)
+                    if isassign(frame, pc)
+                        lhs = getlhs(pc)
+                        do_assignment!(frame, lhs, rhs)
+                    end
+                catch err
+                    return handle_err(frame, err), refnstmts[]
+                end
+                nstmts = refnstmts[]
+                new_pc = pc + 1
+            elseif stmt.head == :(=) && isexpr(stmt.args[2], :call)
+                refnstmts[] = nstmts
+                try
+                    rhs = evaluate_call!(stack, frame, stmt.args[2], pc; exec! = limexec!)
+                    do_assignment!(frame, stmt.args[1], rhs)
+                catch err
+                    return handle_err(frame, err), refnstmts[]
+                end
+                nstmts = refnstmts[]
+                new_pc = pc + 1
+            else
+                new_pc = _step_expr!(stack, frame, stmt, pc, istoplevel)
+                nstmts -= 1
+            end
+        else
+            new_pc = _step_expr!(stack, frame, stmt, pc, istoplevel)
+            nstmts -= 1
+        end
+        new_pc == nothing && break
+        pc = new_pc
+    end
+    frame.pc[] = pc
+    # Handle the return
+    stmt = pc_expr(frame, pc)
+    isexpr(stmt, :return) && return @lookup(frame, (stmt::Expr).args[1]), nstmts
+    nstmts == 0 && return Aborted(), nstmts
+    error("unexpected return statement ", stmt)
+end
+limited_finish_and_return!(stack, frame, nstmts::Int, istoplevel::Bool) =
+    limited_finish_and_return!(stack, frame, nstmts, frame.pc[], istoplevel)
+
+
+function limited_exec!(stack, newframe, refnstmts)
+    ret, nleft = limited_finish_and_return!(stack, newframe, refnstmts[], newframe.pc[], false)
+    refnstmts[] = nleft
+    return ret
 end
