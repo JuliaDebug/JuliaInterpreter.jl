@@ -333,6 +333,8 @@ end
 
 function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter, istoplevel::Bool)
     local rhs
+    # show_stackloc(stack, frame, pc)
+    # @show node
     try
         if isa(node, Expr)
             if node.head == :(=)

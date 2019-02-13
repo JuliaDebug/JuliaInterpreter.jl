@@ -151,6 +151,7 @@ function show_stackloc(io::IO, stack, frame, pc=frame.pc[])
     end
     println(io, indent, frame.code.scope, ", pc = ", convert(Int, pc))
 end
+show_stackloc(stack, frame, pc=frame.pc[]) = show_stackloc(stderr, stack, frame, pc)
 
 function moduleof(x)
     if isa(x, JuliaStackFrame)
