@@ -464,6 +464,7 @@ function renumber_ssa!(stmts::Vector{Any}, ssalookup)
 end
 
 function lookup_global_refs!(ex::Expr)
+    isexpr(ex, :isdefined) && return nothing
     for (i, a) in enumerate(ex.args)
         if isa(a, GlobalRef)
             r = getfield(a.mod, a.name)
@@ -472,6 +473,7 @@ function lookup_global_refs!(ex::Expr)
             lookup_global_refs!(a)
         end
     end
+    return nothing
 end
 
 """

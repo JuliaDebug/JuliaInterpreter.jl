@@ -323,7 +323,7 @@ function check_isdefined(frame, node)
     elseif isexpr(node, :static_parameter)
         return isassigned(frame.sparams, node.args[1]::Int)
     elseif isa(node, GlobalRef)
-        return isdefined(ref.mod, ref.name)
+        return isdefined(node.mod, node.name)
     elseif isa(node, Symbol)
         return isdefined(moduleof(frame), node)
     end
