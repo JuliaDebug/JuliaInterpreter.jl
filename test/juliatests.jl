@@ -35,6 +35,7 @@ end
                 lower_incrementally(runtest, JuliaTests, ex)
                 println("Succeeded on ", test)
             catch err
+                err isa InterruptException && rethrow(err)
                 @show test err
                 push!(failed, (test, err))
                 # rethrow(err)
