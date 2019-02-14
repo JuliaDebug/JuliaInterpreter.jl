@@ -97,6 +97,8 @@ end
 @test @interpret(Vararg.body.body.name) === Vararg.body.body.name
 frame = JuliaInterpreter.prepare_toplevel(Main, :(Vararg.body.body.name))
 @test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) === Vararg.body.body.name
+frame = JuliaInterpreter.prepare_toplevel(Base, :(Union{AbstractChar,Tuple{Vararg{<:AbstractChar}},AbstractVector{<:AbstractChar},Set{<:AbstractChar}}))
+@test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) isa Union
 
 # issue #8
 ex = quote

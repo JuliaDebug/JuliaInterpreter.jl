@@ -290,6 +290,12 @@ Tuple{typeof(mymethod),Array{Float64,1}}
 ```
 """
 function prepare_call(@nospecialize(f), allargs; enter_generated = false)
+    # Can happen for thunks created by generated functions
+    if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
+        return nothing
+    elseif any(x->isa(x, Type) && x <: Vararg, allargs)
+        return nothing  # https://github.com/JuliaLang/julia/issues/30995
+    end
     argtypes = Tuple{map(_Typeof,allargs)...}
     method = whichtt(argtypes)
     if method === nothing
@@ -377,12 +383,6 @@ function determine_method_for_expr(expr; enter_generated = false)
         kwargs = splice!(allargs, 2)
     end
     f, allargs = prepare_args(f, allargs, kwargs.args)
-    # Can happen for thunks created by generated functions
-    if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
-        return nothing
-    elseif f === getproperty && allargs[2] isa Type && allargs[2] <: Vararg
-        return nothing  # https://github.com/JuliaLang/julia/issues/30995
-    end
     return prepare_call(f, allargs; enter_generated=enter_generated)
 end
 
