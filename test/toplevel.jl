@@ -153,6 +153,21 @@ module Toplevel end
    @test Toplevel.Testing.JuliaStackFrame === JuliaStackFrame
 end
 
+@testset "Enum" begin
+    ex = quote
+        @enum MPFRRoundingMode begin
+            MPFRRoundNearest
+            MPFRRoundToZero
+            MPFRRoundUp
+            MPFRRoundDown
+            MPFRRoundFromZero
+            MPFRRoundFaithful
+        end
+    end
+    frame = JuliaInterpreter.prepare_toplevel(Toplevel, ex)
+    @test_broken JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
+end
+
 module LowerAnon
 ret = Ref{Any}(nothing)
 end
@@ -176,4 +191,18 @@ end
     lower_incrementally(runtest, LowerAnon, ex2)
     @test isa(LowerAnon.ret[], Vector{Int16})
     LowerAnon.ret[] = nothing
+
+    ex3 = quote
+        const BitIntegerType = Union{map(T->Type{T}, Base.BitInteger_types)...}
+    end
+    lower_incrementally(runtest, LowerAnon, ex3)
+    @test isa(LowerAnon.BitIntegerType, Union)
+
+    ex4 = quote
+        y = 3
+        z = map(x->x^2+y, [1,2,3])
+        y = 4
+    end
+    lower_incrementally(runtest, LowerAnon, ex4)
+    @test LowerAnon.z == [4,7,12]
 end
