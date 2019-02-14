@@ -218,7 +218,7 @@ function evaluate_methoddef!(stack, frame, node, pc)
     end
     length(node.args) == 1 && return f
     sig = @lookup(frame, node.args[2])::SimpleVector
-    body = @lookup(frame, node.args[3])::CodeInfo
+    body = @lookup(frame, node.args[3])
     ccall(:jl_method_def, Cvoid, (Any, Any, Any), sig, body, moduleof(frame))
     return nothing
 end
@@ -303,8 +303,8 @@ function eval_rhs(stack, frame, node::Expr, pc)
     elseif head == :foreigncall
         return evaluate_foreigncall!(stack, frame, node, pc)
     elseif head == :copyast
-        qn = node.args[1]::QuoteNode
-        return copy(qn.value::Expr)
+        val = (node.args[1]::QuoteNode).value
+        return isa(val, Expr) ? copy(val) : val
     elseif head == :enter
         return length(frame.exception_frames)
     elseif head == :boundscheck
