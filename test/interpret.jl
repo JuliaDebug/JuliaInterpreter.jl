@@ -191,3 +191,8 @@ end
 frame = JuliaInterpreter.prepare_toplevel(Isolated, ex)
 JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
 @test Isolated.CodegenParams(cached=false).cached === Cint(false)
+
+# cglobal
+val = @interpret(BigInt())
+@test isa(val, BigInt) && val == 0
+@test isa(@interpret(Base.GMP.version()), VersionNumber)

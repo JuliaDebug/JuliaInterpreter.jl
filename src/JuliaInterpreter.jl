@@ -418,7 +418,11 @@ function extract_inner_call!(stmt, idx, once::Bool=false)
     once |= stmt.head ∈ calllike
     for (i, a) in enumerate(stmt.args)
         isa(a, Expr) || continue
-        if stmt.head == :foreigncall && i == 1
+        # Make sure we don't "damage" special syntax that requires literals
+        if i == 1 && stmt.head == :foreigncall
+            continue
+        end
+        if i == 2 && stmt.head == :call && stmt.args[1] == :cglobal
             continue
         end
         ret = extract_inner_call!(a, idx, once) # doing this first extracts innermost calls
@@ -498,15 +502,8 @@ function optimize!(code::CodeInfo, mod::Module)
         if isa(stmt, GlobalRef)
             code.code[i] = QuoteNode(getfield(stmt.mod, stmt.name))
         elseif isa(stmt, Expr)
-            if stmt.head == :call && isa(stmt.args[1], GlobalRef)
-                # Special handling of cglobal, which requires constants for its arguments
-                r = stmt.args[1]::GlobalRef
-                f = getfield(r.mod, r.name)
-                if f === Base.cglobal
-                    code.code[i] = QuoteNode(Core.eval(mod, stmt))
-                else
-                    lookup_global_refs!(stmt)
-                end
+            if stmt.head == :call && stmt.args[1] == :cglobal  # cglobal requires literals
+                continue
             else
                 lookup_global_refs!(stmt)
             end
