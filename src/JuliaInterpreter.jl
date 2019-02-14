@@ -234,7 +234,6 @@ julia> JuliaInterpreter.prepare_args(mymethod, [mymethod, 1, 2], [:verbose=>true
 """
 function prepare_args(@nospecialize(f), allargs, kwargs)
     if !isempty(kwargs)
-        of = f
         f = Core.kwfunc(f)
         allargs = [f,namedtuple(kwargs),allargs...]
     elseif f === Core._apply
