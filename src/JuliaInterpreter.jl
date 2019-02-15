@@ -805,6 +805,8 @@ function extract_args(__module__, ex0)
                 filter(x->!isexpr(x, :kw),ex0.args))...)
         elseif ex0.head == :.
             return Expr(:tuple, :getproperty, ex0.args...)
+        elseif ex0.head == :(<:)
+            return Expr(:tuple, :(<:), ex0.args...)
         else
             return Expr(:tuple,
                 map(x->isexpr(x,:parameters) ? QuoteNode(x) : x, ex0.args)...)
@@ -883,7 +885,7 @@ macro interpret(arg)
     quote
         theargs = $(esc(args))
         stack = JuliaStackFrame[]
-        frame = JuliaInterpreter.enter_call_expr(Expr(:call,theargs...))
+        frame = JuliaInterpreter.enter_call_expr(Expr(:call, theargs...))
         if frame === nothing
             return eval(Expr(:call, map(QuoteNode, theargs)...))
         end

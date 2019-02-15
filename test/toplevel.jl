@@ -141,6 +141,7 @@ module Toplevel end
     @test @interpret(Toplevel.Inner.g()) == 5
     @test @interpret(Toplevel.Inner.InnerInner.g()) == 6
     @test @interpret(isdefined(Toplevel, :Beat))
+    @test @interpret(Toplevel.Beat <: Toplevel.DatesMod.Period)
 
     # Check that nested expressions are handled appropriately (module-in-block, internal `using`)
     ex = quote
