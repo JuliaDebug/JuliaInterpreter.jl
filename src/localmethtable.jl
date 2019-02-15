@@ -48,22 +48,9 @@ function get_call_framecode(fargs, parentframe::JuliaFrameCode, idx::Int)
     end
     # We haven't yet encountered this argtype combination and need to look it up by dispatch
     fargs[1] = f = to_function(fargs[1])
-    if isa(f, Core.Builtin)
-        # See TODO in optimize!
-        return f(fargs[2:end]...), nothing  # for code that has a direct call to a builtin
-    end
-    if f === getproperty && isa(fargs[2], Type) && fargs[2] <: Vararg # https://github.com/JuliaLang/julia/issues/30995
-        return getproperty(fargs[2:end]...), nothing
-    end
-    # HACK: don't recurse into inference. Inference sometimes returns SSAValue objects and this
-    # seems to confuse lookup_var.
-    if f === Base._return_type
-        return Base._return_type(fargs[2:end]...), nothing
-    end
     ret = prepare_call(f, fargs)
-    if isa(ret, Compiled)
-        return ret, nothing
-    end
+    ret === nothing && return f(fargs[2:end]...), nothing
+    isa(ret, Compiled) && return ret, nothing
     framecode, args, env, argtypes = ret
     # Store the results of the method lookup in the local method table
     tme = ccall(:jl_new_struct_uninit, Any, (Any,), TypeMapEntry)::TypeMapEntry

@@ -129,6 +129,20 @@ function maybe_evaluate_builtin(frame, call_expr)
         isdefined(Base, fsym) || (println("skipping ", fname); continue)
         f = getfield(Base, fsym)
         f isa Core.IntrinsicFunction || error("not an intrinsic")
+        if f == cglobal
+            print(io,
+"""
+    elseif f === Base.cglobal
+        if nargs == 1
+            return Some{Any}(Core.eval(moduleof(frame), call_expr))
+        elseif nargs == 2
+            call_expr = copy(call_expr)
+            call_expr.args[3] = @lookup(frame, args[3])
+            return Some{Any}(Core.eval(moduleof(frame), call_expr))
+        end
+""")
+            continue
+        end
         id = reinterpret(Int32, f) + 1
         f = isdefined(Base, fsym) ? "Base.$fsym" :
             isdefined(Core, fsym) ? "Core.$fsym" : error("whoops on $f")

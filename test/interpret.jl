@@ -2,6 +2,7 @@ using JuliaInterpreter
 using JuliaInterpreter: enter_call_expr
 using Test
 
+module Isolated end
 
 function summer(A)
     s = zero(eltype(A))
@@ -96,6 +97,8 @@ end
 @test @interpret(Vararg.body.body.name) === Vararg.body.body.name
 frame = JuliaInterpreter.prepare_toplevel(Main, :(Vararg.body.body.name))
 @test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) === Vararg.body.body.name
+frame = JuliaInterpreter.prepare_toplevel(Base, :(Union{AbstractChar,Tuple{Vararg{<:AbstractChar}},AbstractVector{<:AbstractChar},Set{<:AbstractChar}}))
+@test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) isa Union
 
 # issue #8
 ex = quote
@@ -156,3 +159,40 @@ ex = quote
 end
 frame = JuliaInterpreter.prepare_toplevel(Main, ex)
 @test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) == 1
+
+# copyast
+ex = quote
+    struct CodegenParams
+        cached::Cint
+
+        track_allocations::Cint
+        code_coverage::Cint
+        static_alloc::Cint
+        prefer_specsig::Cint
+
+        module_setup::Any
+        module_activation::Any
+        raise_exception::Any
+        emit_function::Any
+        emitted_function::Any
+
+        CodegenParams(;cached::Bool=true,
+                       track_allocations::Bool=true, code_coverage::Bool=true,
+                       static_alloc::Bool=true, prefer_specsig::Bool=false,
+                       module_setup=nothing, module_activation=nothing, raise_exception=nothing,
+                       emit_function=nothing, emitted_function=nothing) =
+            new(Cint(cached),
+                Cint(track_allocations), Cint(code_coverage),
+                Cint(static_alloc), Cint(prefer_specsig),
+                module_setup, module_activation, raise_exception,
+                emit_function, emitted_function)
+    end
+end
+frame = JuliaInterpreter.prepare_toplevel(Isolated, ex)
+JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
+@test Isolated.CodegenParams(cached=false).cached === Cint(false)
+
+# cglobal
+val = @interpret(BigInt())
+@test isa(val, BigInt) && val == 0
+@test isa(@interpret(Base.GMP.version()), VersionNumber)

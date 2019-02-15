@@ -289,6 +289,12 @@ Tuple{typeof(mymethod),Array{Float64,1}}
 ```
 """
 function prepare_call(@nospecialize(f), allargs; enter_generated = false)
+    # Can happen for thunks created by generated functions
+    if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
+        return nothing
+    elseif any(x->isa(x, Type) && x <: Vararg, allargs)
+        return nothing  # https://github.com/JuliaLang/julia/issues/30995
+    end
     argtypes = Tuple{map(_Typeof,allargs)...}
     method = whichtt(argtypes)
     if method === nothing
@@ -376,12 +382,6 @@ function determine_method_for_expr(expr; enter_generated = false)
         kwargs = splice!(allargs, 2)
     end
     f, allargs = prepare_args(f, allargs, kwargs.args)
-    # Can happen for thunks created by generated functions
-    if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
-        return nothing
-    elseif f === getproperty && allargs[2] isa Type && allargs[2] <: Vararg
-        return nothing  # https://github.com/JuliaLang/julia/issues/30995
-    end
     return prepare_call(f, allargs; enter_generated=enter_generated)
 end
 
@@ -417,7 +417,11 @@ function extract_inner_call!(stmt, idx, once::Bool=false)
     once |= stmt.head ∈ calllike
     for (i, a) in enumerate(stmt.args)
         isa(a, Expr) || continue
-        if stmt.head == :foreigncall && i == 1
+        # Make sure we don't "damage" special syntax that requires literals
+        if i == 1 && stmt.head == :foreigncall
+            continue
+        end
+        if i == 2 && stmt.head == :call && stmt.args[1] == :cglobal
             continue
         end
         ret = extract_inner_call!(a, idx, once) # doing this first extracts innermost calls
@@ -497,15 +501,8 @@ function optimize!(code::CodeInfo, mod::Module)
         if isa(stmt, GlobalRef)
             code.code[i] = QuoteNode(getfield(stmt.mod, stmt.name))
         elseif isa(stmt, Expr)
-            if stmt.head == :call && isa(stmt.args[1], GlobalRef)
-                # Special handling of cglobal, which requires constants for its arguments
-                r = stmt.args[1]::GlobalRef
-                f = getfield(r.mod, r.name)
-                if f === Base.cglobal
-                    code.code[i] = QuoteNode(Core.eval(mod, stmt))
-                else
-                    lookup_global_refs!(stmt)
-                end
+            if stmt.head == :call && stmt.args[1] == :cglobal  # cglobal requires literals
+                continue
             else
                 lookup_global_refs!(stmt)
             end
