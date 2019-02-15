@@ -498,11 +498,15 @@ Optionally supply the starting `pc`, if you don't want to start at the current l
 """
 function finish_and_return!(stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::Bool=false)
     pc = finish!(stack, frame, pc, istoplevel)
-    node = pc_expr(frame, pc)
-    isexpr(node, :return) || error("unexpected return statement ", node)
-    return @lookup(frame, (node::Expr).args[1])
+    return get_return(frame, pc)
 end
 finish_and_return!(stack, frame, istoplevel::Bool) = finish_and_return!(stack, frame, frame.pc[], istoplevel)
+
+function get_return(frame, pc = frame.pc[])
+    node = pc_expr(frame, pc)
+    isexpr(node, :return) || error("expected return statement, got ", node)
+    return @lookup(frame, (node::Expr).args[1])
+end
 
 function is_call(node)
     isexpr(node, :call) ||
@@ -515,9 +519,11 @@ end
 Step through statements of `frame` until the next statement satifies `predicate(stmt)`.
 """
 function next_until!(f, stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::Bool=false)
-    while (pc = _step_expr!(stack, frame, pc, istoplevel)) != nothing
+    while (newpc = _step_expr!(stack, frame, pc, istoplevel)) != nothing
+        pc = newpc
         f(pc_expr(frame, pc)) && (frame.pc[] = pc; return pc)
     end
+    frame.pc[] = pc
     return nothing
 end
 next_until!(f, stack, frame, istoplevel::Bool) = next_until!(f, stack, frame, frame.pc[], istoplevel)

@@ -211,3 +211,44 @@ frame = JuliaInterpreter.enter_call(f, 3)
 @test JuliaInterpreter.location(frame, JuliaInterpreter.JuliaProgramCounter(1)) == defline + 1
 @test JuliaInterpreter.location(frame, JuliaInterpreter.JuliaProgramCounter(3)) == defline + 4
 @test JuliaInterpreter.location(frame, JuliaInterpreter.JuliaProgramCounter(5)) == defline + 6
+
+# incremental interpretation solves world-age problems
+# Taken straight from Julia's test/tuple.jl
+module IncTest
+using Test
+
+struct A_15703{N}
+    keys::NTuple{N, Int}
+end
+
+struct B_15703
+    x::A_15703
+end
+end
+
+ex = quote
+    @testset "issue #15703" begin
+        function bug_15703(xs...)
+            [x for x in xs]
+        end
+
+        function test_15703()
+            s = (1,)
+            a = A_15703(s)
+            ss = B_15703(a).x.keys
+            @test ss === s
+            bug_15703(ss...)
+        end
+
+        test_15703()
+    end
+end
+frame = JuliaInterpreter.prepare_toplevel(IncTest, ex)
+@info "Two warnings are expected"
+@test_throws MethodError JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
+frame = JuliaInterpreter.prepare_toplevel(IncTest, ex)
+while true
+    pc = JuliaInterpreter.next_until!(stmt->isexpr(stmt, :method, 3), JuliaStackFrame[], frame, true)
+    pc === nothing && break
+end
+@test isa(JuliaInterpreter.get_return(frame), Test.DefaultTestSet)
