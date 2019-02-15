@@ -566,8 +566,10 @@ isgotonode(node) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
 
 location(frame) = location(frame, frame.pc[])
 function location(frame, pc)
-    ln = frame.code.code.codelocs[pc.next_stmt]
-    return frame.code.scope isa Method ? ln + frame.code.scope.line - 1 : ln
+    codeloc = frame.code.code.codelocs[pc.next_stmt]
+    return frame.code.scope isa Method ?
+        frame.code.code.linetable[codeloc].line :
+        codeloc
 end
 function next_line!(stack, frame, dbstack = nothing)
     initial = location(frame)
