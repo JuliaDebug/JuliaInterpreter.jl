@@ -1,5 +1,7 @@
 # Internals
 
+## Basic usage
+
 The process of executing code in the interpreter is to prepare a `frame` and then
 evaluate these statements one-by-one, branching via the `goto` statements as appropriate.
 Using the `summer` example described in [Lowered representation](@ref),
@@ -150,4 +152,106 @@ julia> frame.ssavalues
 ```
 
 One can easily continue this until execution completes, which is indicated when `step_expr!`
-returns `nothing`.
+returns `nothing`. Alternatively, use the higher-level `JuliaInterpreter.finish!(stack, frame)`
+to step through the entire frame,
+or `JuliaInterpreter.finish_and_return!(stack, frame)` to also obtain the return value.
+
+## More complex expressions
+
+Sometimes you might have a whole sequence of expressions you want to run.
+In such cases, your first thought should be `prepare_thunk`.
+Here's a demonstration:
+
+```jldoctest; setup=(using JuliaInterpreter; empty!(JuliaInterpreter.junk))
+using Test
+
+ex = quote
+    x, y = 1, 2
+    @test x + y == 3
+end
+
+frame = JuliaInterpreter.prepare_thunk(Main, ex)
+JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame)
+
+# output
+
+Test Passed
+```
+
+## Toplevel code and world age
+
+Some code is more complicated and requires special handling: code that defines new `struct`s,
+new methods, or new modules. In such cases, calling `finish_and_return!` on a frame that
+defines these new objects and then calls them can trigger a
+[world age error](https://docs.julialang.org/en/latest/manual/methods/#Redefining-Methods-1),
+in which the method is considered to be too new to be run by the currently compiled code.
+
+In such cases care is required to return to "top level" before continuing. Here's a demonstration:
+
+```julia
+ex = :(map(x->x^2, [1, 2, 3]))
+frame = JuliaInterpreter.prepare_thunk(Main, ex)
+julia> JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame)
+ERROR: this should have been handled by prepare_toplevel
+```
+
+The reason becomes clearer if we examine `frame` or look directly at the lowered code:
+
+```julia
+julia> Meta.lower(Main, ex)
+:($(Expr(:thunk, CodeInfo(
+1 ─      $(Expr(:thunk, CodeInfo(
+1 ─     global ##17#18
+│       const ##17#18
+│       $(Expr(:struct_type, Symbol("##17#18"), :((Core.svec)()), :((Core.svec)()), :(Core.Function), :((Core.svec)()), false, 0))
+└──     return
+)))
+│   %2 = (Core.svec)(##17#18, Core.Any)
+│   %3 = (Core.svec)()
+│   %4 = (Core.svec)(%2, %3)
+│        $(Expr(:method, false, :(%4), CodeInfo(quote
+    (Core.apply_type)(Base.Val, 2)
+    (%1)()
+    (Base.literal_pow)(^, x, %2)
+    return %3
+end)))
+│        #17 = %new(##17#18)
+│   %7 = #17
+│   %8 = (Base.vect)(1, 2, 3)
+│   %9 = map(%7, %8)
+└──      return %9
+))))
+```
+
+All of the code before `%7` is devoted to defining the anonymous function `x->x^2`: it creates a new "anonymous type"
+(here written as `##17#18`), and then defines a call function for this type, equivalent to `(##17#18)(x) = x^2`.
+Since this is a new method, you need to return to top level to evaluate it:
+
+```julia
+frames, _ = JuliaInterpreter.prepare_toplevel(Main, ex)
+stack = JuliaStackFrame[]
+for frame in frames
+    while true
+        JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+    end
+end
+```
+
+This splits the expression into a sequence of frames (here just one, but more complex blocks may be split up into many).
+Then, each frame is executed until it finishes defining a new method, then returns to top level.
+The return to top level causes an update in the world age.
+If the frame hasn't been finished yet (if the return value wasn't `nothing`),
+this continues executing where it left off.
+You can extract the return value with
+
+```julia
+julia> JuliaInterpreter.get_return(frames[end])
+3-element Array{Int64,1}:
+ 1
+ 4
+ 9
+```
+
+(Incidentally, `JuliaInterpreter.enter_call(map, x->x^2, [1, 2, 3])` works fine on its own,
+because the anonymous function is defined by the caller---you'll see that the created frame
+is very simple.)
