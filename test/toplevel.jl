@@ -140,6 +140,7 @@ module Toplevel end
     @test @interpret(Toplevel.paramtype(Vector)) == Toplevel.NoParam
     @test @interpret(Toplevel.Inner.g()) == 5
     @test @interpret(Toplevel.Inner.InnerInner.g()) == 6
+    @test @interpret(isdefined(Toplevel, :Beat))
 
     # Check that nested expressions are handled appropriately (module-in-block, internal `using`)
     ex = quote

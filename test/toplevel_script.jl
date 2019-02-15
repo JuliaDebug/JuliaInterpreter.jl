@@ -136,3 +136,11 @@ module InnerInner
 g() = 6
 end
 end
+
+module DatesMod
+    abstract type Period end
+end
+
+struct Beat <: DatesMod.Period
+    value::Int64
+end

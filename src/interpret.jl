@@ -92,6 +92,8 @@ function lookup_or_eval(stack, frame, @nospecialize(node), pc)
                 return Core.apply_type(ex.args[2:end]...)
             elseif f === Core.typeof
                 return Core.typeof(ex.args[2])
+            elseif f === Base.getproperty
+                return Base.getproperty(ex.args[2], ex.args[3])
             else
                 error("unknown call f ", f)
             end
