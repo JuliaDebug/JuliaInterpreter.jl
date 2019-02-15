@@ -101,6 +101,8 @@ function lookup_or_eval(stack, frame, @nospecialize(node), pc)
             dump(ex)
             error("unknown expr ", ex)
         end
+    elseif isa(node, Type)
+        return node
     end
     return eval_rhs(stack, frame, node, pc)
 end
@@ -378,7 +380,7 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 elseif node.head == :primitive_type
                     evaluate_primitivetype!(stack, frame, node, pc)
                 elseif node.head == :module
-                    error("this should have been handled by interpret!")
+                    error("this should have been handled by prepare_toplevel")
                 elseif node.head == :using || node.head == :import || node.head == :export
                     Core.eval(moduleof(frame), node)
                 elseif node.head == :const
@@ -401,7 +403,7 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 elseif node.head == :global
                     # error("fixme")
                 elseif node.head == :toplevel
-                    error("this should have been handled by interpret!")
+                    error("this should have been handled by prepare_toplevel")
                 elseif node.head == :error
                     error("unexpected error statement ", node)
                 elseif node.head == :incomplete
@@ -409,6 +411,8 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 else
                     rhs = eval_rhs(stack, frame, node, pc)
                 end
+            elseif node.head == :thunk || node.head == :toplevel
+                error("this should have been handled by prepare_toplevel")
             else
                 rhs = eval_rhs(stack, frame, node, pc)
             end
@@ -460,7 +464,7 @@ function handle_err(frame, err)
         if (err.world != typemax(UInt) &&
             hasmethod(err.f, arg_types) &&
             !hasmethod(err.f, arg_types, world = err.world))
-            @warn "likely failure to return to toplevel, try Base.invokelatest"
+            @warn "likely failure to return to toplevel, try JuliaInterpreter.prepare_toplevel"
             rethrow(err)
         end
     end
@@ -502,6 +506,13 @@ function finish_and_return!(stack, frame, pc::JuliaProgramCounter=frame.pc[], is
 end
 finish_and_return!(stack, frame, istoplevel::Bool) = finish_and_return!(stack, frame, frame.pc[], istoplevel)
 
+"""
+    ret = get_return(frame, pc=frame.pc[])
+
+Get the return value of `frame`. Throws an error if `pc` does not point to a `return` expression.
+`frame` must have already been executed so that the return value has been computed (see,
+e.g., [`JuliaInterpreter.finish!`](@ref)).
+"""
 function get_return(frame, pc = frame.pc[])
     node = pc_expr(frame, pc)
     isexpr(node, :return) || error("expected return statement, got ", node)
@@ -528,6 +539,20 @@ function next_until!(f, stack, frame, pc::JuliaProgramCounter=frame.pc[], istopl
 end
 next_until!(f, stack, frame, istoplevel::Bool) = next_until!(f, stack, frame, frame.pc[], istoplevel)
 next_call!(stack, frame, pc=frame.pc[]) = next_until!(node->is_call(node)||isexpr(node,:return), stack, frame, pc)
+
+"""
+    through_methoddef_or_done!(stack, frame)
+
+Runs `frame` at top level until it either finishes (e.g., hits a `return` statement)
+or defines a new method.
+"""
+function through_methoddef_or_done!(stack, frame::JuliaStackFrame)
+    predicate(stmt) = isexpr(stmt, :method, 3) || isexpr(stmt, :thunk)
+    pc = next_until!(predicate, stack, frame, true)
+    pc === nothing && return nothing
+    return _step_expr!(stack, frame, pc, true)
+end
+through_methoddef_or_done!(stack, modex::Tuple{Module,Expr}) = Core.eval(modex...)
 
 function changed_line!(expr, line, fls)
     if length(fls) == 1 && isa(expr, LineNumberNode)

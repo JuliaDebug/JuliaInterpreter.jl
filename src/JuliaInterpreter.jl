@@ -343,27 +343,101 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     return framecode, args, lenv, argtypes
 end
 
-function prepare_thunk(mod::Module, thunk::Expr)
+"""
+    frame = prepare_thunk(mod::Module, expr::Expr)
+
+Prepare `expr` for evaluation in `mod`. `expr` should be a "straightforward" expression,
+one that does not require special top-level handling (see [`JuliaInterpreter.prepare_toplevel`](@ref)).
+"""
+function prepare_thunk(mod::Module, thunk::Expr, recursive=false)
     if isexpr(thunk, :thunk)
         framecode = JuliaFrameCode(mod, thunk.args[1])
     elseif isexpr(thunk, :error)
         error("lowering returned an error, ", thunk)
-    elseif isa(thunk, Expr)
-        error("expected thunk or module, got ", thunk.head)
+    elseif recursive
+        error("expected thunk expression, got ", thunk.head)
     else
-        error("expected expression, got ", typeof(thunk))
+        return prepare_thunk(mod, Meta.lower(mod, thunk), true)
     end
     return prepare_locals(framecode, [])
 end
 
-function prepare_toplevel(mod::Module, expr::Expr)
-    if expr.head == :using || expr.head == :import || expr.head == :export
-        Core.eval(mod, expr)
-        return nothing
-    else
-        thunk = Meta.lower(mod, expr)
+"""
+    frames, docexprs = prepare_toplevel(mod::Module, expr::Expr; extract_docexprs=false)
+
+Break `expr` into a list of `frames` to be successively executed at top level.
+This is used when `expr` defines new structs, new methods, or new modules.
+
+`frame[i]` is typically a `JuliaStackFrame`, but can alternatively be a (`Module`, `Expr`)
+tuple. This occurs when `expr` contains a `using`, `import`, or `export` expression.
+
+`frames` should be executed in order. Occasionally, a frame may define new methods (e.g., anonymous
+or local functions) and then call those methods. In such cases, running the entire frame as
+a single block can trigger world-age errors. Consequently, the safe way to run each frame is
+
+    while true
+        JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
     end
-    return prepare_thunk(mod, thunk)
+
+executed at top-level (e.g., in the REPL or a script, not inside a function).
+If you then need the return value of the frame, call [`JuliaInterpreter.get_return`](@ref).
+"""
+function prepare_toplevel(mod::Module, expr::Expr; kwargs...)
+    frames = Union{Tuple{Module,Expr},JuliaStackFrame}[]
+    docexprs = Dict{Module,Vector{Expr}}()
+    return prepare_toplevel!(frames, docexprs, mod, macroexpand(mod, expr); kwargs...)
+end
+
+isdocexpr(ex) = isexpr(ex, :macrocall) && (a = ex.args[1]; a isa GlobalRef && a.mod == Core && a.name == Symbol("@doc"))
+
+prepare_toplevel!(frames, docexprs, mod::Module, ex::Expr; kwargs...) =
+    prepare_toplevel!(frames, docexprs, Expr(:block), mod, ex; kwargs...)
+
+function prepare_toplevel!(frames, docexprs, lex::Expr, mod::Module, ex::Expr; extract_docexprs=false)
+    # lex is the expression we'll lower; it will accumulate LineNumberNodes and a
+    # single top-level expression. We split blocks, module defs, etc.
+    if ex.head == :toplevel || ex.head == :block
+        prepare_toplevel!(frames, docexprs, lex, mod, ex.args)
+    elseif ex.head == :module
+        modname = ex.args[2]::Symbol
+        newmod = isdefined(mod, modname) ? getfield(mod, modname) : Core.eval(mod, :(module $modname end))
+        prepare_toplevel!(frames, docexprs, lex, newmod, ex.args[3])
+    elseif extract_docexprs && isdocexpr(ex)
+        docexs = get(docexprs, mod, nothing)
+        if docexs === nothing
+            docexs = docexprs[mod] = Expr[]
+        end
+        push!(docexs, ex)
+        body = ex.args[4]
+        if isa(body, Expr)
+            prepare_toplevel!(frames, docexprs, lex, mod, body)
+        end
+    else
+        lwr = Meta.lower(mod, ex)
+        if isexpr(lwr, :thunk)
+            push!(frames, prepare_thunk(mod, lwr))
+        elseif isexpr(lwr, :toplevel)
+            return prepare_toplevel!(frames, docexprs, lex, mod, lwr; extract_docexprs=extract_docexprs)
+        elseif isa(lwr, Expr) && (lwr.head == :export || lwr.head == :using || lwr.head == :import)
+            push!(frames, (mod, lwr))
+        elseif isa(lwr, Symbol) || isa(lwr, Nothing)
+        else
+            @show mod ex lwr
+            error("lowering did not produce a :thunk Expr")
+        end
+        empty!(lex.args)
+    end
+    return frames, docexprs
+end
+
+function prepare_toplevel!(frames, docexprs, lex, mod::Module, args::Vector{Any})
+    for a in args
+        if isa(a, Expr)
+            prepare_toplevel!(frames, docexprs, lex, mod, a)
+        else
+            push!(lex.args, a)
+        end
+    end
 end
 
 """

@@ -9,7 +9,12 @@ module Toplevel end
 
 @testset "toplevel" begin
     stack = JuliaInterpreter.JuliaStackFrame[]
-    JuliaInterpreter.interpret!(stack, Toplevel, read_and_parse("toplevel_script.jl"))
+    frames, _ = JuliaInterpreter.prepare_toplevel(Toplevel, read_and_parse("toplevel_script.jl"))
+    for frame in frames
+        while true
+            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+        end
+    end
 
     @test isconst(Toplevel, :StructParent)
     @test isconst(Toplevel, :Struct)
@@ -151,23 +156,70 @@ module Toplevel end
        end
        end
    end
-   JuliaInterpreter.interpret!(stack, Toplevel, ex)
+   frames, _ = JuliaInterpreter.prepare_toplevel(Toplevel, ex)
+   for frame in frames
+       while true
+           JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+       end
+   end
    @test Toplevel.Testing.JuliaStackFrame === JuliaStackFrame
 end
 
+# incremental interpretation solves world-age problems
+# Taken straight from Julia's test/tuple.jl
+module IncTest
+using Test
+
+struct A_15703{N}
+    keys::NTuple{N, Int}
+end
+
+struct B_15703
+    x::A_15703
+end
+end
+
+ex = quote
+    @testset "issue #15703" begin
+        function bug_15703(xs...)
+            [x for x in xs]
+        end
+
+        function test_15703()
+            s = (1,)
+            a = A_15703(s)
+            ss = B_15703(a).x.keys
+            @test ss === s
+            bug_15703(ss...)
+        end
+
+        test_15703()
+    end
+end
+frames, _ = JuliaInterpreter.prepare_toplevel(IncTest, ex)
+stack = JuliaStackFrame[]
+for frame in frames
+    while true
+        JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+    end
+end
+@test isa(JuliaInterpreter.get_return(frames[end]), Test.DefaultTestSet)
+
 @testset "Enum" begin
     ex = quote
-        @enum MPFRRoundingMode begin
-            MPFRRoundNearest
-            MPFRRoundToZero
-            MPFRRoundUp
-            MPFRRoundDown
-            MPFRRoundFromZero
-            MPFRRoundFaithful
+        @enum EnumParent begin
+            EnumChild0
+            EnumChild1
         end
     end
-    frame = JuliaInterpreter.prepare_toplevel(Toplevel, ex)
-    @test_broken JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
+    frames, _ = JuliaInterpreter.prepare_toplevel(Toplevel, ex)
+    stack = JuliaStackFrame[]
+    for frame in frames
+        while true
+            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+        end
+    end
+    @test isa(Toplevel.EnumChild1, Toplevel.EnumParent)
 end
 
 module LowerAnon
@@ -183,21 +235,32 @@ end
         ret[] = map(x->parse(Int16, x), AbstractString[])
     end
     stack = JuliaStackFrame[]
-    function runtest(frame)
-        empty!(stack)
-        return JuliaInterpreter.finish_and_return!(stack, frame, true)
+    frames, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex1)
+    for frame in frames
+        while true
+            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+        end
     end
-    lower_incrementally(runtest, LowerAnon, ex1)
     @test isa(LowerAnon.ret[], Vector{Int16})
     LowerAnon.ret[] = nothing
-    lower_incrementally(runtest, LowerAnon, ex2)
+    frames, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex2)
+    for frame in frames
+        while true
+            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+        end
+    end
     @test isa(LowerAnon.ret[], Vector{Int16})
     LowerAnon.ret[] = nothing
 
     ex3 = quote
         const BitIntegerType = Union{map(T->Type{T}, Base.BitInteger_types)...}
     end
-    lower_incrementally(runtest, LowerAnon, ex3)
+    frames, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex3)
+    for frame in frames
+        while true
+            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+        end
+    end
     @test isa(LowerAnon.BitIntegerType, Union)
 
     ex4 = quote
@@ -205,6 +268,11 @@ end
         z = map(x->x^2+y, [1,2,3])
         y = 4
     end
-    lower_incrementally(runtest, LowerAnon, ex4)
+    frames, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex4)
+    for frame in frames
+        while true
+            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+        end
+    end
     @test LowerAnon.z == [4,7,12]
 end
