@@ -81,7 +81,7 @@ move_to_node1("Distributed")
                     test = popfirst!(tests)
                     local resp
                     wrkr = p
-                    fullpath = test_path(test*".jl")
+                    fullpath = test_path(test) * ".jl"
                     try
                         resp = remotecall_fetch(dotest, p, test, fullpath, nstmts)
                     catch e
