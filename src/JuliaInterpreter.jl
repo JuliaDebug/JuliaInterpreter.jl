@@ -754,7 +754,7 @@ function interpret!(stack, mod::Module, expr::Expr)
     if expr.head != :toplevel
         expr = Expr(:toplevel, expr)
     end
-    local ret
+    ret = nothing
     for arg in expr.args
         isa(arg, Expr) || continue
         if checkfor_head(cant_be_lowered, arg)

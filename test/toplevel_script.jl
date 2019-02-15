@@ -144,3 +144,5 @@ end
 struct Beat <: DatesMod.Period
     value::Int64
 end
+
+module Empty end
