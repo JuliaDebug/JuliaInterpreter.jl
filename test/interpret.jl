@@ -196,3 +196,18 @@ JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
 val = @interpret(BigInt())
 @test isa(val, BigInt) && val == 0
 @test isa(@interpret(Base.GMP.version()), VersionNumber)
+
+# "correct" line numbers
+defline = @__LINE__() + 1
+function f(x)
+    x = 2x
+    # comment
+    # comment
+    x = 2x
+    # comment
+    return x*x
+end
+frame = JuliaInterpreter.enter_call(f, 3)
+@test JuliaInterpreter.location(frame, JuliaInterpreter.JuliaProgramCounter(1)) == defline + 1
+@test JuliaInterpreter.location(frame, JuliaInterpreter.JuliaProgramCounter(3)) == defline + 4
+@test JuliaInterpreter.location(frame, JuliaInterpreter.JuliaProgramCounter(5)) == defline + 6
