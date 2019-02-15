@@ -151,6 +151,10 @@ function show_stackloc(io::IO, stack, frame, pc=frame.pc[])
     end
     println(io, indent, frame.code.scope, ", pc = ", convert(Int, pc))
 end
+function show_stackloc(io::IO, ::Compiled, frame, pc)
+    println(io, "No stack, ::Compiled")
+    println(io, frame.code.scope, ", pc = ", convert(Int, pc))
+end
 show_stackloc(stack, frame, pc=frame.pc[]) = show_stackloc(stderr, stack, frame, pc)
 
 function moduleof(x)
@@ -382,10 +386,18 @@ a single block can trigger world-age errors. Consequently, the safe way to run e
 executed at top-level (e.g., in the REPL or a script, not inside a function).
 If you then need the return value of the frame, call [`JuliaInterpreter.get_return`](@ref).
 """
-function prepare_toplevel(mod::Module, expr::Expr; kwargs...)
+function prepare_toplevel(mod::Module, expr::Expr; filename=nothing, kwargs...)
     frames = Union{Tuple{Module,Expr},JuliaStackFrame}[]
     docexprs = Dict{Module,Vector{Expr}}()
-    return prepare_toplevel!(frames, docexprs, mod, macroexpand(mod, expr); kwargs...)
+    if filename === nothing
+        # On Julia 1.2+, the first line of a :toplevel expr may contain line info
+        if length(expr.args) >= 1 && isa(expr.args[1], LineNumberNode)
+            filename = expr.args[1].file
+        else
+            filename="toplevel"
+        end
+    end
+    return prepare_toplevel!(frames, docexprs, mod, macroexpand(mod, expr); filename=filename, kwargs...)
 end
 
 isdocexpr(ex) = isexpr(ex, :macrocall) && (a = ex.args[1]; a isa GlobalRef && a.mod == Core && a.name == Symbol("@doc"))
@@ -393,15 +405,15 @@ isdocexpr(ex) = isexpr(ex, :macrocall) && (a = ex.args[1]; a isa GlobalRef && a.
 prepare_toplevel!(frames, docexprs, mod::Module, ex::Expr; kwargs...) =
     prepare_toplevel!(frames, docexprs, Expr(:block), mod, ex; kwargs...)
 
-function prepare_toplevel!(frames, docexprs, lex::Expr, mod::Module, ex::Expr; extract_docexprs=false)
+function prepare_toplevel!(frames, docexprs, lex::Expr, mod::Module, ex::Expr; extract_docexprs=false, filename="toplevel")
     # lex is the expression we'll lower; it will accumulate LineNumberNodes and a
     # single top-level expression. We split blocks, module defs, etc.
     if ex.head == :toplevel || ex.head == :block
-        prepare_toplevel!(frames, docexprs, lex, mod, ex.args)
+        prepare_toplevel!(frames, docexprs, lex, mod, ex.args; extract_docexprs=extract_docexprs, filename=filename)
     elseif ex.head == :module
         modname = ex.args[2]::Symbol
         newmod = isdefined(mod, modname) ? getfield(mod, modname) : Core.eval(mod, :(module $modname end))
-        prepare_toplevel!(frames, docexprs, lex, newmod, ex.args[3])
+        prepare_toplevel!(frames, docexprs, lex, newmod, ex.args[3]; extract_docexprs=extract_docexprs, filename=filename)
     elseif extract_docexprs && isdocexpr(ex)
         docexs = get(docexprs, mod, nothing)
         if docexs === nothing
@@ -410,14 +422,17 @@ function prepare_toplevel!(frames, docexprs, lex::Expr, mod::Module, ex::Expr; e
         push!(docexs, ex)
         body = ex.args[4]
         if isa(body, Expr)
-            prepare_toplevel!(frames, docexprs, lex, mod, body)
+            prepare_toplevel!(frames, docexprs, lex, mod, body; extract_docexprs=extract_docexprs, filename=filename)
         end
     else
-        lwr = Meta.lower(mod, ex)
+        defaultlnn = isexpr(ex, :macrocall) ? ex.args[2] : LineNumberNode(0, Symbol(filename))
+        isempty(lex.args) && push!(lex.args, defaultlnn)
+        push!(lex.args, ex)
+        lwr = Meta.lower(mod, lex)
         if isexpr(lwr, :thunk)
             push!(frames, prepare_thunk(mod, lwr))
         elseif isexpr(lwr, :toplevel)
-            return prepare_toplevel!(frames, docexprs, lex, mod, lwr; extract_docexprs=extract_docexprs)
+            return prepare_toplevel!(frames, docexprs, lex, mod, lwr; extract_docexprs=extract_docexprs, filename=filename)
         elseif isa(lwr, Expr) && (lwr.head == :export || lwr.head == :using || lwr.head == :import)
             push!(frames, (mod, lwr))
         elseif isa(lwr, Symbol) || isa(lwr, Nothing)
@@ -430,10 +445,16 @@ function prepare_toplevel!(frames, docexprs, lex::Expr, mod::Module, ex::Expr; e
     return frames, docexprs
 end
 
-function prepare_toplevel!(frames, docexprs, lex, mod::Module, args::Vector{Any})
+function prepare_toplevel!(frames, docexprs, lex, mod::Module, args::Vector{Any}; filename="toplevel", kwargs...)
     for a in args
         if isa(a, Expr)
-            prepare_toplevel!(frames, docexprs, lex, mod, a)
+            prepare_toplevel!(frames, docexprs, lex, mod, a; filename=filename, kwargs...)
+        elseif isa(a, LineNumberNode)
+            if a.file === nothing  # happens with toplevel expressions on Julia 1.2
+                push!(lex.args, LineNumberNode(a.line, Symbol(filename)))
+            else
+                push!(lex.args, a)
+            end
         else
             push!(lex.args, a)
         end
