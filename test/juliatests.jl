@@ -69,41 +69,40 @@ move_to_node1("stress")
 move_to_node1("Distributed")
 
 @testset "Julia tests" begin
-    # nworkers = min(Sys.CPU_THREADS, length(tests))
-    # println("Using $nworkers workers")
-    # procs = nworkers > 1 ? spin_up_workers(nworkers) : (configure_test(); [1])
-    configure_test()
+    nworkers = min(Sys.CPU_THREADS, length(tests))
+    println("Using $nworkers workers")
+    procs = spin_up_workers(nworkers)
     results = Dict{String,Any}()
     tests0 = copy(tests)
     oldpath = current_task().storage[:SOURCE_PATH]
-    # @sync begin
-    #     for p in procs
-    #         @async begin
+    @sync begin
+        for p in procs
+            @async begin
                 while length(tests) > 0
                     test = popfirst!(tests)
                     local resp
-                    # wrkr = p
+                    wrkr = p
                     fullpath = test_path(test) * ".jl"
                     try
-                        # r = @spawnat p begin
+                        resp = remotecall_fetch(Core.eval, wrkr, Main, quote
                             # These must be run at top level, so we can't put this in a function
-                            println("Working on ", test, "...")
+                            println("Working on ", $test, "...")
                             Core.eval(Main, :(
                                 module JuliaTests
                                 using Test, Random
                                 end
                                 ))
-                            ex = read_and_parse(fullpath)
-                            isexpr(ex, :error) && @error "error parsing $test: $ex"
+                            ex = read_and_parse($fullpath)
+                            isexpr(ex, :error) && @error "error parsing $($test): $ex"
                             aborts = Aborted[]
-                            ts = Test.DefaultTestSet(test)
+                            ts = Test.DefaultTestSet($test)
                             Test.push_testset(ts)
-                            current_task().storage[:SOURCE_PATH] = fullpath
+                            current_task().storage[:SOURCE_PATH] = $fullpath
                             try
                                 frames, _ = JuliaInterpreter.prepare_toplevel(JuliaTests, ex)
                                 stack = JuliaStackFrame[]
                                 for (i, frame) in enumerate(frames)  # having the index is useful for debugging
-                                    nstmtsleft = nstmts
+                                    nstmtsleft = $nstmts
                                     while true
                                         ret, nstmtsleft = evaluate_limited!(stack, frame, nstmtsleft)
                                         isa(ret, Some{Any}) && break
@@ -111,19 +110,17 @@ move_to_node1("Distributed")
                                     end
                                 end
                             finally
-                                current_task().storage[:SOURCE_PATH] = oldpath
+                                current_task().storage[:SOURCE_PATH] = $oldpath
                             end
-                            println("Finished ", test)
-                        #   return ts, aborts
-                        # end
-                        # resp = fetch(r)
-                        resp = ts, aborts
+                            println("Finished ", $test)
+                            return ts, aborts
+                        end)
                     catch e
                         isa(e, InterruptException) && return
                         resp = e
-                        # if isa(e, ProcessExitedException)
-                        #     p = spin_up_workers(1)[1]
-                        # end
+                        if isa(e, ProcessExitedException)
+                            p = spin_up_workers(1)[1]
+                        end
                     end
                     results[test] = resp
                     if resp isa Exception && exit_on_error
@@ -131,9 +128,13 @@ move_to_node1("Distributed")
                         empty!(tests)
                     end
                 end
-            # end
-        # end
-    # end
+                try
+                    rmprocs(p; waitfor=300)
+                catch
+                end
+            end
+        end
+    end
 
     open("results.md", "w") do io
         versioninfo(io)
