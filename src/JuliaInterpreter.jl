@@ -327,6 +327,10 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
             # unspecialized method.
             code = Core.Compiler.get_staged(Core.Compiler.code_for_method(method, argtypes, lenv, typemax(UInt), false))
             generator = false
+            if code === nothing
+                # The generator threw an error. Let's generate the same error by calling it.
+                f(allargs[2:end]...)
+            end
         else
             if is_generated(method)
                 args = Any[_Typeof(a) for a in args]

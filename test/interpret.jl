@@ -31,6 +31,9 @@ end
 fkw(x::Int8; y=0, z="hello") = y
 @test @interpret(fkw(Int8(1); y=22, z="world")) == fkw(Int8(1); y=22, z="world")
 
+# generators that throw before returning the body expression
+@test_throws ArgumentError("input tuple of length 3, requested 2") @interpret Base.fill_to_length((1,2,3), -1, Val(2))
+
 # Throwing exceptions across frames
 function f_exc_inner()
     error("inner")
