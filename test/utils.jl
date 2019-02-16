@@ -73,16 +73,22 @@ function evaluate_limited!(stack, frame::JuliaStackFrame, nstmts::Int, pc::Julia
                 end
                 nstmts = refnstmts[]
             elseif stmt.head == :thunk
-                newframe = prepare_thunk(moduleof(frame), stmt)
-                frame.pc[] = pc
-                push!(stack, frame)
-                refnstmts[] = nstmts
-                ret = limited_exec!(stack, newframe, refnstmts, istoplevel)
-                isa(ret, Aborted) && return ret, refnstmts[]
-                pop!(stack)
-                push!(JuliaInterpreter.junk, newframe)  # rather than going through GC, just re-use it
-                frame.pc[] = pc + 1
-                return nothing, refnstmts[]
+                code = stmt.args[1]
+                if length(code.code) == 1 && isexpr(code.code[end], :return) && isexpr(code.code[end].args[1], :method)
+                    # Julia 1.2+ puts a :thunk before the start of each method
+                    new_pc = pc + 1
+                else
+                    newframe = prepare_thunk(moduleof(frame), stmt)
+                    frame.pc[] = pc
+                    push!(stack, frame)
+                    refnstmts[] = nstmts
+                    ret = limited_exec!(stack, newframe, refnstmts, istoplevel)
+                    isa(ret, Aborted) && return ret, refnstmts[]
+                    pop!(stack)
+                    push!(JuliaInterpreter.junk, newframe)  # rather than going through GC, just re-use it
+                    frame.pc[] = pc + 1
+                    return nothing, refnstmts[]
+                end
             elseif stmt.head == :method && length(stmt.args) == 3
                 _step_expr!(stack, frame, stmt, pc, istoplevel)
                 frame.pc[] = pc + 1
