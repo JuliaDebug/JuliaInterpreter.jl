@@ -122,8 +122,11 @@ function evaluate_limited!(stack, frame::JuliaStackFrame, nstmts::Int, pc::Julia
 end
 evaluate_limited!(stack, frame::JuliaStackFrame, nstmts::Int, istoplevel::Bool=true) =
     evaluate_limited!(stack, frame, nstmts, frame.pc[], istoplevel)
-evaluate_limited!(stack, modex::Tuple{Module,Expr}, nstmts::Int, istoplevel::Bool=true) =
-    Some{Any}(Core.eval(modex...)), nstmts
+
+evaluate_limited!(stack, modex::Tuple{Module,Expr,JuliaStackFrame}, nstmts::Int, istoplevel::Bool=true) =
+    evaluate_limited!(stack, modex[end], nstmts, istoplevel)
+evaluate_limited!(stack, modex::Tuple{Module,Expr,Expr}, nstmts::Int, istoplevel::Bool=true) =
+    Some{Any}(Core.eval(modex[1], modex[3])), nstmts
 
 function limited_exec!(stack, newframe, refnstmts, istoplevel)
     ret, nleft = evaluate_limited!(stack, newframe, refnstmts[], newframe.pc[], istoplevel)

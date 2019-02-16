@@ -19,20 +19,20 @@ using Test
     # find the 3rd assignment statement in the 2nd frame (corresponding to the x += 1 line)
     i = 0
     for k = 1:3
-        i = findnext(stmt->isexpr(stmt, :(=)), frames[2].code.code.code, i+1)
+        i = findnext(stmt->isexpr(stmt, :(=)), frames[2][end].code.code.code, i+1)
     end
-    @test Aborted(frames[2], i).at.line == 3
+    @test Aborted(frames[2][end], i).at.line == 3
     # Check interior of let block
     i = 0
     for k = 1:2
-        i = findnext(stmt->isexpr(stmt, :(=)), frames[3].code.code.code, i+1)
+        i = findnext(stmt->isexpr(stmt, :(=)), frames[3][end].code.code.code, i+1)
     end
-    @test Aborted(frames[3], i).at.line == 6
+    @test Aborted(frames[3][end], i).at.line == 6
     # Check conditional
-    i = findfirst(stmt->isexpr(stmt, :gotoifnot), frames[4].code.code.code) + 1
-    @test Aborted(frames[4], i).at.line == 9
+    i = findfirst(stmt->isexpr(stmt, :gotoifnot), frames[4][end].code.code.code) + 1
+    @test Aborted(frames[4][end], i).at.line == 9
     # Check macro
-    @test Aborted(frames[6], 1).at.file == Symbol("util.jl")
+    @test Aborted(frames[6][end], 1).at.file == Symbol("util.jl")
 end
 
 module EvalLimited end
@@ -50,7 +50,7 @@ module EvalLimited end
     frames, _ = JuliaInterpreter.prepare_toplevel(EvalLimited, ex)
     nstmts = 1000  # enough to ensure it finishes
     for frame in frames
-        @test isa(frame, JuliaStackFrame)
+        @test isa(frame[end], JuliaStackFrame)
         nstmtsleft = nstmts
         while true
             ret, nstmtsleft = evaluate_limited!(stack, frame, nstmtsleft)
@@ -76,7 +76,7 @@ module EvalLimited end
     frames, _ = JuliaInterpreter.prepare_toplevel(EvalLimited, ex)
     nstmts = 100 # enough to ensure it gets into the loop but doesn't finish
     for frame in frames
-        @test isa(frame, JuliaStackFrame)
+        @test isa(frame[end], JuliaStackFrame)
         nstmtsleft = nstmts
         while true
             ret, nstmtsleft = evaluate_limited!(Compiled(), frame, nstmtsleft)
@@ -92,7 +92,7 @@ module EvalLimited end
     empty!(aborts)
     frames, _ = JuliaInterpreter.prepare_toplevel(EvalLimited, ex)
     for frame in frames
-        @test isa(frame, JuliaStackFrame)
+        @test isa(frame[end], JuliaStackFrame)
         nstmtsleft = nstmts
         while true
             ret, nstmtsleft = evaluate_limited!(stack, frame, nstmtsleft)

@@ -376,8 +376,9 @@ end
 Break `expr` into a list of `frames` to be successively executed at top level.
 This is used when `expr` defines new structs, new methods, or new modules.
 
-`frame[i]` is typically a `JuliaStackFrame`, but can alternatively be a (`Module`, `Expr`)
-tuple. This occurs when `expr` contains a `using`, `import`, or `export` expression.
+`frame[i]` is typically a `(Module, Expr, JuliaStackFrame)` tuple, but can alternatively
+be a (`Module`, `Expr`, `Expr`) tuple. The latter occurs when `expr` contains a `using`,
+`import`, or `export` expression.
 
 `frames` should be executed in order. Occasionally, a frame may define new methods (e.g., anonymous
 or local functions) and then call those methods. In such cases, running the entire frame as
@@ -391,7 +392,7 @@ executed at top-level (e.g., in the REPL or a script, not inside a function).
 If you then need the return value of the frame, call [`JuliaInterpreter.get_return`](@ref).
 """
 function prepare_toplevel(mod::Module, expr::Expr; filename=nothing, kwargs...)
-    frames = Union{Tuple{Module,Expr},JuliaStackFrame}[]
+    exframes = Tuple{Module,Expr,Union{Expr,JuliaStackFrame}}[]
     docexprs = Dict{Module,Vector{Expr}}()
     if filename === nothing
         # On Julia 1.2+, the first line of a :toplevel expr may contain line info
@@ -401,23 +402,23 @@ function prepare_toplevel(mod::Module, expr::Expr; filename=nothing, kwargs...)
             filename="toplevel"
         end
     end
-    return prepare_toplevel!(frames, docexprs, mod, macroexpand(mod, expr); filename=filename, kwargs...)
+    return prepare_toplevel!(exframes, docexprs, mod, macroexpand(mod, expr); filename=filename, kwargs...)
 end
 
 isdocexpr(ex) = isexpr(ex, :macrocall) && (a = ex.args[1]; a isa GlobalRef && a.mod == Core && a.name == Symbol("@doc"))
 
-prepare_toplevel!(frames, docexprs, mod::Module, ex::Expr; kwargs...) =
-    prepare_toplevel!(frames, docexprs, Expr(:block), mod, ex; kwargs...)
+prepare_toplevel!(exframes, docexprs, mod::Module, ex::Expr; kwargs...) =
+    prepare_toplevel!(exframes, docexprs, Expr(:block), mod, ex; kwargs...)
 
-function prepare_toplevel!(frames, docexprs, lex::Expr, mod::Module, ex::Expr; extract_docexprs=false, filename="toplevel")
+function prepare_toplevel!(exframes, docexprs, lex::Expr, mod::Module, ex::Expr; extract_docexprs=false, filename="toplevel")
     # lex is the expression we'll lower; it will accumulate LineNumberNodes and a
     # single top-level expression. We split blocks, module defs, etc.
     if ex.head == :toplevel || ex.head == :block
-        prepare_toplevel!(frames, docexprs, lex, mod, ex.args; extract_docexprs=extract_docexprs, filename=filename)
+        prepare_toplevel!(exframes, docexprs, lex, mod, ex.args; extract_docexprs=extract_docexprs, filename=filename)
     elseif ex.head == :module
         modname = ex.args[2]::Symbol
         newmod = isdefined(mod, modname) ? getfield(mod, modname) : Core.eval(mod, :(module $modname end))
-        prepare_toplevel!(frames, docexprs, lex, newmod, ex.args[3]; extract_docexprs=extract_docexprs, filename=filename)
+        prepare_toplevel!(exframes, docexprs, lex, newmod, ex.args[3]; extract_docexprs=extract_docexprs, filename=filename)
     elseif extract_docexprs && isdocexpr(ex)
         docexs = get(docexprs, mod, nothing)
         if docexs === nothing
@@ -426,7 +427,7 @@ function prepare_toplevel!(frames, docexprs, lex::Expr, mod::Module, ex::Expr; e
         push!(docexs, ex)
         body = ex.args[4]
         if isa(body, Expr)
-            prepare_toplevel!(frames, docexprs, lex, mod, body; extract_docexprs=extract_docexprs, filename=filename)
+            prepare_toplevel!(exframes, docexprs, lex, mod, body; extract_docexprs=extract_docexprs, filename=filename)
         end
     else
         defaultlnn = isexpr(ex, :macrocall) ? ex.args[2] : LineNumberNode(0, Symbol(filename))
@@ -434,11 +435,11 @@ function prepare_toplevel!(frames, docexprs, lex::Expr, mod::Module, ex::Expr; e
         push!(lex.args, ex)
         lwr = Meta.lower(mod, lex)
         if isexpr(lwr, :thunk)
-            push!(frames, prepare_thunk(mod, lwr))
+            push!(exframes, (mod, ex, prepare_thunk(mod, lwr)))
         elseif isexpr(lwr, :toplevel)
             return prepare_toplevel!(frames, docexprs, lex, mod, lwr; extract_docexprs=extract_docexprs, filename=filename)
         elseif isa(lwr, Expr) && (lwr.head == :export || lwr.head == :using || lwr.head == :import)
-            push!(frames, (mod, lwr))
+            push!(exframes, (mod, ex, lwr))
         elseif isa(lwr, Symbol) || isa(lwr, Nothing)
         else
             @show mod ex lwr
@@ -446,7 +447,7 @@ function prepare_toplevel!(frames, docexprs, lex::Expr, mod::Module, ex::Expr; e
         end
         empty!(lex.args)
     end
-    return frames, docexprs
+    return exframes, docexprs
 end
 
 function prepare_toplevel!(frames, docexprs, lex, mod::Module, args::Vector{Any}; filename="toplevel", kwargs...)

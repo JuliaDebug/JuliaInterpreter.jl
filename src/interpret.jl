@@ -518,6 +518,7 @@ function get_return(frame, pc = frame.pc[])
     isexpr(node, :return) || error("expected return statement, got ", node)
     return @lookup(frame, (node::Expr).args[1])
 end
+get_return(frame::Tuple{Module,Expr,JuliaStackFrame}) = get_return(frame[end])
 
 function is_call(node)
     isexpr(node, :call) ||
@@ -552,7 +553,9 @@ function through_methoddef_or_done!(stack, frame::JuliaStackFrame)
     pc === nothing && return nothing
     return _step_expr!(stack, frame, pc, true)
 end
-through_methoddef_or_done!(stack, modex::Tuple{Module,Expr}) = Core.eval(modex...)
+through_methoddef_or_done!(stack, frame::Tuple{Module,Expr,JuliaStackFrame}) =
+    through_methoddef_or_done!(stack, frame[end])
+through_methoddef_or_done!(stack, modex::Tuple{Module,Expr,Expr}) = Core.eval(modex[1], modex[3])
 
 function changed_line!(expr, line, fls)
     if length(fls) == 1 && isa(expr, LineNumberNode)
