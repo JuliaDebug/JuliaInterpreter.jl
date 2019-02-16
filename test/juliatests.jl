@@ -1,5 +1,5 @@
 using JuliaInterpreter
-using Test, Random, InteractiveUtils, Distributed
+using Test, Random, InteractiveUtils, Distributed, Dates
 
 # Much of this file is taken from Julia's test/runtests.jl file.
 
@@ -69,27 +69,61 @@ move_to_node1("stress")
 move_to_node1("Distributed")
 
 @testset "Julia tests" begin
-    nworkers = min(Sys.CPU_THREADS, length(tests))
-    println("Using $nworkers workers")
-    procs = spin_up_workers(nworkers)
+    # nworkers = min(Sys.CPU_THREADS, length(tests))
+    # println("Using $nworkers workers")
+    # procs = nworkers > 1 ? spin_up_workers(nworkers) : (configure_test(); [1])
+    configure_test()
     results = Dict{String,Any}()
     tests0 = copy(tests)
-    @sync begin
-        for p in procs
-            @async begin
+    oldpath = current_task().storage[:SOURCE_PATH]
+    # @sync begin
+    #     for p in procs
+    #         @async begin
                 while length(tests) > 0
                     test = popfirst!(tests)
                     local resp
-                    wrkr = p
+                    # wrkr = p
                     fullpath = test_path(test) * ".jl"
                     try
-                        resp = remotecall_fetch(dotest, p, test, fullpath, nstmts)
+                        # r = @spawnat p begin
+                            # These must be run at top level, so we can't put this in a function
+                            println("Working on ", test, "...")
+                            Core.eval(Main, :(
+                                module JuliaTests
+                                using Test, Random
+                                end
+                                ))
+                            ex = read_and_parse(fullpath)
+                            isexpr(ex, :error) && @error "error parsing $test: $ex"
+                            aborts = Aborted[]
+                            ts = Test.DefaultTestSet(test)
+                            Test.push_testset(ts)
+                            current_task().storage[:SOURCE_PATH] = fullpath
+                            try
+                                frames, _ = JuliaInterpreter.prepare_toplevel(JuliaTests, ex)
+                                stack = JuliaStackFrame[]
+                                for (i, frame) in enumerate(frames)  # having the index is useful for debugging
+                                    nstmtsleft = nstmts
+                                    while true
+                                        ret, nstmtsleft = evaluate_limited!(stack, frame, nstmtsleft)
+                                        isa(ret, Some{Any}) && break
+                                        isa(ret, Aborted) && (push!(aborts, ret); break)
+                                    end
+                                end
+                            finally
+                                current_task().storage[:SOURCE_PATH] = oldpath
+                            end
+                            println("Finished ", test)
+                        #   return ts, aborts
+                        # end
+                        # resp = fetch(r)
+                        resp = ts, aborts
                     catch e
                         isa(e, InterruptException) && return
                         resp = e
-                        if isa(e, ProcessExitedException)
-                            p = spin_up_workers(1)[1]
-                        end
+                        # if isa(e, ProcessExitedException)
+                        #     p = spin_up_workers(1)[1]
+                        # end
                     end
                     results[test] = resp
                     if resp isa Exception && exit_on_error
@@ -97,12 +131,14 @@ move_to_node1("Distributed")
                         empty!(tests)
                     end
                 end
-            end
-        end
-    end
+            # end
+        # end
+    # end
 
     open("results.md", "w") do io
         versioninfo(io)
+        println(io, "Test run at: ", now())
+        println(io)
         println(io, "Maximum number of statements per lowered expression: ", nstmts)
         println(io)
         println(io, "| Test file | Passes | Fails | Errors | Broken | Aborted blocks |")
