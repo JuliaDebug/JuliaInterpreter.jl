@@ -504,7 +504,7 @@ function copy_codeinfo(code::CodeInfo)
     for (i, name) in enumerate(fieldnames(CodeInfo))
         if isdefined(code, name)
             val = getfield(code, name)
-            ccall(:jl_set_nth_field, Cvoid, (Any, Csize_t, Any), newcode, i-1, val===nothing ? val : copy(val))
+            ccall(:jl_set_nth_field, Cvoid, (Any, Csize_t, Any), newcode, i-1, val===nothing || isa(val, Type) ? val : copy(val))
         end
     end
     return newcode
@@ -649,7 +649,7 @@ function prepare_locals(framecode, argvals::Vector{Any})
             resize!(locals, length(code.slotflags))
             resize!(ssavalues, ng)
             # for check_isdefined to work properly, we need sparams to start out unassigned
-            resize!(resize!(sparams, 0), length(meth.sparam_syms))
+            resize!(sparams, 0)
             empty!(exception_frames)
             empty!(last_reference)
             last_exception[] = nothing
@@ -657,7 +657,7 @@ function prepare_locals(framecode, argvals::Vector{Any})
         else
             locals = Vector{Union{Nothing,Some{Any}}}(undef, length(code.slotflags))
             ssavalues = Vector{Any}(undef, ng)
-            sparams = Vector{Any}(undef, length(meth.sparam_syms))
+            sparams = Vector{Any}(undef, 0)
             exception_frames = Int[]
             last_reference = Dict{Symbol,Int}()
             callargs = Any[]
@@ -699,6 +699,7 @@ static parameters `lenv`. See [`JuliaInterpreter.prepare_call`](@ref) for inform
 """
 function build_frame(framecode, args, lenv)
     frame = prepare_locals(framecode, args)
+    resize!(frame.sparams, length(lenv))
     # Add static parameters to environment
     for i = 1:length(lenv)
         T = lenv[i]
