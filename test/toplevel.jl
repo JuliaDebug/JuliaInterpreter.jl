@@ -87,6 +87,8 @@ module Toplevel end
     @test Toplevel.paramtype(Vector) == Toplevel.NoParam
     @test Toplevel.Inner.g() == 5
     @test Toplevel.Inner.InnerInner.g() == 6
+    @test isdefined(Toplevel, :Beat)
+    @test Toplevel.Beat <: Toplevel.DatesMod.Period
 
     @test @interpret(Toplevel.f1(0)) == 1
     @test @interpret(Toplevel.f1(0.0)) == 2
@@ -145,8 +147,8 @@ module Toplevel end
     @test @interpret(Toplevel.paramtype(Vector)) == Toplevel.NoParam
     @test @interpret(Toplevel.Inner.g()) == 5
     @test @interpret(Toplevel.Inner.InnerInner.g()) == 6
-    @test @interpret(isdefined(Toplevel, :Beat))
-    @test @interpret(Toplevel.Beat <: Toplevel.DatesMod.Period)
+    # @test @interpret(isdefined(Toplevel, :Beat))
+    # @test @interpret(Toplevel.Beat <: Toplevel.DatesMod.Period)
 
     # Check that nested expressions are handled appropriately (module-in-block, internal `using`)
     ex = quote
