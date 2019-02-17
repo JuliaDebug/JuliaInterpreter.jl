@@ -32,7 +32,7 @@ using Test
     i = findfirst(stmt->isexpr(stmt, :gotoifnot), frames[4][end].code.code.code) + 1
     @test Aborted(frames[4][end], i).at.line == 9
     # Check macro
-    @test Aborted(frames[6][end], 1).at.file == Symbol("util.jl")
+    @test Aborted(frames[5][end], 1).at.file == Symbol("util.jl")
 end
 
 module EvalLimited end

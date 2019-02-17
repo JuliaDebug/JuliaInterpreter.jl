@@ -13,6 +13,7 @@ using Julia's normal compiled-code evaluation. The alternative is to pass `stack
 which will cause all calls to be evaluated via the interpreter.
 """
 struct Compiled end
+Base.similar(::Compiled, sz) = Compiled()  # to support similar(stack, 0)
 
 """
     JuliaProgramCounter(next_stmt::Int)
@@ -402,7 +403,7 @@ function prepare_toplevel(mod::Module, expr::Expr; filename=nothing, kwargs...)
             filename="toplevel"
         end
     end
-    return prepare_toplevel!(exframes, docexprs, mod, macroexpand(mod, expr); filename=filename, kwargs...)
+    return prepare_toplevel!(exframes, docexprs, mod, expr; filename=filename, kwargs...)
 end
 
 isdocexpr(ex) = isexpr(ex, :macrocall) && (a = ex.args[1]; a isa GlobalRef && a.mod == Core && a.name == Symbol("@doc"))
@@ -514,6 +515,7 @@ const calllike = Set([:call, :foreigncall])
 
 function extract_inner_call!(stmt, idx, once::Bool=false)
     isa(stmt, Expr) || return nothing
+    (stmt.head == :toplevel || stmt.head == :thunk) && return nothing
     once |= stmt.head ∈ calllike
     for (i, a) in enumerate(stmt.args)
         isa(a, Expr) || continue
@@ -568,7 +570,7 @@ function renumber_ssa!(stmts::Vector{Any}, ssalookup)
 end
 
 function lookup_global_refs!(ex::Expr)
-    isexpr(ex, :isdefined) && return nothing
+    (ex.head == :isdefined || ex.head == :thunk || ex.head == :toplevel) && return nothing
     for (i, a) in enumerate(ex.args)
         if isa(a, GlobalRef)
             r = getfield(a.mod, a.name)

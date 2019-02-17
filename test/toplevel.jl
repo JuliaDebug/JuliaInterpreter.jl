@@ -208,12 +208,11 @@ end
 @test isa(JuliaInterpreter.get_return(frames[end]), Test.DefaultTestSet)
 
 @testset "Enum" begin
-    ex = quote
-        @enum EnumParent begin
-            EnumChild0
-            EnumChild1
-        end
-    end
+    ex = Expr(:toplevel,
+        :(@enum EnumParent begin
+              EnumChild0
+              EnumChild1
+          end))
     frames, _ = JuliaInterpreter.prepare_toplevel(Toplevel, ex)
     stack = JuliaStackFrame[]
     for frame in frames

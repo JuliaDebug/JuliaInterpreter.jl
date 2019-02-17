@@ -403,7 +403,15 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 elseif node.head == :global
                     # error("fixme")
                 elseif node.head == :toplevel
-                    error("this should have been handled by prepare_toplevel")
+                    mod = moduleof(frame)
+                    newstack = similar(stack, 0)
+                    newframes, _ = prepare_toplevel(mod, node)
+                    Core.eval(mod, Expr(:toplevel,
+                        :(for newframe in $newframes
+                              while true
+                                  ($through_methoddef_or_done!)($newstack, newframe) === nothing && break
+                              end
+                          end)))
                 elseif node.head == :error
                     error("unexpected error statement ", node)
                 elseif node.head == :incomplete
@@ -412,7 +420,7 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                     rhs = eval_rhs(stack, frame, node, pc)
                 end
             elseif node.head == :thunk || node.head == :toplevel
-                error("this should have been handled by prepare_toplevel")
+                error("this should have been handled by prepare_toplevel, or this frame needs to be run at top level")
             else
                 rhs = eval_rhs(stack, frame, node, pc)
             end
