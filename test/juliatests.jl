@@ -74,32 +74,42 @@ move_to_node1("Distributed")
     procs = spin_up_workers(nworkers)
     results = Dict{String,Any}()
     tests0 = copy(tests)
-    # @sync begin
-        for p in procs
-            @async begin
-                while length(tests) > 0
-                    test = popfirst!(tests)
-                    local resp
-                    fullpath = test_path(test) * ".jl"
-                    try
-                        resp = remotecall_fetch(run_test_by_eval, p, test, fullpath, nstmts)
-                    catch e
-                        isa(e, InterruptException) && return
-                        resp = e
-                        if isa(e, ProcessExitedException)
-                            p = spin_up_workers(1)[1]
+    all_tasks = Task[]
+    try
+        @sync begin
+            for p in procs
+                @async begin
+                    push!(all_tasks, current_task())
+                    while length(tests) > 0
+                        test = popfirst!(tests)
+                        local resp
+                        fullpath = test_path(test) * ".jl"
+                        try
+                            resp = remotecall_fetch(run_test_by_eval, p, test, fullpath, nstmts)
+                        catch e
+                            isa(e, InterruptException) && return
+                            resp = e
+                            if isa(e, ProcessExitedException)
+                                println("exited on ", test)
+                                p = spin_up_workers(1)[1]
+                            end
                         end
-                    end
-                    results[test] = resp
-                    if resp isa Exception && exit_on_error
-                        skipped = length(tests)
-                        empty!(tests)
+                        results[test] = resp
+                        if resp isa Exception && exit_on_error
+                            skipped = length(tests)
+                            empty!(tests)
+                        end
                     end
                 end
             end
         end
-    # end
-    sleep(300)
+    catch err
+         isa(err, InterruptException) || rethrow(err)
+        # If the test suite was merely interrupted, still print the
+        # summary, which can be useful to diagnose what's going on
+        foreach(task->try; schedule(task, InterruptException(); error=true); catch; end, all_tasks)
+        foreach(wait, all_tasks)
+    end
 
     open("results.md", "w") do io
         versioninfo(io)
