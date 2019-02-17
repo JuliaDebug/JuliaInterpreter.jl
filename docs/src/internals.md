@@ -192,7 +192,7 @@ In such cases care is required to return to "top level" before continuing. Here'
 ex = :(map(x->x^2, [1, 2, 3]))
 frame = JuliaInterpreter.prepare_thunk(Main, ex)
 julia> JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame)
-ERROR: this should have been handled by prepare_toplevel
+ERROR: this frame needs to be run a top level
 ```
 
 The reason becomes clearer if we examine `frame` or look directly at the lowered code:
@@ -225,15 +225,28 @@ end)))
 
 All of the code before `%7` is devoted to defining the anonymous function `x->x^2`: it creates a new "anonymous type"
 (here written as `##17#18`), and then defines a call function for this type, equivalent to `(##17#18)(x) = x^2`.
-Since this is a new method, you need to return to top level to evaluate it:
+
+The easy way to fix this is to simply add a flag:
 
 ```julia
-frames, _ = JuliaInterpreter.prepare_toplevel(Main, ex)
+julia> JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
+3-element Array{Int64,1}:
+ 1
+ 4
+ 9
+```
+
+Here's a more fine-grained look at what's happening under the hood:
+
+```julia
+modexs, _ = JuliaInterpreter.prepare_toplevel(Main, ex)
 stack = JuliaStackFrame[]
-for frame in frames
+for (mod, e) in modexs
+    frame = JuliaInterpreter.prepare_thunk(mod, e)
     while true
         JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
     end
+    JuliaInterpreter.get_return(frame)
 end
 ```
 

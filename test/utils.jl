@@ -168,10 +168,11 @@ function run_test_by_eval(test, fullpath, nstmts)
         ts = Test.DefaultTestSet($test)
         Test.push_testset(ts)
         current_task().storage[:SOURCE_PATH] = $fullpath
-        frames, _ = JuliaInterpreter.prepare_toplevel(JuliaTests, ex)
+        modexs, _ = JuliaInterpreter.prepare_toplevel(JuliaTests, ex)
         stack = JuliaStackFrame[]
-        for (i, frame) in enumerate(frames)  # having the index can be useful for debugging
+        for (i, modex) in enumerate(modexs)  # having the index can be useful for debugging
             nstmtsleft = $nstmts
+            frame = JuliaInterpreter.prepare_thunk(modex)
             while true
                 ret, nstmtsleft = evaluate_limited!(stack, frame, nstmtsleft)
                 isa(ret, Some{Any}) && break
@@ -181,7 +182,6 @@ function run_test_by_eval(test, fullpath, nstmts)
                     # to work. Largely fixes #30. Of course this is not perfect, because it
                     # may repeat some work done previously, but it's a decent start.
                     # TODO: recurse over stack. The key problem is that the inner-most frame is lost.
-                    frame = frame[3]
                     pc = frame.pc[]
                     while true   # This is finish!, except we need to run it at top level
                         new_pc = _step_expr!(Compiled(), frame, pc, true)

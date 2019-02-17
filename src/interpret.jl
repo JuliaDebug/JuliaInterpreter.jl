@@ -409,9 +409,10 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 elseif node.head == :toplevel
                     mod = moduleof(frame)
                     newstack = similar(stack, 0)
-                    newframes, _ = prepare_toplevel(mod, node)
+                    modexs, _ = prepare_toplevel(mod, node)
                     Core.eval(mod, Expr(:toplevel,
-                        :(for newframe in $newframes
+                        :(for modex in $modexs
+                              newframe = ($prepare_thunk)(modex)
                               while true
                                   ($through_methoddef_or_done!)($newstack, newframe) === nothing && break
                               end
@@ -424,7 +425,7 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                     rhs = eval_rhs(stack, frame, node, pc)
                 end
             elseif node.head == :thunk || node.head == :toplevel
-                error("this should have been handled by prepare_toplevel, or this frame needs to be run at top level")
+                error("this frame needs to be run at top level")
             else
                 rhs = eval_rhs(stack, frame, node, pc)
             end

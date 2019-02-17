@@ -15,24 +15,28 @@ using Test
     end
     @elapsed sum(rand(5))
     """; filename="fake.jl")
-    frames, _ = JuliaInterpreter.prepare_toplevel(Main, ex; filename="fake.jl")
+    modexs, _ = JuliaInterpreter.prepare_toplevel(Main, ex; filename="fake.jl")
     # find the 3rd assignment statement in the 2nd frame (corresponding to the x += 1 line)
+    frame = JuliaInterpreter.prepare_thunk(modexs[2])
     i = 0
     for k = 1:3
-        i = findnext(stmt->isexpr(stmt, :(=)), frames[2][end].code.code.code, i+1)
+        i = findnext(stmt->isexpr(stmt, :(=)), frame.code.code.code, i+1)
     end
-    @test Aborted(frames[2][end], i).at.line == 3
+    @test Aborted(frame, i).at.line == 3
     # Check interior of let block
+    frame = JuliaInterpreter.prepare_thunk(modexs[3])
     i = 0
     for k = 1:2
-        i = findnext(stmt->isexpr(stmt, :(=)), frames[3][end].code.code.code, i+1)
+        i = findnext(stmt->isexpr(stmt, :(=)), frame.code.code.code, i+1)
     end
-    @test Aborted(frames[3][end], i).at.line == 6
+    @test Aborted(frame, i).at.line == 6
     # Check conditional
-    i = findfirst(stmt->isexpr(stmt, :gotoifnot), frames[4][end].code.code.code) + 1
-    @test Aborted(frames[4][end], i).at.line == 9
+    frame = JuliaInterpreter.prepare_thunk(modexs[4])
+    i = findfirst(stmt->isexpr(stmt, :gotoifnot), frame.code.code.code) + 1
+    @test Aborted(frame, i).at.line == 9
     # Check macro
-    @test Aborted(frames[5][end], 1).at.file == Symbol("util.jl")
+    frame = JuliaInterpreter.prepare_thunk(modexs[5])
+    @test Aborted(frame, 1).at.file == Symbol("util.jl")
 end
 
 module EvalLimited end
@@ -47,10 +51,11 @@ module EvalLimited end
         s += 1
     end
     """)
-    frames, _ = JuliaInterpreter.prepare_toplevel(EvalLimited, ex)
+    modexs, _ = JuliaInterpreter.prepare_toplevel(EvalLimited, ex)
     nstmts = 1000  # enough to ensure it finishes
-    for frame in frames
-        @test isa(frame[end], JuliaStackFrame)
+    for modex in modexs
+        frame = JuliaInterpreter.prepare_thunk(modex)
+        @test isa(frame, JuliaStackFrame)
         nstmtsleft = nstmts
         while true
             ret, nstmtsleft = evaluate_limited!(stack, frame, nstmtsleft)
@@ -73,10 +78,11 @@ module EvalLimited end
         insert!(ex.args, 2, LineNumberNode(2, Symbol("fake.jl")))
         insert!(ex.args, 1, LineNumberNode(1, Symbol("fake.jl")))
     end
-    frames, _ = JuliaInterpreter.prepare_toplevel(EvalLimited, ex)
+    modexs, _ = JuliaInterpreter.prepare_toplevel(EvalLimited, ex)
     nstmts = 100 # enough to ensure it gets into the loop but doesn't finish
-    for frame in frames
-        @test isa(frame[end], JuliaStackFrame)
+    for modex in modexs
+        frame = JuliaInterpreter.prepare_thunk(modex)
+        @test isa(frame, JuliaStackFrame)
         nstmtsleft = nstmts
         while true
             ret, nstmtsleft = evaluate_limited!(Compiled(), frame, nstmtsleft)
@@ -90,9 +96,10 @@ module EvalLimited end
 
     # Now try again with recursive stack
     empty!(aborts)
-    frames, _ = JuliaInterpreter.prepare_toplevel(EvalLimited, ex)
-    for frame in frames
-        @test isa(frame[end], JuliaStackFrame)
+    modexs, _ = JuliaInterpreter.prepare_toplevel(EvalLimited, ex)
+    for modex in modexs
+        frame = JuliaInterpreter.prepare_thunk(modex)
+        @test isa(frame, JuliaStackFrame)
         nstmtsleft = nstmts
         while true
             ret, nstmtsleft = evaluate_limited!(stack, frame, nstmtsleft)

@@ -9,8 +9,9 @@ module Toplevel end
 
 @testset "toplevel" begin
     stack = JuliaInterpreter.JuliaStackFrame[]
-    frames, _ = JuliaInterpreter.prepare_toplevel(Toplevel, read_and_parse("toplevel_script.jl"))
-    for frame in frames
+    modexs, _ = JuliaInterpreter.prepare_toplevel(Toplevel, read_and_parse("toplevel_script.jl"))
+    for modex in modexs
+        frame = JuliaInterpreter.prepare_thunk(modex)
         while true
             JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
         end
@@ -158,8 +159,9 @@ module Toplevel end
        end
        end
    end
-   frames, _ = JuliaInterpreter.prepare_toplevel(Toplevel, ex)
-   for frame in frames
+   modexs, _ = JuliaInterpreter.prepare_toplevel(Toplevel, ex)
+   for modex in modexs
+       frame = JuliaInterpreter.prepare_thunk(modex)
        while true
            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
        end
@@ -198,14 +200,17 @@ ex = quote
         test_15703()
     end
 end
-frames, _ = JuliaInterpreter.prepare_toplevel(IncTest, ex)
+modexs, _ = JuliaInterpreter.prepare_toplevel(IncTest, ex)
 stack = JuliaStackFrame[]
-for frame in frames
+for (i, modex) in enumerate(modexs)
+    frame = JuliaInterpreter.prepare_thunk(modex)
     while true
         JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
     end
+    if i == length(modexs)
+        @test isa(JuliaInterpreter.get_return(frame), Test.DefaultTestSet)
+    end
 end
-@test isa(JuliaInterpreter.get_return(frames[end]), Test.DefaultTestSet)
 
 @testset "Enum" begin
     ex = Expr(:toplevel,
@@ -213,9 +218,10 @@ end
               EnumChild0
               EnumChild1
           end))
-    frames, _ = JuliaInterpreter.prepare_toplevel(Toplevel, ex)
+    modexs, _ = JuliaInterpreter.prepare_toplevel(Toplevel, ex)
     stack = JuliaStackFrame[]
-    for frame in frames
+    for modex in modexs
+        frame = JuliaInterpreter.prepare_thunk(modex)
         while true
             JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
         end
@@ -236,16 +242,18 @@ end
         ret[] = map(x->parse(Int16, x), AbstractString[])
     end
     stack = JuliaStackFrame[]
-    frames, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex1)
-    for frame in frames
+    modexs, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex1)
+    for modex in modexs
+        frame = JuliaInterpreter.prepare_thunk(modex)
         while true
             JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
         end
     end
     @test isa(LowerAnon.ret[], Vector{Int16})
     LowerAnon.ret[] = nothing
-    frames, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex2)
-    for frame in frames
+    modexs, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex2)
+    for modex in modexs
+        frame = JuliaInterpreter.prepare_thunk(modex)
         while true
             JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
         end
@@ -256,8 +264,9 @@ end
     ex3 = quote
         const BitIntegerType = Union{map(T->Type{T}, Base.BitInteger_types)...}
     end
-    frames, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex3)
-    for frame in frames
+    modexs, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex3)
+    for modex in modexs
+        frame = JuliaInterpreter.prepare_thunk(modex)
         while true
             JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
         end
@@ -269,8 +278,9 @@ end
         z = map(x->x^2+y, [1,2,3])
         y = 4
     end
-    frames, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex4)
-    for frame in frames
+    modexs, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex4)
+    for modex in modexs
+        frame = JuliaInterpreter.prepare_thunk(modex)
         while true
             JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
         end
