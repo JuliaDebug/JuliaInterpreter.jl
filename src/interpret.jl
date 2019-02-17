@@ -396,10 +396,14 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 elseif node.head == :thunk
                     newframe = prepare_thunk(moduleof(frame), node)
                     frame.pc[] = pc
-                    push!(stack, frame)
-                    finish!(stack, newframe, true)
-                    pop!(stack)
-                    push!(junk, newframe)  # rather than going through GC, just re-use it
+                    if isa(stack, Compiled)
+                        finish!(stack, newframe, true)
+                    else
+                        push!(stack, frame)
+                        finish!(stack, newframe, true)
+                        pop!(stack)
+                        push!(junk, newframe)  # rather than going through GC, just re-use it
+                    end
                 elseif node.head == :global
                     # error("fixme")
                 elseif node.head == :toplevel

@@ -175,7 +175,22 @@ function run_test_by_eval(test, fullpath, nstmts)
             while true
                 ret, nstmtsleft = evaluate_limited!(stack, frame, nstmtsleft)
                 isa(ret, Some{Any}) && break
-                isa(ret, Aborted) && (push!(aborts, ret); break)
+                if isa(ret, Aborted)
+                    push!(aborts, ret)
+                    # run the remaining statements in Compiled mode, thus allowing later tests
+                    # to work. Largely fixes #30. Of course this is not perfect, because it
+                    # may repeat some work done previously, but it's a decent start.
+                    # TODO: recurse over stack. The key problem is that the inner-most frame is lost.
+                    frame = frame[3]
+                    pc = frame.pc[]
+                    while true   # This is finish!, except we need to run it at top level
+                        new_pc = _step_expr!(Compiled(), frame, pc, true)
+                        new_pc == nothing && break
+                        pc = new_pc
+                    end
+                    frame.pc[] = pc
+                    break
+                end
             end
         end
         println("Finished ", $test)
