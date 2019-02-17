@@ -74,7 +74,7 @@ move_to_node1("Distributed")
     procs = spin_up_workers(nworkers)
     results = Dict{String,Any}()
     tests0 = copy(tests)
-    @sync begin
+    # @sync begin
         for p in procs
             @async begin
                 while length(tests) > 0
@@ -96,13 +96,10 @@ move_to_node1("Distributed")
                         empty!(tests)
                     end
                 end
-                try
-                    rmprocs(p; waitfor=300)
-                catch
-                end
             end
         end
-    end
+    # end
+    sleep(300)
 
     open("results.md", "w") do io
         versioninfo(io)
@@ -113,6 +110,7 @@ move_to_node1("Distributed")
         println(io, "| Test file | Passes | Fails | Errors | Broken | Aborted blocks |")
         println(io, "| --------- | ------:| -----:| ------:| ------:| --------------:|")
         for test in tests0
+            haskey(results, test) || (@warn "missing $test"; continue)
             result = results[test]
             if isa(result, Tuple{Test.AbstractTestSet, Vector})
                 ts, aborts = result
