@@ -158,30 +158,27 @@ function configure_test()
     push!(cm, which(Base.show_backtrace, Tuple{IO, Vector{Any}}))
 end
 
-# Run a test in process id 1 (i.e., the main Julia process)
-function dotest1(test, fullpath, nstmts)
-    println("Working on ", test, "...")
-    mod = Core.eval(Main, :(
-        module JuliaTests
-        using Test, Random
+function run_test_by_eval(test, fullpath, nstmts)
+    Core.eval(Main, Expr(:toplevel, :(module JuliaTests using Test, Random end), quote
+        # These must be run at top level, so we can't put this in a function
+        println("Working on ", $test, "...")
+        ex = read_and_parse($fullpath)
+        isexpr(ex, :error) && @error "error parsing $($test): $ex"
+        aborts = Aborted[]
+        ts = Test.DefaultTestSet($test)
+        Test.push_testset(ts)
+        current_task().storage[:SOURCE_PATH] = $fullpath
+        frames, _ = JuliaInterpreter.prepare_toplevel(JuliaTests, ex)
+        stack = JuliaStackFrame[]
+        for (i, frame) in enumerate(frames)  # having the index can be useful for debugging
+            nstmtsleft = $nstmts
+            while true
+                ret, nstmtsleft = evaluate_limited!(stack, frame, nstmtsleft)
+                isa(ret, Some{Any}) && break
+                isa(ret, Aborted) && (push!(aborts, ret); break)
+            end
         end
-        ))
-    ex = read_and_parse(fullpath)
-    isexpr(ex, :error) && @error "error parsing $test: $ex"
-    # so `include` works properly, we have to set up the relative path
-    oldpath = current_task().storage[:SOURCE_PATH]
-    local ts, aborts
-    try
-        current_task().storage[:SOURCE_PATH] = fullpath
-        cd(dirname(fullpath)) do
-            ts = Test.DefaultTestSet(test)
-            Test.push_testset(ts)
-            docexprs, aborts = lower_incrementally(frame->runtest(frame, nstmts), mod, ex)
-            # Core.eval(JuliaTests, ex)
-        end
-    finally
-        current_task().storage[:SOURCE_PATH] = oldpath
-    end
-    println("Finished ", test)
-    return ts, aborts
+        println("Finished ", $test)
+        return ts, aborts
+    end))
 end

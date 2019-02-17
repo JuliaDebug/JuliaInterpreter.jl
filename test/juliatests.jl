@@ -74,47 +74,15 @@ move_to_node1("Distributed")
     procs = spin_up_workers(nworkers)
     results = Dict{String,Any}()
     tests0 = copy(tests)
-    oldpath = current_task().storage[:SOURCE_PATH]
     @sync begin
         for p in procs
             @async begin
                 while length(tests) > 0
                     test = popfirst!(tests)
                     local resp
-                    wrkr = p
                     fullpath = test_path(test) * ".jl"
                     try
-                        resp = remotecall_fetch(Core.eval, wrkr, Main, quote
-                            # These must be run at top level, so we can't put this in a function
-                            println("Working on ", $test, "...")
-                            Core.eval(Main, :(
-                                module JuliaTests
-                                using Test, Random
-                                end
-                                ))
-                            ex = read_and_parse($fullpath)
-                            isexpr(ex, :error) && @error "error parsing $($test): $ex"
-                            aborts = Aborted[]
-                            ts = Test.DefaultTestSet($test)
-                            Test.push_testset(ts)
-                            current_task().storage[:SOURCE_PATH] = $fullpath
-                            try
-                                frames, _ = JuliaInterpreter.prepare_toplevel(JuliaTests, ex)
-                                stack = JuliaStackFrame[]
-                                for (i, frame) in enumerate(frames)  # having the index is useful for debugging
-                                    nstmtsleft = $nstmts
-                                    while true
-                                        ret, nstmtsleft = evaluate_limited!(stack, frame, nstmtsleft)
-                                        isa(ret, Some{Any}) && break
-                                        isa(ret, Aborted) && (push!(aborts, ret); break)
-                                    end
-                                end
-                            finally
-                                current_task().storage[:SOURCE_PATH] = $oldpath
-                            end
-                            println("Finished ", $test)
-                            return ts, aborts
-                        end)
+                        resp = remotecall_fetch(run_test_by_eval, p, test, fullpath, nstmts)
                     catch e
                         isa(e, InterruptException) && return
                         resp = e
