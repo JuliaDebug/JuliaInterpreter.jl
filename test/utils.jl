@@ -172,6 +172,8 @@ function run_test_by_eval(test, fullpath, nstmts)
         stack = JuliaStackFrame[]
         for (i, modex) in enumerate(modexs)  # having the index can be useful for debugging
             nstmtsleft = $nstmts
+            # mod, ex = modex
+            # @show mod ex
             frame = JuliaInterpreter.prepare_thunk(modex)
             while true
                 yield()  # allow communication between processes
@@ -196,5 +198,19 @@ function run_test_by_eval(test, fullpath, nstmts)
         end
         println("Finished ", $test)
         return ts, aborts
+    end))
+end
+
+# To help debugging
+function run_compiled(frame)
+    Core.eval(moduleof(frame), Expr(:toplevel, quote
+        let pc = $frame.pc[]
+            while true   # This is finish!, except we need to run it at top level
+                new_pc = ($_step_expr!)($(Compiled()), $frame, pc, true)
+                new_pc == nothing && break
+                pc = new_pc
+            end
+            $frame.pc[] = pc
+        end
     end))
 end
