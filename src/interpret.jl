@@ -516,7 +516,7 @@ Step through statements of `frame` until the next statement satifies `predicate(
 """
 function next_until!(f, stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::Bool=false)
     while (pc = _step_expr!(stack, frame, pc, istoplevel)) != nothing
-        f(plain(pc_expr(frame, pc))) && (frame.pc[] = pc; return pc)
+        f(pc_expr(frame, pc)) && (frame.pc[] = pc; return pc)
     end
     return nothing
 end
@@ -554,7 +554,7 @@ function find_used(code::CodeInfo)
     used = BitSet()
     stmts = code.code
     for stmt in stmts
-        Core.Compiler.scan_ssa_use!(push!, used, plain(stmt))
+        Core.Compiler.scan_ssa_use!(push!, used, stmt)
         if isexpr(stmt, :struct_type)  # this one is missed
             for a in stmt.args
                 Core.Compiler.scan_ssa_use!(push!, used, a)
@@ -580,7 +580,7 @@ function next_line!(stack, frame, dbstack = nothing)
     while location(frame, pc) == initial
         # If this is a return node, interrupt execution. This is the same
         # special case as in `s`.
-        expr = plain(pc_expr(frame, pc))
+        expr = pc_expr(frame, pc)
         (!first && isexpr(expr, :return)) && return pc
         first = false
         # If this is a goto node, step it and reevaluate
@@ -592,7 +592,7 @@ function next_line!(stack, frame, dbstack = nothing)
             # confuses the logic here, just step into the first call that's not a builtin
             while true
                 dbstack[1] = JuliaStackFrame(JuliaFrameCode(frame.code; wrapper = true), frame, pc)
-                call_expr = plain(pc_expr(frame, pc))
+                call_expr = pc_expr(frame, pc)
                 isexpr(call_expr, :(=)) && (call_expr = call_expr.args[2])
                 call_expr = Expr(:call, map(x->@lookup(frame, x), call_expr.args)...)
                 new_frame = enter_call_expr(call_expr)
@@ -617,7 +617,7 @@ end
 
 function maybe_next_call!(stack, frame, pc)
     call_or_return(node) = is_call(node) || isexpr(node, :return)
-    call_or_return(plain(pc_expr(frame, pc))) ||
+    call_or_return(pc_expr(frame, pc)) ||
         (pc = next_until!(call_or_return, stack, frame, pc, false))
     pc
 end
