@@ -180,13 +180,18 @@ Test Passed
 
 ## Toplevel code and world age
 
-Some code is more complicated and requires special handling: code that defines new `struct`s,
-new methods, or new modules. In such cases, calling `finish_and_return!` on a frame that
+Code that defines new `struct`s, new methods, or new modules is a bit more complicated
+and requires special handling. In such cases, calling `finish_and_return!` on a frame that
 defines these new objects and then calls them can trigger a
 [world age error](https://docs.julialang.org/en/latest/manual/methods/#Redefining-Methods-1),
 in which the method is considered to be too new to be run by the currently compiled code.
+While one can resolve this by using `Base.invokelatest`, we'd have to use that strategy
+throughout the entire package.  This would cause a major reduction in performance.
+To resolve this issue without leading to performance problems, care is required to
+return to "top level" after defining such objects. This leads to altered syntax for executing
+such expressions.
 
-In such cases care is required to return to "top level" before continuing. Here's a demonstration:
+Here's a demonstration of the problem:
 
 ```julia
 ex = :(map(x->x^2, [1, 2, 3]))
@@ -195,7 +200,7 @@ julia> JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame)
 ERROR: this frame needs to be run a top level
 ```
 
-The reason becomes clearer if we examine `frame` or look directly at the lowered code:
+The reason for this error becomes clearer if we examine `frame` or look directly at the lowered code:
 
 ```julia
 julia> Meta.lower(Main, ex)
@@ -223,10 +228,11 @@ end)))
 ))))
 ```
 
-All of the code before `%7` is devoted to defining the anonymous function `x->x^2`: it creates a new "anonymous type"
-(here written as `##17#18`), and then defines a call function for this type, equivalent to `(##17#18)(x) = x^2`.
+All of the code before the `%7` line is devoted to defining the anonymous function `x->x^2`:
+it creates a new "anonymous type" (here written as `##17#18`), and then defines a "call
+function" for this type, equivalent to `(##17#18)(x) = x^2`.
 
-The easy way to fix this is to simply add a flag:
+In some cases one can fix this simply by indicating that we want to run this frame at top level:
 
 ```julia
 julia> JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
@@ -236,7 +242,8 @@ julia> JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
  9
 ```
 
-Here's a more fine-grained look at what's happening under the hood:
+Here's a more fine-grained look at what's happening under the hood (and a robust strategy
+for more complex situations where there may be nested calls of new methods):
 
 ```julia
 modexs, _ = JuliaInterpreter.prepare_toplevel(Main, ex)
@@ -255,15 +262,6 @@ Then, each frame is executed until it finishes defining a new method, then retur
 The return to top level causes an update in the world age.
 If the frame hasn't been finished yet (if the return value wasn't `nothing`),
 this continues executing where it left off.
-You can extract the return value with
-
-```julia
-julia> JuliaInterpreter.get_return(frames[end])
-3-element Array{Int64,1}:
- 1
- 4
- 9
-```
 
 (Incidentally, `JuliaInterpreter.enter_call(map, x->x^2, [1, 2, 3])` works fine on its own,
 because the anonymous function is defined by the caller---you'll see that the created frame
