@@ -174,6 +174,7 @@ function run_test_by_eval(test, fullpath, nstmts)
             nstmtsleft = $nstmts
             frame = JuliaInterpreter.prepare_thunk(modex)
             while true
+                yield()  # allow communication between processes
                 ret, nstmtsleft = evaluate_limited!(stack, frame, nstmtsleft)
                 isa(ret, Some{Any}) && break
                 if isa(ret, Aborted)

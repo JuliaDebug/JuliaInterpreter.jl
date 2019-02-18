@@ -43,6 +43,13 @@ end
 
 tests, _, exit_on_error, seed = choosetests(ARGS)
 
+function spin_up_worker()
+    p = addprocs(1)[1]
+    remotecall_wait(include, p, "utils.jl")
+    remotecall_wait(configure_test, p)
+    return p
+end
+
 function spin_up_workers(n)
     procs = addprocs(n)
     @sync begin
@@ -71,27 +78,35 @@ move_to_node1("Distributed")
 @testset "Julia tests" begin
     nworkers = min(Sys.CPU_THREADS, length(tests))
     println("Using $nworkers workers")
-    procs = spin_up_workers(nworkers)
     results = Dict{String,Any}()
     tests0 = copy(tests)
-    all_tasks = Task[]
+    all_tasks = Union{Task,Nothing}[]
     try
         @sync begin
-            for p in procs
+            for i = 1:nworkers
                 @async begin
                     push!(all_tasks, current_task())
                     while length(tests) > 0
+                        nleft = length(tests)
                         test = popfirst!(tests)
+                        println(nleft, " remaining, starting ", test, " on task ", i)
                         local resp
                         fullpath = test_path(test) * ".jl"
                         try
-                            resp = remotecall_fetch(run_test_by_eval, p, test, fullpath, nstmts)
+                            resp = disable_sigint() do
+                                p = spin_up_worker()
+                                result = remotecall_fetch(run_test_by_eval, p, test, fullpath, nstmts)
+                                rmprocs(p; waitfor=5)
+                                result
+                            end
                         catch e
-                            isa(e, InterruptException) && return
+                            if isa(e, InterruptException)
+                                println("interrupting ", test)
+                                break # rethrow(e)
+                            end
                             resp = e
                             if isa(e, ProcessExitedException)
                                 println("exited on ", test)
-                                p = spin_up_workers(1)[1]
                             end
                         end
                         results[test] = resp
@@ -100,14 +115,24 @@ move_to_node1("Distributed")
                             empty!(tests)
                         end
                     end
+                    println("Task ", i, " complete")
+                    all_tasks[i] = nothing
                 end
             end
         end
     catch err
-         isa(err, InterruptException) || rethrow(err)
+        isa(err, InterruptException) || rethrow(err)
         # If the test suite was merely interrupted, still print the
         # summary, which can be useful to diagnose what's going on
-        foreach(task->try; schedule(task, InterruptException(); error=true); catch; end, all_tasks)
+        foreach(all_tasks) do task
+            try
+                if isa(task, Task)
+                    println("trying to interrupt ", task)
+                    schedule(task, InterruptException(); error=true)
+                end
+            catch
+            end
+        end
         foreach(wait, all_tasks)
     end
 
@@ -120,8 +145,7 @@ move_to_node1("Distributed")
         println(io, "| Test file | Passes | Fails | Errors | Broken | Aborted blocks |")
         println(io, "| --------- | ------:| -----:| ------:| ------:| --------------:|")
         for test in tests0
-            haskey(results, test) || (@warn "missing $test"; continue)
-            result = results[test]
+            result = get(results, test, "")
             if isa(result, Tuple{Test.AbstractTestSet, Vector})
                 ts, aborts = result
                 passes, fails, errors, broken, c_passes, c_fails, c_errors, c_broken = Test.get_test_counts(ts)
