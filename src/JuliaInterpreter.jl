@@ -534,8 +534,6 @@ function optimize!(code::CodeInfo, mod::Module)
     return code
 end
 
-plain(stmt) = stmt
-
 function prepare_locals(framecode, argvals::Vector{Any})
     if isa(framecode.scope, Method)
         meth, code = framecode.scope::Method, framecode.code
@@ -707,7 +705,7 @@ end
 
 function maybe_step_through_wrapper!(stack)
     length(stack[1].code.code.code) < 2 && return stack
-    last = plain(stack[1].code.code.code[end-1])
+    last = stack[1].code.code.code[end-1]
     isexpr(last, :(=)) && (last = last.args[2])
     stack1 = stack[1]
     is_kw = stack1.code.scope isa Method && startswith(String(Base.unwrap_unionall(stack1.code.scope.sig).parameters[1].name.name), "#kw")
