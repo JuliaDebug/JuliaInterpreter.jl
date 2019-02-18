@@ -9,7 +9,13 @@ module Toplevel end
 
 @testset "toplevel" begin
     stack = JuliaInterpreter.JuliaStackFrame[]
-    JuliaInterpreter.interpret!(stack, Toplevel, read_and_parse("toplevel_script.jl"))
+    modexs, _ = JuliaInterpreter.prepare_toplevel(Toplevel, read_and_parse("toplevel_script.jl"))
+    for modex in modexs
+        frame = JuliaInterpreter.prepare_thunk(modex)
+        while true
+            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+        end
+    end
 
     @test isconst(Toplevel, :StructParent)
     @test isconst(Toplevel, :Struct)
@@ -82,6 +88,8 @@ module Toplevel end
     @test Toplevel.paramtype(Vector) == Toplevel.NoParam
     @test Toplevel.Inner.g() == 5
     @test Toplevel.Inner.InnerInner.g() == 6
+    @test isdefined(Toplevel, :Beat)
+    @test Toplevel.Beat <: Toplevel.DatesMod.Period
 
     @test @interpret(Toplevel.f1(0)) == 1
     @test @interpret(Toplevel.f1(0.0)) == 2
@@ -140,8 +148,8 @@ module Toplevel end
     @test @interpret(Toplevel.paramtype(Vector)) == Toplevel.NoParam
     @test @interpret(Toplevel.Inner.g()) == 5
     @test @interpret(Toplevel.Inner.InnerInner.g()) == 6
-    @test @interpret(isdefined(Toplevel, :Beat))
-    @test @interpret(Toplevel.Beat <: Toplevel.DatesMod.Period)
+    # @test @interpret(isdefined(Toplevel, :Beat))
+    # @test @interpret(Toplevel.Beat <: Toplevel.DatesMod.Period)
 
     # Check that nested expressions are handled appropriately (module-in-block, internal `using`)
     ex = quote
@@ -151,23 +159,74 @@ module Toplevel end
        end
        end
    end
-   JuliaInterpreter.interpret!(stack, Toplevel, ex)
+   modexs, _ = JuliaInterpreter.prepare_toplevel(Toplevel, ex)
+   for modex in modexs
+       frame = JuliaInterpreter.prepare_thunk(modex)
+       while true
+           JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+       end
+   end
    @test Toplevel.Testing.JuliaStackFrame === JuliaStackFrame
 end
 
+# incremental interpretation solves world-age problems
+# Taken straight from Julia's test/tuple.jl
+module IncTest
+using Test
+
+struct A_15703{N}
+    keys::NTuple{N, Int}
+end
+
+struct B_15703
+    x::A_15703
+end
+end
+
+ex = quote
+    @testset "issue #15703" begin
+        function bug_15703(xs...)
+            [x for x in xs]
+        end
+
+        function test_15703()
+            s = (1,)
+            a = A_15703(s)
+            ss = B_15703(a).x.keys
+            @test ss === s
+            bug_15703(ss...)
+        end
+
+        test_15703()
+    end
+end
+modexs, _ = JuliaInterpreter.prepare_toplevel(IncTest, ex)
+stack = JuliaStackFrame[]
+for (i, modex) in enumerate(modexs)
+    frame = JuliaInterpreter.prepare_thunk(modex)
+    while true
+        JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+    end
+    if i == length(modexs)
+        @test isa(JuliaInterpreter.get_return(frame), Test.DefaultTestSet)
+    end
+end
+
 @testset "Enum" begin
-    ex = quote
-        @enum MPFRRoundingMode begin
-            MPFRRoundNearest
-            MPFRRoundToZero
-            MPFRRoundUp
-            MPFRRoundDown
-            MPFRRoundFromZero
-            MPFRRoundFaithful
+    ex = Expr(:toplevel,
+        :(@enum EnumParent begin
+              EnumChild0
+              EnumChild1
+          end))
+    modexs, _ = JuliaInterpreter.prepare_toplevel(Toplevel, ex)
+    stack = JuliaStackFrame[]
+    for modex in modexs
+        frame = JuliaInterpreter.prepare_thunk(modex)
+        while true
+            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
         end
     end
-    frame = JuliaInterpreter.prepare_toplevel(Toplevel, ex)
-    @test_broken JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
+    @test isa(Toplevel.EnumChild1, Toplevel.EnumParent)
 end
 
 module LowerAnon
@@ -183,21 +242,35 @@ end
         ret[] = map(x->parse(Int16, x), AbstractString[])
     end
     stack = JuliaStackFrame[]
-    function runtest(frame)
-        empty!(stack)
-        return JuliaInterpreter.finish_and_return!(stack, frame, true)
+    modexs, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex1)
+    for modex in modexs
+        frame = JuliaInterpreter.prepare_thunk(modex)
+        while true
+            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+        end
     end
-    lower_incrementally(runtest, LowerAnon, ex1)
     @test isa(LowerAnon.ret[], Vector{Int16})
     LowerAnon.ret[] = nothing
-    lower_incrementally(runtest, LowerAnon, ex2)
+    modexs, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex2)
+    for modex in modexs
+        frame = JuliaInterpreter.prepare_thunk(modex)
+        while true
+            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+        end
+    end
     @test isa(LowerAnon.ret[], Vector{Int16})
     LowerAnon.ret[] = nothing
 
     ex3 = quote
         const BitIntegerType = Union{map(T->Type{T}, Base.BitInteger_types)...}
     end
-    lower_incrementally(runtest, LowerAnon, ex3)
+    modexs, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex3)
+    for modex in modexs
+        frame = JuliaInterpreter.prepare_thunk(modex)
+        while true
+            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+        end
+    end
     @test isa(LowerAnon.BitIntegerType, Union)
 
     ex4 = quote
@@ -205,6 +278,12 @@ end
         z = map(x->x^2+y, [1,2,3])
         y = 4
     end
-    lower_incrementally(runtest, LowerAnon, ex4)
+    modexs, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex4)
+    for modex in modexs
+        frame = JuliaInterpreter.prepare_thunk(modex)
+        while true
+            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+        end
+    end
     @test LowerAnon.z == [4,7,12]
 end

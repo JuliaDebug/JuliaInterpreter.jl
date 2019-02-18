@@ -31,6 +31,9 @@ end
 fkw(x::Int8; y=0, z="hello") = y
 @test @interpret(fkw(Int8(1); y=22, z="world")) == fkw(Int8(1); y=22, z="world")
 
+# generators that throw before returning the body expression
+@test_throws ArgumentError("input tuple of length 3, requested 2") @interpret Base.fill_to_length((1,2,3), -1, Val(2))
+
 # Throwing exceptions across frames
 function f_exc_inner()
     error("inner")
@@ -95,9 +98,9 @@ end
 # issue #6
 @test @interpret(Array.body.body.name) === Array.body.body.name
 @test @interpret(Vararg.body.body.name) === Vararg.body.body.name
-frame = JuliaInterpreter.prepare_toplevel(Main, :(Vararg.body.body.name))
+frame = JuliaInterpreter.prepare_thunk(Main, :(Vararg.body.body.name))
 @test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) === Vararg.body.body.name
-frame = JuliaInterpreter.prepare_toplevel(Base, :(Union{AbstractChar,Tuple{Vararg{<:AbstractChar}},AbstractVector{<:AbstractChar},Set{<:AbstractChar}}))
+frame = JuliaInterpreter.prepare_thunk(Base, :(Union{AbstractChar,Tuple{Vararg{<:AbstractChar}},AbstractVector{<:AbstractChar},Set{<:AbstractChar}}))
 @test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) isa Union
 
 # issue #8
@@ -107,7 +110,7 @@ ex = quote
         ccall(:jl_throw, Cvoid, (Any,), "Option structure mismatch")
     end
 end
-frame = JuliaInterpreter.prepare_toplevel(Base, ex)
+frame = JuliaInterpreter.prepare_thunk(Base, ex)
 JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
 
 # ccall with two Symbols
@@ -116,7 +119,7 @@ ex = quote
        @test 2 > 1
     end
 end
-frame = JuliaInterpreter.prepare_toplevel(Main, ex)
+frame = JuliaInterpreter.prepare_thunk(Main, ex)
 JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
 
 @test @interpret Base.Math.DoubleFloat64(-0.5707963267948967, 4.9789962508669555e-17).hi ≈ -0.5707963267948967
@@ -127,7 +130,7 @@ ex = quote   # in lowered code, cf is a Symbol
     cf = @eval @cfunction(fcfun, Int, (Int, Int))
     ccall(cf, Int, (Int, Int), 1, 2)
 end
-frame = JuliaInterpreter.prepare_toplevel(Main, ex)
+frame = JuliaInterpreter.prepare_thunk(Main, ex)
 @test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) == 1
 ex = quote
     let   # in lowered code, cf is a SlotNumber
@@ -135,7 +138,7 @@ ex = quote
         ccall(cf, Int, (Int, Int), 1, 2)
     end
 end
-frame = JuliaInterpreter.prepare_toplevel(Main, ex)
+frame = JuliaInterpreter.prepare_thunk(Main, ex)
 @test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) == 1
 
 # From Julia's test/ambiguous.jl. This tests whether we renumber :enter statements correctly.
@@ -150,14 +153,14 @@ ex = quote
         @test_throws(MethodError, ccall(cf, Int, (UInt8, Int), 1, 2))
     end
 end
-frame = JuliaInterpreter.prepare_toplevel(Main, ex)
+frame = JuliaInterpreter.prepare_thunk(Main, ex)
 JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
 
 # Core.Compiler
 ex = quote
     length(code_typed(fcfun, (Int, Int)))
 end
-frame = JuliaInterpreter.prepare_toplevel(Main, ex)
+frame = JuliaInterpreter.prepare_thunk(Main, ex)
 @test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) == 1
 
 # copyast
@@ -188,7 +191,7 @@ ex = quote
                 emit_function, emitted_function)
     end
 end
-frame = JuliaInterpreter.prepare_toplevel(Isolated, ex)
+frame = JuliaInterpreter.prepare_thunk(Isolated, ex)
 JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
 @test Isolated.CodegenParams(cached=false).cached === Cint(false)
 

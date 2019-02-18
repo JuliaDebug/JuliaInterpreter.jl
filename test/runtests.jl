@@ -5,4 +5,5 @@ using Test
     include("utils.jl")
     include("interpret.jl")
     include("toplevel.jl")
+    include("limits.jl")
 end

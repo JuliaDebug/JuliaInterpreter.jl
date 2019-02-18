@@ -13,6 +13,7 @@ using Julia's normal compiled-code evaluation. The alternative is to pass `stack
 which will cause all calls to be evaluated via the interpreter.
 """
 struct Compiled end
+Base.similar(::Compiled, sz) = Compiled()  # to support similar(stack, 0)
 
 """
     JuliaProgramCounter(next_stmt::Int)
@@ -150,6 +151,10 @@ function show_stackloc(io::IO, stack, frame, pc=frame.pc[])
         indent *= "  "
     end
     println(io, indent, frame.code.scope, ", pc = ", convert(Int, pc))
+end
+function show_stackloc(io::IO, ::Compiled, frame, pc)
+    println(io, "No stack, ::Compiled")
+    println(io, frame.code.scope, ", pc = ", convert(Int, pc))
 end
 show_stackloc(stack, frame, pc=frame.pc[]) = show_stackloc(stderr, stack, frame, pc)
 
@@ -323,6 +328,10 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
             # unspecialized method.
             code = Core.Compiler.get_staged(Core.Compiler.code_for_method(method, argtypes, lenv, typemax(UInt), false))
             generator = false
+            if code === nothing
+                # The generator threw an error. Let's generate the same error by calling it.
+                f(allargs[2:end]...)
+            end
         else
             if is_generated(method)
                 args = Any[_Typeof(a) for a in args]
@@ -343,27 +352,137 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     return framecode, args, lenv, argtypes
 end
 
-function prepare_thunk(mod::Module, thunk::Expr)
+"""
+    frame = prepare_thunk(mod::Module, expr::Expr)
+
+Prepare `expr` for evaluation in `mod`. `expr` should be a "straightforward" expression,
+one that does not require special top-level handling (see [`JuliaInterpreter.prepare_toplevel`](@ref)).
+"""
+function prepare_thunk(mod::Module, thunk::Expr, recursive=false)
     if isexpr(thunk, :thunk)
         framecode = JuliaFrameCode(mod, thunk.args[1])
     elseif isexpr(thunk, :error)
         error("lowering returned an error, ", thunk)
-    elseif isa(thunk, Expr)
-        error("expected thunk or module, got ", thunk.head)
+    elseif recursive
+        error("expected thunk expression, got ", thunk.head)
     else
-        error("expected expression, got ", typeof(thunk))
+        return prepare_thunk(mod, Meta.lower(mod, thunk), true)
     end
     return prepare_locals(framecode, [])
 end
 
-function prepare_toplevel(mod::Module, expr::Expr)
-    if expr.head == :using || expr.head == :import || expr.head == :export
-        Core.eval(mod, expr)
-        return nothing
+function prepare_thunk((mod, ex)::Tuple{Module,Expr})
+    lwr = Meta.lower(mod, ex)
+    if isexpr(lwr, :thunk)
+        return prepare_thunk(mod, lwr)
+    # elseif isexpr(lwr, :toplevel)
+    #     return prepare_toplevel!(frames, docexprs, lex, mod, lwr; extract_docexprs=extract_docexprs, filename=filename)
+    # elseif isa(lwr, Expr) && (lwr.head == :export || lwr.head == :using || lwr.head == :import)
+    #     @show lwr
+    #     push!(modexs, (mod, ex, lwr))
+    # elseif isa(lwr, Symbol) || isa(lwr, Nothing)
     else
-        thunk = Meta.lower(mod, expr)
+        @show mod ex lwr
+        error("lowering did not produce a :thunk Expr")
     end
-    return prepare_thunk(mod, thunk)
+end
+
+"""
+    modexs, docexprs = prepare_toplevel(mod::Module, expr::Expr; extract_docexprs=false)
+
+Break `expr` into a list `modexs` of blocks to be successively executed at top level.
+This is used when `expr` defines new structs, new methods, or new modules.
+
+`modexs[i]` is a `(Module, Expr)` tuple. A prototype of how to use these is:
+
+    stack = JuliaStackFrame[]
+    for modex in modexs
+        frame = JuliaInterpreter.prepare_thunk(modex)
+        while true
+            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+        end
+    end
+
+The `while` loop here deserves some explanation. Occasionally, a frame may define new methods
+(e.g., anonymous or local functions) and then call those methods. In such cases, running
+the entire frame as a single block (e.g., with [`JuliaInterpreter.finish_and_return!`](@ref)
+can trigger "method is too new..." errors. Instead, this runs each frame, but returns to the caller
+after any new method is defined. When this loop is running at top level (e.g., in the REPL),
+this allows the world age to update and thus avoid "method is too new..." errors.
+
+Putting the above nested loop inside a function defeats the entire purpose of
+`prepare_toplevel`. If necessary, run that loop as
+
+    Core.eval(somemodule, Expr(:toplevel, quote
+        body
+    ))
+
+where `body` executes the loop plus any preparatory statements required to make the
+necessary variables available at top level in `somemodule`.
+"""
+function prepare_toplevel(mod::Module, expr::Expr; filename=nothing, kwargs...)
+    modexs = Tuple{Module,Expr}[]
+    docexprs = Dict{Module,Vector{Expr}}()
+    if filename === nothing
+        # On Julia 1.2+, the first line of a :toplevel expr may contain line info
+        if length(expr.args) >= 1 && isa(expr.args[1], LineNumberNode)
+            filename = expr.args[1].file
+        else
+            filename="toplevel"
+        end
+    end
+    return prepare_toplevel!(modexs, docexprs, mod, expr; filename=filename, kwargs...)
+end
+
+isdocexpr(ex) = isexpr(ex, :macrocall) && (a = ex.args[1]; a isa GlobalRef && a.mod == Core && a.name == Symbol("@doc"))
+
+prepare_toplevel!(modexs, docexprs, mod::Module, ex::Expr; kwargs...) =
+    prepare_toplevel!(modexs, docexprs, Expr(:block), mod, ex; kwargs...)
+
+function prepare_toplevel!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; extract_docexprs=false, filename="toplevel")
+    # lex is the expression we'll lower; it will accumulate LineNumberNodes and a
+    # single top-level expression. We split blocks, module defs, etc.
+    if ex.head == :toplevel || ex.head == :block
+        prepare_toplevel!(modexs, docexprs, lex, mod, ex.args; extract_docexprs=extract_docexprs, filename=filename)
+    elseif ex.head == :module
+        modname = ex.args[2]::Symbol
+        newmod = isdefined(mod, modname) ? getfield(mod, modname) : Core.eval(mod, :(module $modname end))
+        prepare_toplevel!(modexs, docexprs, lex, newmod, ex.args[3]; extract_docexprs=extract_docexprs, filename=filename)
+    elseif extract_docexprs && isdocexpr(ex)
+        docexs = get(docexprs, mod, nothing)
+        if docexs === nothing
+            docexs = docexprs[mod] = Expr[]
+        end
+        push!(docexs, ex)
+        body = ex.args[4]
+        if isa(body, Expr)
+            prepare_toplevel!(modexs, docexprs, lex, mod, body; extract_docexprs=extract_docexprs, filename=filename)
+        end
+    else
+        if isempty(lex.args)
+            push!(lex.args, isexpr(ex, :macrocall) ? ex.args[2] : LineNumberNode(0, Symbol(filename)))
+        end
+        push!(lex.args, ex)
+        push!(modexs, (mod, copy(lex)))
+        empty!(lex.args)
+    end
+    return modexs, docexprs
+end
+
+function prepare_toplevel!(frames, docexprs, lex, mod::Module, args::Vector{Any}; filename="toplevel", kwargs...)
+    for a in args
+        if isa(a, Expr)
+            prepare_toplevel!(frames, docexprs, lex, mod, a; filename=filename, kwargs...)
+        elseif isa(a, LineNumberNode)
+            if a.file === nothing  # happens with toplevel expressions on Julia 1.2
+                push!(lex.args, LineNumberNode(a.line, Symbol(filename)))
+            else
+                push!(lex.args, a)
+            end
+        else
+            push!(lex.args, a)
+        end
+    end
 end
 
 """
@@ -404,7 +523,7 @@ function copy_codeinfo(code::CodeInfo)
     for (i, name) in enumerate(fieldnames(CodeInfo))
         if isdefined(code, name)
             val = getfield(code, name)
-            ccall(:jl_set_nth_field, Cvoid, (Any, Csize_t, Any), newcode, i-1, val===nothing ? val : copy(val))
+            ccall(:jl_set_nth_field, Cvoid, (Any, Csize_t, Any), newcode, i-1, val===nothing || isa(val, Type) ? val : copy(val))
         end
     end
     return newcode
@@ -414,6 +533,7 @@ const calllike = Set([:call, :foreigncall])
 
 function extract_inner_call!(stmt, idx, once::Bool=false)
     isa(stmt, Expr) || return nothing
+    (stmt.head == :toplevel || stmt.head == :thunk) && return nothing
     once |= stmt.head ∈ calllike
     for (i, a) in enumerate(stmt.args)
         isa(a, Expr) || continue
@@ -468,7 +588,7 @@ function renumber_ssa!(stmts::Vector{Any}, ssalookup)
 end
 
 function lookup_global_refs!(ex::Expr)
-    isexpr(ex, :isdefined) && return nothing
+    (ex.head == :isdefined || ex.head == :thunk || ex.head == :toplevel) && return nothing
     for (i, a) in enumerate(ex.args)
         if isa(a, GlobalRef)
             r = getfield(a.mod, a.name)
@@ -549,7 +669,7 @@ function prepare_locals(framecode, argvals::Vector{Any})
             resize!(locals, length(code.slotflags))
             resize!(ssavalues, ng)
             # for check_isdefined to work properly, we need sparams to start out unassigned
-            resize!(resize!(sparams, 0), length(meth.sparam_syms))
+            resize!(sparams, 0)
             empty!(exception_frames)
             empty!(last_reference)
             last_exception[] = nothing
@@ -557,7 +677,7 @@ function prepare_locals(framecode, argvals::Vector{Any})
         else
             locals = Vector{Union{Nothing,Some{Any}}}(undef, length(code.slotflags))
             ssavalues = Vector{Any}(undef, ng)
-            sparams = Vector{Any}(undef, length(meth.sparam_syms))
+            sparams = Vector{Any}(undef, 0)
             exception_frames = Int[]
             last_reference = Dict{Symbol,Int}()
             callargs = Any[]
@@ -599,6 +719,7 @@ static parameters `lenv`. See [`JuliaInterpreter.prepare_call`](@ref) for inform
 """
 function build_frame(framecode, args, lenv)
     frame = prepare_locals(framecode, args)
+    resize!(frame.sparams, length(lenv))
     # Add static parameters to environment
     for i = 1:length(lenv)
         T = lenv[i]
@@ -726,64 +847,6 @@ function maybe_step_through_wrapper!(stack)
 end
 
 lower(mod, arg) = false ? expand(arg) : Meta.lower(mod, arg)
-
-cant_be_lowered(head) = head == :module || head == :toplevel
-
-function checkfor_head(f, arg)
-    isa(arg, Expr) || return false
-    if f(arg.head)
-        return true
-    end
-    for a in arg.args
-        if isa(a, Expr)
-            checkfor_head(f, a) && return true
-        end
-    end
-    return false
-end
-
-"""
-    interpret!(stack, mod::Module, expr::Expr)
-
-Interpret `expr` at top-level in `mod`. This should be used for handling expressions
-that define structures, methods, or otherwise look like code that defines modules.
-"""
-function interpret!(stack, mod::Module, expr::Expr)
-    if expr.head != :toplevel
-        expr = Expr(:toplevel, expr)
-    end
-    ret = nothing
-    for arg in expr.args
-        isa(arg, Expr) || continue
-        if checkfor_head(cant_be_lowered, arg)
-            head = arg.head
-            if head == :module
-                # Create the module
-                innermod = Core.eval(mod, Expr(:module, arg.args[1], arg.args[2], quote end))
-                # Interpret the module body at toplevel inside the new module
-                modbody = Expr(:toplevel)
-                modbody.args = arg.args[3].args
-                ret = interpret!(stack, innermod, modbody)
-            elseif head == :toplevel
-                ret = interpret!(stack, mod, arg)
-            elseif head == :block
-                for a in arg.args
-                    if isa(a, Expr)
-                        ret = interpret!(stack, mod, a)
-                    end
-                end
-            else
-                error("fixme unhandled ", arg)
-            end
-        elseif isa(arg, Expr)
-            frame = JuliaInterpreter.prepare_toplevel(mod, arg)
-            frame === nothing && continue
-            ret = JuliaInterpreter.finish_and_return!(stack, frame, true)
-        end
-    end
-
-    return ret
-end
 
 # This is a version of gen_call_with_extracted_types, except that is passes back the call expression
 # for further processing.

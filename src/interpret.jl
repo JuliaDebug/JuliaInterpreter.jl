@@ -101,6 +101,8 @@ function lookup_or_eval(stack, frame, @nospecialize(node), pc)
             dump(ex)
             error("unknown expr ", ex)
         end
+    elseif isa(node, Type)
+        return node
     end
     return eval_rhs(stack, frame, node, pc)
 end
@@ -378,7 +380,7 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 elseif node.head == :primitive_type
                     evaluate_primitivetype!(stack, frame, node, pc)
                 elseif node.head == :module
-                    error("this should have been handled by interpret!")
+                    error("this should have been handled by prepare_toplevel")
                 elseif node.head == :using || node.head == :import || node.head == :export
                     Core.eval(moduleof(frame), node)
                 elseif node.head == :const
@@ -394,14 +396,27 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 elseif node.head == :thunk
                     newframe = prepare_thunk(moduleof(frame), node)
                     frame.pc[] = pc
-                    push!(stack, frame)
-                    finish!(stack, newframe, true)
-                    pop!(stack)
-                    push!(junk, newframe)  # rather than going through GC, just re-use it
+                    if isa(stack, Compiled)
+                        finish!(stack, newframe, true)
+                    else
+                        push!(stack, frame)
+                        finish!(stack, newframe, true)
+                        pop!(stack)
+                        push!(junk, newframe)  # rather than going through GC, just re-use it
+                    end
                 elseif node.head == :global
                     # error("fixme")
                 elseif node.head == :toplevel
-                    error("this should have been handled by interpret!")
+                    mod = moduleof(frame)
+                    newstack = similar(stack, 0)
+                    modexs, _ = prepare_toplevel(mod, node)
+                    Core.eval(mod, Expr(:toplevel,
+                        :(for modex in $modexs
+                              newframe = ($prepare_thunk)(modex)
+                              while true
+                                  ($through_methoddef_or_done!)($newstack, newframe) === nothing && break
+                              end
+                          end)))
                 elseif node.head == :error
                     error("unexpected error statement ", node)
                 elseif node.head == :incomplete
@@ -409,6 +424,8 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 else
                     rhs = eval_rhs(stack, frame, node, pc)
                 end
+            elseif node.head == :thunk || node.head == :toplevel
+                error("this frame needs to be run at top level")
             else
                 rhs = eval_rhs(stack, frame, node, pc)
             end
@@ -460,7 +477,7 @@ function handle_err(frame, err)
         if (err.world != typemax(UInt) &&
             hasmethod(err.f, arg_types) &&
             !hasmethod(err.f, arg_types, world = err.world))
-            @warn "likely failure to return to toplevel, try Base.invokelatest"
+            @warn "likely failure to return to toplevel, try JuliaInterpreter.prepare_toplevel"
             rethrow(err)
         end
     end
@@ -498,11 +515,23 @@ Optionally supply the starting `pc`, if you don't want to start at the current l
 """
 function finish_and_return!(stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::Bool=false)
     pc = finish!(stack, frame, pc, istoplevel)
-    node = pc_expr(frame, pc)
-    isexpr(node, :return) || error("unexpected return statement ", node)
-    return @lookup(frame, (node::Expr).args[1])
+    return get_return(frame, pc)
 end
 finish_and_return!(stack, frame, istoplevel::Bool) = finish_and_return!(stack, frame, frame.pc[], istoplevel)
+
+"""
+    ret = get_return(frame, pc=frame.pc[])
+
+Get the return value of `frame`. Throws an error if `pc` does not point to a `return` expression.
+`frame` must have already been executed so that the return value has been computed (see,
+e.g., [`JuliaInterpreter.finish!`](@ref)).
+"""
+function get_return(frame, pc = frame.pc[])
+    node = pc_expr(frame, pc)
+    isexpr(node, :return) || error("expected return statement, got ", node)
+    return @lookup(frame, (node::Expr).args[1])
+end
+get_return(frame::Tuple{Module,Expr,JuliaStackFrame}) = get_return(frame[end])
 
 function is_call(node)
     isexpr(node, :call) ||
@@ -515,13 +544,31 @@ end
 Step through statements of `frame` until the next statement satifies `predicate(stmt)`.
 """
 function next_until!(f, stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::Bool=false)
-    while (pc = _step_expr!(stack, frame, pc, istoplevel)) != nothing
+    while (newpc = _step_expr!(stack, frame, pc, istoplevel)) != nothing
+        pc = newpc
         f(pc_expr(frame, pc)) && (frame.pc[] = pc; return pc)
     end
+    frame.pc[] = pc
     return nothing
 end
 next_until!(f, stack, frame, istoplevel::Bool) = next_until!(f, stack, frame, frame.pc[], istoplevel)
 next_call!(stack, frame, pc=frame.pc[]) = next_until!(node->is_call(node)||isexpr(node,:return), stack, frame, pc)
+
+"""
+    through_methoddef_or_done!(stack, frame)
+
+Runs `frame` at top level until it either finishes (e.g., hits a `return` statement)
+or defines a new method.
+"""
+function through_methoddef_or_done!(stack, frame::JuliaStackFrame)
+    predicate(stmt) = isexpr(stmt, :method, 3) || isexpr(stmt, :thunk)
+    pc = next_until!(predicate, stack, frame, true)
+    pc === nothing && return nothing
+    return _step_expr!(stack, frame, pc, true)
+end
+through_methoddef_or_done!(stack, frame::Tuple{Module,Expr,JuliaStackFrame}) =
+    through_methoddef_or_done!(stack, frame[end])
+through_methoddef_or_done!(stack, modex::Tuple{Module,Expr,Expr}) = Core.eval(modex[1], modex[3])
 
 function changed_line!(expr, line, fls)
     if length(fls) == 1 && isa(expr, LineNumberNode)

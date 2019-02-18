@@ -15,6 +15,8 @@ JuliaInterpreter.build_frame
 JuliaInterpreter.determine_method_for_expr
 JuliaInterpreter.prepare_args
 JuliaInterpreter.prepare_call
+JuliaInterpreter.prepare_thunk
+JuliaInterpreter.prepare_toplevel
 JuliaInterpreter.get_call_framecode
 JuliaInterpreter.optimize!
 ```
@@ -26,7 +28,9 @@ JuliaInterpreter.Compiled
 JuliaInterpreter.step_expr!
 JuliaInterpreter.finish!
 JuliaInterpreter.finish_and_return!
+JuliaInterpreter.get_return
 JuliaInterpreter.next_until!
+JuliaInterpreter.through_methoddef_or_done!
 JuliaInterpreter.evaluate_call!
 JuliaInterpreter.evaluate_foreigncall!
 JuliaInterpreter.maybe_evaluate_builtin
@@ -45,10 +49,12 @@ JuliaInterpreter.JuliaProgramCounter
 ```@docs
 JuliaInterpreter.framedict
 JuliaInterpreter.genframedict
+JuliaInterpreter.compiled_methods
 ```
 
 ## Utilities
 
 ```@docs
+JuliaInterpreter.@lookup
 JuliaInterpreter.iswrappercall
 ```

@@ -1,4 +1,4 @@
-using Documenter, JuliaInterpreter
+using Documenter, JuliaInterpreter, Test
 
 makedocs(
     modules = [JuliaInterpreter],
