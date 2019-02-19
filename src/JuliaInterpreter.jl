@@ -455,7 +455,7 @@ function prepare_toplevel!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; e
         end
         push!(docexs, ex)
         body = ex.args[4]
-        if isa(body, Expr)
+        if isa(body, Expr) && body.head != :call
             prepare_toplevel!(modexs, docexprs, lex, mod, body; extract_docexprs=extract_docexprs, filename=filename)
         end
     else

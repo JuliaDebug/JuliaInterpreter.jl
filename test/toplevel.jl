@@ -287,3 +287,37 @@ end
     end
     @test LowerAnon.z == [4,7,12]
 end
+
+@testset "Docstrings" begin
+    ex = quote
+        """
+        A docstring
+        """
+        f(x) = 1
+
+        g(T::Type) = 1
+        g(x) = 2
+
+        """
+        Docstring 2
+        """
+        g(T::Type)
+
+        module Sub
+        """
+        Docstring 3
+        """
+        f(x) = 2
+        end
+    end
+    Core.eval(Toplevel, Expr(:toplevel, ex.args...))
+    modexs, docexprs = JuliaInterpreter.prepare_toplevel(Toplevel, ex; extract_docexprs=true)
+    for (mod, ex) in modexs
+        frame = JuliaInterpreter.prepare_thunk(mod, ex)
+        while true
+            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+        end
+    end
+    @test length(docexprs[Toplevel]) == 2
+    @test length(docexprs[Toplevel.Sub]) == 1
+end
