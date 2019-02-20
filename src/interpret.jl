@@ -613,18 +613,18 @@ end
 
 isgotonode(node) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
 
-location(frame) = location(frame, frame.pc[])
-function location(frame, pc)
+linenumber(frame) = linenumber(frame, frame.pc[])
+function linenumber(frame, pc)
     codeloc = frame.code.code.codelocs[pc.next_stmt]
     return frame.code.scope isa Method ?
         frame.code.code.linetable[codeloc].line :
         codeloc
 end
 function next_line!(stack, frame, dbstack = nothing)
-    initial = location(frame)
+    initial = linenumber(frame)
     first = true
     pc = frame.pc[]
-    while location(frame, pc) == initial
+    while linenumber(frame, pc) == initial
         # If this is a return node, interrupt execution. This is the same
         # special case as in `s`.
         expr = pc_expr(frame, pc)
