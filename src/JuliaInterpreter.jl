@@ -170,6 +170,12 @@ Base.nameof(frame) = isa(frame.code.scope, Method) ? frame.code.scope.name : nam
 
 is_loc_meta(expr, kind) = isexpr(expr, :meta) && length(expr.args) >= 1 && expr.args[1] === kind
 
+"""
+    isglobalref(g, mod, name)
+
+Tests whether `g` is equal to `GlobalRef(mod, name)`.
+"""
+isglobalref(g, mod, name) = isa(g, GlobalRef) && g.mod === mod && g.name == name
 
 function to_function(x)
     if isa(x, GlobalRef)
@@ -434,7 +440,24 @@ function prepare_toplevel(mod::Module, expr::Expr; filename=nothing, kwargs...)
     return prepare_toplevel!(modexs, docexprs, mod, expr; filename=filename, kwargs...)
 end
 
-isdocexpr(ex) = isexpr(ex, :macrocall) && (a = ex.args[1]; a isa GlobalRef && a.mod == Core && a.name == Symbol("@doc"))
+"""
+    isdocexpr(ex)
+
+Test whether expression `ex` is a `@doc` expression.
+"""
+function isdocexpr(ex)
+    docsym = Symbol("@doc")
+    if isexpr(ex, :macrocall)
+        a = ex.args[1]
+        isglobalref(a, Core, docsym) && return true
+        isa(a, Symbol) && a == docsym && return true
+        if isexpr(a, :.)
+            mod, name = a.args[1], a.args[2]
+            return mod === :Core && isa(name, QuoteNode) && name.value == docsym
+        end
+    end
+    return false
+end
 
 prepare_toplevel!(modexs, docexprs, mod::Module, ex::Expr; kwargs...) =
     prepare_toplevel!(modexs, docexprs, Expr(:block), mod, ex; kwargs...)
