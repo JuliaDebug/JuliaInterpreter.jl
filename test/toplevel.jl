@@ -1,8 +1,16 @@
 using JuliaInterpreter, Test
 
-function read_and_parse(filename)
-    src = read(filename, String)
-    ex = Base.parse_input_line(src; filename=filename)
+@testset "Basics" begin
+    @test JuliaInterpreter.isdocexpr(:(@doc "string" sum))
+    @test JuliaInterpreter.isdocexpr(:(Core.@doc "string" sum))
+    ex = quote
+        """
+        a docstring
+        """
+        sum
+    end
+    @test JuliaInterpreter.isdocexpr(ex.args[2])
+    @test !JuliaInterpreter.isdocexpr(:(1+1))
 end
 
 module Toplevel end
