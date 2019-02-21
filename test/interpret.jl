@@ -230,5 +230,5 @@ methoddef = @__LINE__() - 5
     @test locinfo.data == nothing
     @test locinfo.filepath == @__FILE__
     @test locinfo.line == methoddef + 2 # at d = 1 + c
-    @test locinfo.defline == methoddef + 1 # Why + 1 here??
+    @test locinfo.defline == methoddef + 1 # First expression is 1 line down
 end
