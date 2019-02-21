@@ -1,6 +1,6 @@
 using JuliaInterpreter
 using JuliaInterpreter: enter_call_expr
-using Test
+using Test, InteractiveUtils
 
 module Isolated end
 
@@ -214,3 +214,10 @@ frame = JuliaInterpreter.enter_call(f, 3)
 @test JuliaInterpreter.linenumber(frame, JuliaInterpreter.JuliaProgramCounter(1)) == defline + 1
 @test JuliaInterpreter.linenumber(frame, JuliaInterpreter.JuliaProgramCounter(3)) == defline + 4
 @test JuliaInterpreter.linenumber(frame, JuliaInterpreter.JuliaProgramCounter(5)) == defline + 6
+
+# issue #51
+if isdefined(Core.Compiler, :SNCA)
+    ci = @code_lowered gcd(10, 20)
+    cfg = Core.Compiler.compute_basic_blocks(ci.code)
+    @test isa(@interpret(Core.Compiler.SNCA(cfg)), Vector{Int})
+end

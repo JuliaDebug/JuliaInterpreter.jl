@@ -789,7 +789,7 @@ See [`enter_call`](@ref) for a similar approach not based on expressions.
 """
 function enter_call_expr(expr; enter_generated = false)
     r = determine_method_for_expr(expr; enter_generated = enter_generated)
-    if r !== nothing
+    if isa(r, Tuple)
         return build_frame(r[1:end-1]...)
     end
     nothing
@@ -841,7 +841,7 @@ function enter_call(@nospecialize(finfo), @nospecialize(args...); kwargs...)
         error(f, " is a builtin or intrinsic")
     end
     r = prepare_call(f, allargs; enter_generated=enter_generated)
-    if r !== nothing
+    if isa(r, Tuple)
         return build_frame(r[1:end-1]...)
     end
     return nothing
