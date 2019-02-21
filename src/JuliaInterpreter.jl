@@ -159,6 +159,51 @@ JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter; kwargs...) =
     JuliaStackFrame(frame.code, frame, pc; kwargs...)
 
 """
+`Variable` is a struct representing a variable with an asigned value.
+By calling the function `locals`[@ref] on a `JuliaStackFrame`[@ref] a
+`Vector` of `Variable`'s is returned.
+
+Important fields:
+- `value::Any`: the value of the local variable
+- `name::Symbol`: the name of the variable as given in the source code
+- `isparam::Bool`: if the variable is a type parameter, for example `T` in `f(x::T) where {T} = x` .
+"""
+struct Variable
+    value::Any
+    name::Symbol
+    isparam::Bool
+end
+Base.show(io::IO, var::Variable) = print(io, var.name, " = ", var.value)
+Base.isequal(var1::Variable, var2::Variable) = 
+    var1.value == var2.value && var1.name == var2.name && var1.isparam == var2.isparam
+
+"""
+    local_variables = locals(frame::JuliaStackFrame)::Vector{Variable}
+
+Return the local variables as a vector of `Variable`[@ref].
+"""
+function locals(frame::JuliaStackFrame)
+    vars = Variable[]
+    syms = Set{Symbol}()
+    for i = length(frame.locals):-1:1
+        if !isa(frame.locals[i], Nothing)
+            sym = frame.code.code.slotnames[i]
+            sym in syms && continue
+            push!(vars, Variable(something(frame.locals[i]), sym, false))
+            push!(syms, sym)
+        end
+    end
+    reverse!(vars)
+    if frame.code.scope isa Method
+        syms = sparam_syms(frame.code.scope)
+        for i in 1:length(syms)
+            push!(vars, Variable(frame.sparams[i], syms[i], true))
+        end
+    end
+    return vars
+end
+
+"""
 `framedict[method]` returns the `JuliaFrameCode` for `method`. For `@generated` methods,
 see [`genframedict`](@ref).
 """

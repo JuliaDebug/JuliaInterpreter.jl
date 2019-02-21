@@ -73,4 +73,6 @@ JuliaInterpreter.iswrappercall
 JuliaInterpreter.isdocexpr
 JuliaInterpreter.isglobalref
 JuliaInterpreter.statementnumber
+JuliaInterpreter.Variable
+JuliaInterpreter.locals
 ```
