@@ -57,4 +57,6 @@ JuliaInterpreter.compiled_methods
 ```@docs
 JuliaInterpreter.@lookup
 JuliaInterpreter.iswrappercall
+JuliaInterpreter.LocationInfo
+JuliaInterpreter.location
 ```

@@ -7,6 +7,16 @@ using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfo
 
 export @enter, @make_stack, @interpret, Compiled, JuliaStackFrame
 
+
+const SEARCH_PATH = []
+
+function __init__()
+    append!(SEARCH_PATH,[joinpath(Sys.BINDIR,"../share/julia/base/"),
+                         joinpath(Sys.BINDIR,"../include/")])
+    return nothing
+end
+
+
 """
 `Compiled` is a trait indicating that any `:call` expressions should be evaluated
 using Julia's normal compiled-code evaluation. The alternative is to pass `stack=JuliaStackFrame[]`,
@@ -113,6 +123,65 @@ end
 
 JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter; kwargs...) =
     JuliaStackFrame(frame.code, frame, pc; kwargs...)
+
+"""
+`LocationInfo` contains information about the location of the source code for a `JuliaStackFrame`[@ref].
+
+It is constructed by calling `location(frame::JuliaStackFrame)`[@ref].
+
+Important fields:
+- `file`: Whether the method was defined in a file (`isfile == true`) or the REPL.
+- `filepath`: Path to the file of the method if it was defined in a file, otherwise `nothing`.
+- `data`: String for the method definition if it was defined in the REPL, otherwise `nothing`.
+- `line`: The current line of the expression about to be executed.
+- `defline`: The line where the method is defined.
+"""
+struct LocationInfo
+    infile::Bool
+    data::Union{Nothing, String}
+    filepath::Union{Nothing, String}
+    line::Int
+    defline::Int
+end
+
+linenumber(frame) = linenumber(frame, frame.pc[])
+function linenumber(frame, pc)
+    codeloc = frame.code.code.codelocs[pc.next_stmt]
+    return frame.code.scope isa Method ?
+        frame.code.code.linetable[codeloc].line :
+        codeloc
+end
+
+"""
+    location(frame::JuliaStackFrame)::LocationInfo
+
+Return a `LocationInfo`[@ref] containing information about the location of the source code for `frame`.
+"""
+function location(frame::JuliaStackFrame)
+    if !(frame.code.scope isa Method)
+        error("`location` is only implemented for `Method`s")
+    end
+
+    meth = frame.code.scope
+    file = meth.file
+    line = linenumber(frame)
+    defline = meth.line
+
+    if startswith(string(file),"REPL[")
+        hist_idx = parse(Int,string(file)[6:end-1])
+        isdefined(Base, :active_repl) || return nothing, ""
+        hp = Base.active_repl.interface.modes[1].hist
+        return LocationInfo(false, hp.history[hp.start_idx+hist_idx], nothing, line, defline)
+    else
+        for path in SEARCH_PATH
+            fullpath = joinpath(path, string(file))
+            if isfile(fullpath)
+                return LocationInfo(true, nothing, fullpath, line, defline)
+            end
+        end
+    end
+    return nothing
+end
 
 """
 `framedict[method]` returns the `JuliaFrameCode` for `method`. For `@generated` methods,

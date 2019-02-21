@@ -214,3 +214,21 @@ frame = JuliaInterpreter.enter_call(f, 3)
 @test JuliaInterpreter.linenumber(frame, JuliaInterpreter.JuliaProgramCounter(1)) == defline + 1
 @test JuliaInterpreter.linenumber(frame, JuliaInterpreter.JuliaProgramCounter(3)) == defline + 4
 @test JuliaInterpreter.linenumber(frame, JuliaInterpreter.JuliaProgramCounter(5)) == defline + 6
+
+function f_locationinfo(x, y)
+    c = x + y
+    d = 1 + c
+    return c
+end
+methoddef = @__LINE__() - 5
+
+@testset "location info" begin
+    frame = JuliaInterpreter.enter_call(f_locationinfo, 1, 2)
+    JuliaInterpreter.step_expr!([frame], frame)
+    locinfo = JuliaInterpreter.location(frame)
+    @test locinfo.infile == true
+    @test locinfo.data == nothing
+    @test locinfo.filepath == @__FILE__
+    @test locinfo.line == methoddef + 2 # at d = 1 + c
+    @test locinfo.defline == methoddef + 1 # Why + 1 here??
+end
