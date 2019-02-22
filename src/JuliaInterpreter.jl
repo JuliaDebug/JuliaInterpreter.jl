@@ -362,7 +362,7 @@ end
     frame = prepare_thunk(mod::Module, expr::Expr)
 
 Prepare `expr` for evaluation in `mod`. `expr` should be a "straightforward" expression,
-one that does not require special top-level handling (see [`JuliaInterpreter.prepare_toplevel`](@ref)).
+one that does not require special top-level handling (see [`JuliaInterpreter.split_expressions`](@ref)).
 """
 function prepare_thunk(mod::Module, thunk::Expr, recursive=false)
     if isexpr(thunk, :thunk)
@@ -382,7 +382,7 @@ function prepare_thunk((mod, ex)::Tuple{Module,Expr})
     if isexpr(lwr, :thunk)
         return prepare_thunk(mod, lwr)
     # elseif isexpr(lwr, :toplevel)
-    #     return prepare_toplevel!(frames, docexprs, lex, mod, lwr; extract_docexprs=extract_docexprs, filename=filename)
+    #     return split_expressions!(frames, docexprs, lex, mod, lwr; extract_docexprs=extract_docexprs, filename=filename)
     # elseif isa(lwr, Expr) && (lwr.head == :export || lwr.head == :using || lwr.head == :import)
     #     @show lwr
     #     push!(modexs, (mod, ex, lwr))
@@ -394,15 +394,20 @@ function prepare_thunk((mod, ex)::Tuple{Module,Expr})
 end
 
 """
-    modexs, docexprs = prepare_toplevel(mod::Module, expr::Expr; extract_docexprs=false)
+    modexs, docexprs = split_expressions(mod::Module, expr::Expr; extract_docexprs=false)
 
-Break `expr` into a list `modexs` of blocks to be successively executed at top level.
-This is used when `expr` defines new structs, new methods, or new modules.
+Break `expr` into a list `modexs` of sequential blocks. This is often needed when `expr`
+needs to be evaluated at top level.
 
-`modexs[i]` is a `(Module, Expr)` tuple. A prototype of how to use these is:
+`modexs[i]` is a `(mod::Module, ex::Expr)` tuple, where `ex` is to be evaluated in `mod`.
+
+# Toplevel evaluation
+
+For code that defines new structs, new methods, or new macros, it can be important to evaluate
+these expressions carefully:
 
     stack = JuliaStackFrame[]
-    for modex in modexs
+    for modex in modexs    # or use `for (mod, ex) in modexs` to split the tuple
         frame = JuliaInterpreter.prepare_thunk(modex)
         while true
             JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
@@ -412,21 +417,22 @@ This is used when `expr` defines new structs, new methods, or new modules.
 The `while` loop here deserves some explanation. Occasionally, a frame may define new methods
 (e.g., anonymous or local functions) and then call those methods. In such cases, running
 the entire frame as a single block (e.g., with [`JuliaInterpreter.finish_and_return!`](@ref)
-can trigger "method is too new..." errors. Instead, this runs each frame, but returns to the caller
-after any new method is defined. When this loop is running at top level (e.g., in the REPL),
-this allows the world age to update and thus avoid "method is too new..." errors.
+can trigger "method is too new..." errors. Instead, the approach above runs each frame,
+but returns to the caller after any new method is defined. When this loop is running at
+top level (e.g., in the REPL), this allows the world age to update and thus avoid
+"method is too new..." errors.
 
-Putting the above nested loop inside a function defeats the entire purpose of
-`prepare_toplevel`. If necessary, run that loop as
+Putting the above nested loop inside a function defeats its purpose, because inside a
+compiled function the world age will not update. If necessary, use the following strategy:
 
     Core.eval(somemodule, Expr(:toplevel, quote
         body
     ))
 
-where `body` executes the loop plus any preparatory statements required to make the
+where `body` contains the nested loop, plus any preparatory statements required to make the
 necessary variables available at top level in `somemodule`.
 """
-function prepare_toplevel(mod::Module, expr::Expr; filename=nothing, kwargs...)
+function split_expressions(mod::Module, expr::Expr; filename=nothing, kwargs...)
     modexs = Tuple{Module,Expr}[]
     docexprs = Dict{Module,Vector{Expr}}()
     if filename === nothing
@@ -437,7 +443,7 @@ function prepare_toplevel(mod::Module, expr::Expr; filename=nothing, kwargs...)
             filename="toplevel"
         end
     end
-    return prepare_toplevel!(modexs, docexprs, mod, expr; filename=filename, kwargs...)
+    return split_expressions!(modexs, docexprs, mod, expr; filename=filename, kwargs...)
 end
 
 """
@@ -459,18 +465,18 @@ function isdocexpr(ex)
     return false
 end
 
-prepare_toplevel!(modexs, docexprs, mod::Module, ex::Expr; kwargs...) =
-    prepare_toplevel!(modexs, docexprs, Expr(:block), mod, ex; kwargs...)
+split_expressions!(modexs, docexprs, mod::Module, ex::Expr; kwargs...) =
+    split_expressions!(modexs, docexprs, Expr(:block), mod, ex; kwargs...)
 
-function prepare_toplevel!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; extract_docexprs=false, filename="toplevel")
+function split_expressions!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; extract_docexprs=false, filename="toplevel")
     # lex is the expression we'll lower; it will accumulate LineNumberNodes and a
     # single top-level expression. We split blocks, module defs, etc.
     if ex.head == :toplevel || ex.head == :block
-        prepare_toplevel!(modexs, docexprs, lex, mod, ex.args; extract_docexprs=extract_docexprs, filename=filename)
+        split_expressions!(modexs, docexprs, lex, mod, ex.args; extract_docexprs=extract_docexprs, filename=filename)
     elseif ex.head == :module
         modname = ex.args[2]::Symbol
         newmod = isdefined(mod, modname) ? getfield(mod, modname) : Core.eval(mod, :(module $modname end))
-        prepare_toplevel!(modexs, docexprs, lex, newmod, ex.args[3]; extract_docexprs=extract_docexprs, filename=filename)
+        split_expressions!(modexs, docexprs, lex, newmod, ex.args[3]; extract_docexprs=extract_docexprs, filename=filename)
     elseif extract_docexprs && isdocexpr(ex)
         docexs = get(docexprs, mod, nothing)
         if docexs === nothing
@@ -479,7 +485,7 @@ function prepare_toplevel!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; e
         push!(docexs, ex)
         body = ex.args[4]
         if isa(body, Expr) && body.head != :call
-            prepare_toplevel!(modexs, docexprs, lex, mod, body; extract_docexprs=extract_docexprs, filename=filename)
+            split_expressions!(modexs, docexprs, lex, mod, body; extract_docexprs=extract_docexprs, filename=filename)
         end
     else
         if isempty(lex.args)
@@ -492,10 +498,10 @@ function prepare_toplevel!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; e
     return modexs, docexprs
 end
 
-function prepare_toplevel!(frames, docexprs, lex, mod::Module, args::Vector{Any}; filename="toplevel", kwargs...)
+function split_expressions!(frames, docexprs, lex, mod::Module, args::Vector{Any}; filename="toplevel", kwargs...)
     for a in args
         if isa(a, Expr)
-            prepare_toplevel!(frames, docexprs, lex, mod, a; filename=filename, kwargs...)
+            split_expressions!(frames, docexprs, lex, mod, a; filename=filename, kwargs...)
         elseif isa(a, LineNumberNode)
             if a.file === nothing  # happens with toplevel expressions on Julia 1.2
                 push!(lex.args, LineNumberNode(a.line, Symbol(filename)))

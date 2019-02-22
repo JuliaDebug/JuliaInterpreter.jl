@@ -16,7 +16,7 @@ JuliaInterpreter.determine_method_for_expr
 JuliaInterpreter.prepare_args
 JuliaInterpreter.prepare_call
 JuliaInterpreter.prepare_thunk
-JuliaInterpreter.prepare_toplevel
+JuliaInterpreter.split_expressions
 JuliaInterpreter.get_call_framecode
 JuliaInterpreter.optimize!
 ```

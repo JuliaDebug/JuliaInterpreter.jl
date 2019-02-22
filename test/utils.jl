@@ -168,7 +168,7 @@ function run_test_by_eval(test, fullpath, nstmts)
         ts = Test.DefaultTestSet($test)
         Test.push_testset(ts)
         current_task().storage[:SOURCE_PATH] = $fullpath
-        modexs, _ = JuliaInterpreter.prepare_toplevel(JuliaTests, ex)
+        modexs, _ = JuliaInterpreter.split_expressions(JuliaTests, ex)
         stack = JuliaStackFrame[]
         for (i, modex) in enumerate(modexs)  # having the index can be useful for debugging
             nstmtsleft = $nstmts

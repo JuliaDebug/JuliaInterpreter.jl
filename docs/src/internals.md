@@ -246,7 +246,7 @@ Here's a more fine-grained look at what's happening under the hood (and a robust
 for more complex situations where there may be nested calls of new methods):
 
 ```julia
-modexs, _ = JuliaInterpreter.prepare_toplevel(Main, ex)
+modexs, _ = JuliaInterpreter.split_expressions(Main, ex)
 stack = JuliaStackFrame[]
 for (mod, e) in modexs
     frame = JuliaInterpreter.prepare_thunk(mod, e)
