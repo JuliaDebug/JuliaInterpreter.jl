@@ -3,7 +3,7 @@
 *.jl.mem
 expected.out
 failed.out
-src/builtins.jl
+src/builtins*.jl
 deps/build.log
 docs/build/
 test/results.md

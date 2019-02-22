@@ -1,49 +1,63 @@
 # This file generates builtins.jl.
 
 function scopedname(f)
-    fstr = string(f)
+    io = IOBuffer()
+    show(io, f)
+    fstr = String(take!(io))
     occursin('.', fstr) && return fstr
     tn = typeof(f).name
     Base.isexported(tn.module, Symbol(fstr)) && return fstr
-    return string(tn.module) * '.' * fstr
+    fsym = Symbol(fstr)
+    isdefined(tn.module, fsym) && return string(tn.module) * '.' * fstr
+    return "Base." * fstr
 end
 
-# Look up the expected number of arguments in Core.Compiler.tfunc data
-function generate_fcall(f, table, id)
+function nargs(f, table, id)
+    # Look up the expected number of arguments in Core.Compiler.tfunc data
     if id !== nothing
         minarg, maxarg, tfunc = table[id]
     else
         minarg = 0
         maxarg = typemax(Int)
     end
-    # The tfunc tables are wrong for fptoui and fptosi
+    # The tfunc tables are wrong for fptoui and fptosi (fixed in https://github.com/JuliaLang/julia/pull/30787)
     if f == "Base.fptoui" || f == "Base.fptosi"
         minarg = 2
     end
+    return minarg, maxarg
+end
+
+function generate_fcall_nargs(fname, minarg, maxarg)
     # Generate a separate call for each number of arguments
+    maxarg < typemax(Int) || error("call this only for constrained number of arguments")
+    wrapper = minarg == maxarg ? "" : "if nargs == "
+    for nargs = minarg:maxarg
+        if minarg < maxarg
+            wrapper *= "$nargs\n            "
+        end
+        argcall = ""
+        for i = 1:nargs
+            argcall *= "@lookup(frame, args[$(i+1)])"
+            if i < nargs
+                argcall *= ", "
+            end
+        end
+        wrapper *= "return Some{Any}($fname($argcall))"
+        if nargs < maxarg
+            wrapper *= "\n        elseif nargs == "
+        end
+    end
+    if minarg < maxarg
+        wrapper *= "\n        end"
+    end
+    return wrapper
+end
+
+function generate_fcall(f, table, id)
+    minarg, maxarg = nargs(f, table, id)
     fname = scopedname(f)
     if maxarg < typemax(Int)
-        wrapper = minarg == maxarg ? "" : "if nargs == "
-        for nargs = minarg:maxarg
-            if minarg < maxarg
-                wrapper *= "$nargs\n            "
-            end
-            argcall = ""
-            for i = 1:nargs
-                argcall *= "@lookup(frame, args[$(i+1)])"
-                if i < nargs
-                    argcall *= ", "
-                end
-            end
-            wrapper *= "return Some{Any}($fname($argcall))"
-            if nargs < maxarg
-                wrapper *= "\n        elseif nargs == "
-            end
-        end
-        if minarg < maxarg
-            wrapper *= "\n        end"
-        end
-        return wrapper
+        return generate_fcall_nargs(fname, minarg, maxarg)
     end
     # A built-in with arbitrary or unknown number of arguments.
     # This will (unfortunately) use dynamic dispatch.
@@ -124,13 +138,7 @@ function maybe_evaluate_builtin(frame, call_expr)
 """
     # Intrinsics
 """)
-    for fsym in names(Core.Intrinsics)
-        fsym == :Intrinsics && continue
-        isdefined(Base, fsym) || (println("skipping ", fname); continue)
-        f = getfield(Base, fsym)
-        f isa Core.IntrinsicFunction || error("not an intrinsic")
-        if f == cglobal
-            print(io,
+    print(io,
 """
     elseif f === Base.cglobal
         if nargs == 1
@@ -141,18 +149,40 @@ function maybe_evaluate_builtin(frame, call_expr)
             return Some{Any}(Core.eval(moduleof(frame), call_expr))
         end
 """)
-            continue
-        end
+    # Extract any intrinsics that support varargs
+    fva = []
+    minmin, maxmax = typemax(Int), 0
+    for fsym in names(Core.Intrinsics)
+        fsym == :Intrinsics && continue
+        isdefined(Base, fsym) || continue
+        f = getfield(Base, fsym)
         id = reinterpret(Int32, f) + 1
-        f = isdefined(Base, fsym) ? "Base.$fsym" :
-            isdefined(Core, fsym) ? "Core.$fsym" : error("whoops on $f")
+        minarg, maxarg = nargs(f, Core.Compiler.T_IFUNC, id)
+        if maxarg == typemax(Int)
+            push!(fva, f)
+        else
+            minmin = min(minmin, minarg)
+            maxmax = max(maxmax, maxarg)
+        end
+    end
+    for f in fva
+        id = reinterpret(Int32, f) + 1
+        fname = scopedname(f)
         fcall = generate_fcall(f, Core.Compiler.T_IFUNC, id)
         print(io,
 """
-    elseif f === $f
+    elseif f === $fname
         $fcall
+    end
 """)
     end
+    # Now handle calls with bounded numbers of args
+    fcall = generate_fcall_nargs("f", minmin, maxmax)
+    print(io,
+"""
+    if isa(f, Core.IntrinsicFunction)
+        $fcall
+""")
     print(io,
 """
     end
