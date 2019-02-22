@@ -380,7 +380,7 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 elseif node.head == :primitive_type
                     evaluate_primitivetype!(stack, frame, node, pc)
                 elseif node.head == :module
-                    error("this should have been handled by prepare_toplevel")
+                    error("this should have been handled by split_expressions")
                 elseif node.head == :using || node.head == :import || node.head == :export
                     Core.eval(moduleof(frame), node)
                 elseif node.head == :const
@@ -409,7 +409,7 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 elseif node.head == :toplevel
                     mod = moduleof(frame)
                     newstack = similar(stack, 0)
-                    modexs, _ = prepare_toplevel(mod, node)
+                    modexs, _ = split_expressions(mod, node)
                     Core.eval(mod, Expr(:toplevel,
                         :(for modex in $modexs
                               newframe = ($prepare_thunk)(modex)
@@ -477,7 +477,7 @@ function handle_err(frame, err)
         if (err.world != typemax(UInt) &&
             hasmethod(err.f, arg_types) &&
             !hasmethod(err.f, arg_types, world = err.world))
-            @warn "likely failure to return to toplevel, try JuliaInterpreter.prepare_toplevel"
+            @warn "likely failure to return to toplevel, try JuliaInterpreter.split_expressions"
             rethrow(err)
         end
     end

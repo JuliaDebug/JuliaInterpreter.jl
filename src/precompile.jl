@@ -23,7 +23,7 @@ function _precompile_()
         precompile(Tuple{typeof(f), Compiled, JuliaStackFrame, JuliaProgramCounter, Bool})
         precompile(Tuple{typeof(f), Vector{JuliaStackFrame}, JuliaStackFrame, JuliaProgramCounter, Bool})
     end
-    precompile(Tuple{typeof(prepare_toplevel), Module, Expr})
+    precompile(Tuple{typeof(split_expressions), Module, Expr})
     precompile(Tuple{typeof(prepare_thunk), Module, Expr})
     precompile(Tuple{typeof(prepare_locals), JuliaFrameCode, Vector{Any}})
     precompile(Tuple{typeof(prepare_args), Any, Vector{Any}, Vector{Any}})

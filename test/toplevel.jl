@@ -17,7 +17,7 @@ module Toplevel end
 
 @testset "toplevel" begin
     stack = JuliaInterpreter.JuliaStackFrame[]
-    modexs, _ = JuliaInterpreter.prepare_toplevel(Toplevel, read_and_parse("toplevel_script.jl"))
+    modexs, _ = JuliaInterpreter.split_expressions(Toplevel, read_and_parse("toplevel_script.jl"))
     for modex in modexs
         frame = JuliaInterpreter.prepare_thunk(modex)
         while true
@@ -167,7 +167,7 @@ module Toplevel end
        end
        end
    end
-   modexs, _ = JuliaInterpreter.prepare_toplevel(Toplevel, ex)
+   modexs, _ = JuliaInterpreter.split_expressions(Toplevel, ex)
    for modex in modexs
        frame = JuliaInterpreter.prepare_thunk(modex)
        while true
@@ -208,7 +208,7 @@ ex = quote
         test_15703()
     end
 end
-modexs, _ = JuliaInterpreter.prepare_toplevel(IncTest, ex)
+modexs, _ = JuliaInterpreter.split_expressions(IncTest, ex)
 stack = JuliaStackFrame[]
 for (i, modex) in enumerate(modexs)
     frame = JuliaInterpreter.prepare_thunk(modex)
@@ -226,7 +226,7 @@ end
               EnumChild0
               EnumChild1
           end))
-    modexs, _ = JuliaInterpreter.prepare_toplevel(Toplevel, ex)
+    modexs, _ = JuliaInterpreter.split_expressions(Toplevel, ex)
     stack = JuliaStackFrame[]
     for modex in modexs
         frame = JuliaInterpreter.prepare_thunk(modex)
@@ -250,7 +250,7 @@ end
         ret[] = map(x->parse(Int16, x), AbstractString[])
     end
     stack = JuliaStackFrame[]
-    modexs, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex1)
+    modexs, _ = JuliaInterpreter.split_expressions(LowerAnon, ex1)
     for modex in modexs
         frame = JuliaInterpreter.prepare_thunk(modex)
         while true
@@ -259,7 +259,7 @@ end
     end
     @test isa(LowerAnon.ret[], Vector{Int16})
     LowerAnon.ret[] = nothing
-    modexs, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex2)
+    modexs, _ = JuliaInterpreter.split_expressions(LowerAnon, ex2)
     for modex in modexs
         frame = JuliaInterpreter.prepare_thunk(modex)
         while true
@@ -272,7 +272,7 @@ end
     ex3 = quote
         const BitIntegerType = Union{map(T->Type{T}, Base.BitInteger_types)...}
     end
-    modexs, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex3)
+    modexs, _ = JuliaInterpreter.split_expressions(LowerAnon, ex3)
     for modex in modexs
         frame = JuliaInterpreter.prepare_thunk(modex)
         while true
@@ -286,7 +286,7 @@ end
         z = map(x->x^2+y, [1,2,3])
         y = 4
     end
-    modexs, _ = JuliaInterpreter.prepare_toplevel(LowerAnon, ex4)
+    modexs, _ = JuliaInterpreter.split_expressions(LowerAnon, ex4)
     for modex in modexs
         frame = JuliaInterpreter.prepare_thunk(modex)
         while true
@@ -319,7 +319,7 @@ end
         end
     end
     Core.eval(Toplevel, Expr(:toplevel, ex.args...))
-    modexs, docexprs = JuliaInterpreter.prepare_toplevel(Toplevel, ex; extract_docexprs=true)
+    modexs, docexprs = JuliaInterpreter.split_expressions(Toplevel, ex; extract_docexprs=true)
     for (mod, ex) in modexs
         frame = JuliaInterpreter.prepare_thunk(mod, ex)
         while true
