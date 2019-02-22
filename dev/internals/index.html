@@ -114,7 +114,7 @@ end)))
 3-element Array{Int64,1}:
  1
  4
- 9</code></pre><p>Here&#39;s a more fine-grained look at what&#39;s happening under the hood (and a robust strategy for more complex situations where there may be nested calls of new methods):</p><pre><code class="language-julia">modexs, _ = JuliaInterpreter.prepare_toplevel(Main, ex)
+ 9</code></pre><p>Here&#39;s a more fine-grained look at what&#39;s happening under the hood (and a robust strategy for more complex situations where there may be nested calls of new methods):</p><pre><code class="language-julia">modexs, _ = JuliaInterpreter.split_expressions(Main, ex)
 stack = JuliaStackFrame[]
 for (mod, e) in modexs
     frame = JuliaInterpreter.prepare_thunk(mod, e)
