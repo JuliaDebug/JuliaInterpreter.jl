@@ -142,7 +142,7 @@ const empty_svec = Core.svec()
 
 include("localmethtable.jl")
 include("interpret.jl")
-include("builtins.jl")
+include("builtins-julia$(Int(VERSION.major)).$(Int(VERSION.minor)).jl")
 
 function show_stackloc(io::IO, stack, frame, pc=frame.pc[])
     indent = ""
