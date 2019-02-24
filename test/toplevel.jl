@@ -1,5 +1,10 @@
 using JuliaInterpreter, Test
 
+module JIVisible
+module JIInvisible
+end
+end
+
 @testset "Basics" begin
     @test JuliaInterpreter.isdocexpr(:(@doc "string" sum))
     @test JuliaInterpreter.isdocexpr(:(Core.@doc "string" sum))
@@ -11,6 +16,38 @@ using JuliaInterpreter, Test
     end
     @test JuliaInterpreter.isdocexpr(ex.args[2])
     @test !JuliaInterpreter.isdocexpr(:(1+1))
+
+    @test !isdefined(Main, :JIInvisible)
+    JuliaInterpreter.split_expressions(JIVisible, :(module JIInvisible f() = 1 end))
+    @test !isdefined(Main, :JIInvisible)
+    mktempdir() do path
+        push!(LOAD_PATH, path)
+        open(joinpath(path, "TmpPkg1.jl"), "w") do io
+            println(io, """
+                    module TmpPkg1
+                    using TmpPkg2
+                    end
+                    """)
+        end
+        open(joinpath(path, "TmpPkg2.jl"), "w") do io
+            println(io, """
+                    module TmpPkg2
+                    f() = 1
+                    end
+                    """)
+        end
+        @eval using TmpPkg1
+        # Every package is technically parented in Main but the name may not be visible in Main
+        @test isdefined(@__MODULE__, :TmpPkg1)
+        @test !isdefined(@__MODULE__, :TmpPkg2)
+        JuliaInterpreter.split_expressions(Main, quote
+                                                     module TmpPkg2
+                                                     f() = 2
+                                                     end
+                                                 end)
+        @test isdefined(@__MODULE__, :TmpPkg1)
+        @test !isdefined(@__MODULE__, :TmpPkg2)
+    end
 end
 
 module Toplevel end
