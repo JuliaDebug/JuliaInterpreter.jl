@@ -474,8 +474,16 @@ function split_expressions!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; 
     if ex.head == :toplevel || ex.head == :block
         split_expressions!(modexs, docexprs, lex, mod, ex.args; extract_docexprs=extract_docexprs, filename=filename)
     elseif ex.head == :module
-        modname = ex.args[2]::Symbol
-        newmod = isdefined(mod, modname) ? getfield(mod, modname) : Core.eval(mod, :(module $modname end))
+        newname = ex.args[2]::Symbol
+        if isdefined(mod, newname)
+            newmod = getfield(mod, newname)
+        else
+            if (id = Base.identify_package(mod, String(newname))) !== nothing
+                newmod = Base.root_module(id)
+            else
+                newmod = Core.eval(mod, :(module $newname end))
+            end
+        end
         split_expressions!(modexs, docexprs, lex, newmod, ex.args[3]; extract_docexprs=extract_docexprs, filename=filename)
     elseif extract_docexprs && isdocexpr(ex)
         docexs = get(docexprs, mod, nothing)
