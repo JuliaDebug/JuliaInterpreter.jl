@@ -483,11 +483,12 @@ function split_expressions!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; 
         end
     else
         if isempty(lex.args)
-            push!(lex.args, isexpr(ex, :macrocall) ? ex.args[2] : LineNumberNode(0, Symbol(filename)))
+            push!(modexs, (mod, copy(ex)))
+        else
+            push!(lex.args, ex)
+            push!(modexs, (mod, copy(lex)))
+            empty!(lex.args)
         end
-        push!(lex.args, ex)
-        push!(modexs, (mod, copy(lex)))
-        empty!(lex.args)
     end
     return modexs, docexprs
 end
