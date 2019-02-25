@@ -613,13 +613,19 @@ end
 
 isgotonode(node) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
 
-linenumber(frame) = linenumber(frame, frame.pc[])
-function linenumber(frame, pc)
+"""
+    linenumber(frame, pc=frame.pc[])
+
+Return line number for `frame` at `pc` or `nothing` if it cannot be determined.
+"""
+function linenumber(frame, pc=frame.pc[])
     codeloc = frame.code.code.codelocs[pc.next_stmt]
+    codeloc == 0 && return nothing
     return frame.code.scope isa Method ?
         frame.code.code.linetable[codeloc].line :
         codeloc
 end
+
 function next_line!(stack, frame, dbstack = nothing)
     initial = linenumber(frame)
     first = true
