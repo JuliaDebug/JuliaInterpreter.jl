@@ -17,6 +17,8 @@ end
     @test JuliaInterpreter.isdocexpr(ex.args[2])
     @test !JuliaInterpreter.isdocexpr(:(1+1))
 
+    @test isa(JuliaInterpreter.prepare_thunk(Main, :(export foo)), JuliaStackFrame)
+
     @test !isdefined(Main, :JIInvisible)
     JuliaInterpreter.split_expressions(JIVisible, :(module JIInvisible f() = 1 end))
     @test !isdefined(Main, :JIInvisible)

@@ -1,7 +1,7 @@
 module JuliaInterpreter
 
 using Base.Meta
-import Base: +, convert, isless
+import Base: +, -, convert, isless
 using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfoNode, GotoNode, Slot,
             GeneratedFunctionStub, MethodInstance, NewvarNode, TypeName
 
@@ -24,6 +24,7 @@ struct JuliaProgramCounter
     next_stmt::Int
 end
 +(x::JuliaProgramCounter, y::Integer) = JuliaProgramCounter(x.next_stmt+y)
+-(x::JuliaProgramCounter, y::Integer) = JuliaProgramCounter(x.next_stmt-y)
 convert(::Type{Int}, pc::JuliaProgramCounter) = pc.next_stmt
 isless(x::JuliaProgramCounter, y::Integer) = isless(x.next_stmt, y)
 
@@ -367,31 +368,17 @@ one that does not require special top-level handling (see [`JuliaInterpreter.spl
 function prepare_thunk(mod::Module, thunk::Expr, recursive=false)
     if isexpr(thunk, :thunk)
         framecode = JuliaFrameCode(mod, thunk.args[1])
-    elseif isexpr(thunk, :error)
+    elseif isexpr(thunk, :error) || isexpr(thunk, :incomplete)
         error("lowering returned an error, ", thunk)
     elseif recursive
-        error("expected thunk expression, got ", thunk.head)
+        thunk = Meta.lower(mod, Expr(:block, nothing, thunk))
+        framecode = JuliaFrameCode(mod, thunk.args[1])
     else
         return prepare_thunk(mod, Meta.lower(mod, thunk), true)
     end
     return prepare_locals(framecode, [])
 end
-
-function prepare_thunk((mod, ex)::Tuple{Module,Expr})
-    lwr = Meta.lower(mod, ex)
-    if isexpr(lwr, :thunk)
-        return prepare_thunk(mod, lwr)
-    # elseif isexpr(lwr, :toplevel)
-    #     return split_expressions!(frames, docexprs, lex, mod, lwr; extract_docexprs=extract_docexprs, filename=filename)
-    # elseif isa(lwr, Expr) && (lwr.head == :export || lwr.head == :using || lwr.head == :import)
-    #     @show lwr
-    #     push!(modexs, (mod, ex, lwr))
-    # elseif isa(lwr, Symbol) || isa(lwr, Nothing)
-    else
-        @show mod ex lwr
-        error("lowering did not produce a :thunk Expr")
-    end
-end
+prepare_thunk((mod, ex)::Tuple{Module,Expr}) = prepare_thunk(mod, ex)
 
 """
     modexs, docexprs = split_expressions(mod::Module, expr::Expr; extract_docexprs=false)
@@ -497,11 +484,12 @@ function split_expressions!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; 
         end
     else
         if isempty(lex.args)
-            push!(lex.args, isexpr(ex, :macrocall) ? ex.args[2] : LineNumberNode(0, Symbol(filename)))
+            push!(modexs, (mod, copy(ex)))
+        else
+            push!(lex.args, ex)
+            push!(modexs, (mod, copy(lex)))
+            empty!(lex.args)
         end
-        push!(lex.args, ex)
-        push!(modexs, (mod, copy(lex)))
-        empty!(lex.args)
     end
     return modexs, docexprs
 end
