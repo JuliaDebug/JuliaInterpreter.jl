@@ -367,31 +367,17 @@ one that does not require special top-level handling (see [`JuliaInterpreter.spl
 function prepare_thunk(mod::Module, thunk::Expr, recursive=false)
     if isexpr(thunk, :thunk)
         framecode = JuliaFrameCode(mod, thunk.args[1])
-    elseif isexpr(thunk, :error)
+    elseif isexpr(thunk, :error) || isexpr(thunk, :incomplete)
         error("lowering returned an error, ", thunk)
     elseif recursive
-        error("expected thunk expression, got ", thunk.head)
+        thunk = Meta.lower(mod, Expr(:block, nothing, thunk))
+        framecode = JuliaFrameCode(mod, thunk.args[1])
     else
         return prepare_thunk(mod, Meta.lower(mod, thunk), true)
     end
     return prepare_locals(framecode, [])
 end
-
-function prepare_thunk((mod, ex)::Tuple{Module,Expr})
-    lwr = Meta.lower(mod, ex)
-    if isexpr(lwr, :thunk)
-        return prepare_thunk(mod, lwr)
-    # elseif isexpr(lwr, :toplevel)
-    #     return split_expressions!(frames, docexprs, lex, mod, lwr; extract_docexprs=extract_docexprs, filename=filename)
-    # elseif isa(lwr, Expr) && (lwr.head == :export || lwr.head == :using || lwr.head == :import)
-    #     @show lwr
-    #     push!(modexs, (mod, ex, lwr))
-    # elseif isa(lwr, Symbol) || isa(lwr, Nothing)
-    else
-        @show mod ex lwr
-        error("lowering did not produce a :thunk Expr")
-    end
-end
+prepare_thunk((mod, ex)::Tuple{Module,Expr}) = prepare_thunk(mod, ex)
 
 """
     modexs, docexprs = split_expressions(mod::Module, expr::Expr; extract_docexprs=false)
