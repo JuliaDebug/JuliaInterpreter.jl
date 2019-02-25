@@ -1,7 +1,7 @@
 module JuliaInterpreter
 
 using Base.Meta
-import Base: +, convert, isless
+import Base: +, -, convert, isless
 using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfoNode, GotoNode, Slot,
             GeneratedFunctionStub, MethodInstance, NewvarNode, TypeName
 
@@ -24,6 +24,7 @@ struct JuliaProgramCounter
     next_stmt::Int
 end
 +(x::JuliaProgramCounter, y::Integer) = JuliaProgramCounter(x.next_stmt+y)
+-(x::JuliaProgramCounter, y::Integer) = JuliaProgramCounter(x.next_stmt-y)
 convert(::Type{Int}, pc::JuliaProgramCounter) = pc.next_stmt
 isless(x::JuliaProgramCounter, y::Integer) = isless(x.next_stmt, y)
 

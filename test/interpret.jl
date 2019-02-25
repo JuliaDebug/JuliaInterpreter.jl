@@ -2,6 +2,11 @@ using JuliaInterpreter
 using JuliaInterpreter: enter_call_expr
 using Test, InteractiveUtils
 
+pc = JuliaInterpreter.JuliaProgramCounter(2)
+@test convert(Int, pc) == 2
+@test convert(Int, pc+1) == 3
+@test convert(Int, pc-1) == 1
+
 module Isolated end
 
 function summer(A)
