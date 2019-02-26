@@ -554,14 +554,19 @@ function get_source(g::GeneratedFunctionStub)
 end
 
 function copy_codeinfo(code::CodeInfo)
-    newcode = ccall(:jl_new_struct_uninit, Any, (Any,), CodeInfo)::CodeInfo
-    for (i, name) in enumerate(fieldnames(CodeInfo))
-        if isdefined(code, name)
-            val = getfield(code, name)
-            ccall(:jl_set_nth_field, Cvoid, (Any, Csize_t, Any), newcode, i-1, val===nothing || isa(val, Type) ? val : copy(val))
+    @static if VERSION < v"1.1.0-DEV.762"
+        newcode = ccall(:jl_new_struct_uninit, Any, (Any,), CodeInfo)::CodeInfo
+        for (i, name) in enumerate(fieldnames(CodeInfo))
+            if isdefined(code, name)
+                val = getfield(code, name)
+                ccall(:jl_set_nth_field, Cvoid, (Any, Csize_t, Any), newcode, i-1, val===nothing || isa(val, Union{Type, Method}) ? val : copy(val))
+            end
         end
+        return newcode
+    else
+        # Inline this when support for VERSION above is dropped
+        return copy(code)
     end
-    return newcode
 end
 
 const calllike = Set([:call, :foreigncall])
