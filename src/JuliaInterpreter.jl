@@ -1074,6 +1074,9 @@ function set_compiled_methods()
     if Sys.iswindows()
         push!(compiled_methods, which(InteractiveUtils.clipboard, (AbstractString,)))
     end
+    # issue #76
+    push!(compiled_methods, which(unsafe_store!, (Ptr{Any}, Any, Int)))
+    push!(compiled_methods, which(unsafe_store!, (Ptr, Any, Int)))
 end
 
 function __init__()

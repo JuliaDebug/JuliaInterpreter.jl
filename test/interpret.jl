@@ -263,3 +263,10 @@ let A = [1]
     @interpret setindex!(wkd, 2, A)
     @test wkd[A] == 2
 end
+
+# issue #76
+let TT = Union{UInt8, Int8}
+    a = TT[0x0, 0x1]
+    pa = pointer(a)
+    @interpret unsafe_store!(pa, 0x1, 2)
+end
