@@ -5,7 +5,13 @@ import Base: +, -, convert, isless
 using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfoNode, GotoNode, Slot,
             GeneratedFunctionStub, MethodInstance, NewvarNode, TypeName
 
+using UUIDs
+
 export @enter, @make_stack, @interpret, Compiled, JuliaStackFrame
+
+module CompiledCalls
+# This module is for handling intrinsics that must be compiled (llvmcall)
+end
 
 """
 `Compiled` is a trait indicating that any `:call` expressions should be evaluated
@@ -50,7 +56,7 @@ Important fields:
 struct JuliaFrameCode
     scope::Union{Method,Module}
     code::CodeInfo
-    methodtables::Vector{TypeMapEntry} # line-by-line method tables for generic-function :call Exprs
+    methodtables::Vector{Union{Compiled,TypeMapEntry}} # line-by-line method tables for generic-function :call Exprs
     used::BitSet
     wrapper::Bool
     generator::Bool
@@ -63,10 +69,14 @@ function JuliaFrameCode(frame::JuliaFrameCode; wrapper = frame.wrapper, generato
                    wrapper, generator, fullpath)
 end
 
-function JuliaFrameCode(scope, code::CodeInfo; wrapper=false, generator=false, fullpath=true)
-    code = optimize!(copy_codeinfo(code), moduleof(scope))
+function JuliaFrameCode(scope, code::CodeInfo; wrapper=false, generator=false, fullpath=true, optimize=true)
+    if optimize
+        code, methodtables = optimize!(copy_codeinfo(code), moduleof(scope))
+    else
+        code = copy_codeinfo(code)
+        methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(code.code))
+    end
     used = find_used(code)
-    methodtables = Vector{TypeMapEntry}(undef, length(code.code))
     return JuliaFrameCode(scope, code, methodtables, used, wrapper, generator, fullpath)
 end
 
@@ -612,6 +622,29 @@ function renumber_ssa!(stmts::Vector{Any}, ssalookup)
     return stmts
 end
 
+# Pre-frame-construction lookup
+function lookup_stmt(stmts, arg)
+    if isa(arg, SSAValue)
+        arg = stmts[arg.id]
+    end
+    if isa(arg, QuoteNode)
+        arg = arg.value
+    end
+    return arg
+end
+
+function smallest_ref(stmts, arg, idmin)
+    if isa(arg, SSAValue)
+        idmin = min(idmin, arg.id)
+        return smallest_ref(stmts, stmts[arg.id], idmin)
+    elseif isa(arg, Expr)
+        for a in arg.args
+            idmin = smallest_ref(stmts, a, idmin)
+        end
+    end
+    return idmin
+end
+
 function lookup_global_refs!(ex::Expr)
     (ex.head == :isdefined || ex.head == :thunk || ex.head == :toplevel) && return nothing
     for (i, a) in enumerate(ex.args)
@@ -676,7 +709,48 @@ function optimize!(code::CodeInfo, mod::Module)
     ssalookup = cumsum(ssainc)
     renumber_ssa!(new_code, ssalookup)
     code.ssavaluetypes = length(new_code)
-    return code
+
+    # Replace :llvmcall and :foreigncall with compiled variants. See
+    # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/13#issuecomment-464880123
+    methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(code.code))
+    for (idx, stmt) in enumerate(code.code)
+        if isexpr(stmt, :call)
+            # Check for :llvmcall
+            arg1 = stmt.args[1]
+            if arg1 == :llvmcall || lookup_stmt(code.code, arg1) == Base.llvmcall
+                uuid = uuid4()
+                ustr = replace(string(uuid), '-'=>'_')
+                methname = Symbol("llvmcall_", ustr)
+                nargs = length(stmt.args)-4
+                argnames = [Symbol("arg", string(i)) for i = 1:nargs]
+                # Run a mini-interpreter to extract the types
+                framecode = JuliaFrameCode(CompiledCalls, code; optimize=false)
+                frame = prepare_locals(framecode, [])
+                idxstart = idx
+                for i = 2:4
+                    idxstart = smallest_ref(code.code, stmt.args[i], idxstart)
+                end
+                frame.pc[] = JuliaProgramCounter(idxstart)
+                while true
+                    pc = step_expr!(Compiled(), frame)
+                    convert(Int, pc) == idx && break
+                    pc === nothing && error("this should never happen")
+                end
+                str, RetType, ArgType = @lookup(frame, stmt.args[2]), @lookup(frame, stmt.args[3]), @lookup(frame, stmt.args[4])
+                def = quote
+                    function $methname($(argnames...))
+                        return Base.llvmcall($str, $RetType, $ArgType, $(argnames...))
+                    end
+                end
+                f = Core.eval(CompiledCalls, def)
+                stmt.args[1] = QuoteNode(f)
+                deleteat!(stmt.args, 2:4)
+                methodtables[idx] = Compiled()
+            end
+        end
+    end
+
+    return code, methodtables
 end
 
 function prepare_locals(framecode, argvals::Vector{Any})

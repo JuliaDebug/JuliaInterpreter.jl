@@ -231,3 +231,28 @@ if isdefined(Core.Compiler, :SNCA)
     cfg = Core.Compiler.compute_basic_blocks(ci.code)
     @test isa(@interpret(Core.Compiler.SNCA(cfg)), Vector{Int})
 end
+
+# llvmcall
+function add1234(x::Tuple{Int32,Int32,Int32,Int32})
+    Base.llvmcall("""%3 = extractvalue [4 x i32] %0, 0
+      %4 = extractvalue [4 x i32] %0, 1
+      %5 = extractvalue [4 x i32] %0, 2
+      %6 = extractvalue [4 x i32] %0, 3
+      %7 = extractvalue [4 x i32] %1, 0
+      %8 = extractvalue [4 x i32] %1, 1
+      %9 = extractvalue [4 x i32] %1, 2
+      %10 = extractvalue [4 x i32] %1, 3
+      %11 = add i32 %3, %7
+      %12 = add i32 %4, %8
+      %13 = add i32 %5, %9
+      %14 = add i32 %6, %10
+      %15 = insertvalue [4 x i32] undef, i32 %11, 0
+      %16 = insertvalue [4 x i32] %15, i32 %12, 1
+      %17 = insertvalue [4 x i32] %16, i32 %13, 2
+      %18 = insertvalue [4 x i32] %17, i32 %14, 3
+      ret [4 x i32] %18""",Tuple{Int32,Int32,Int32,Int32},
+      Tuple{Tuple{Int32,Int32,Int32,Int32},Tuple{Int32,Int32,Int32,Int32}},
+        (Int32(1),Int32(2),Int32(3),Int32(4)),
+        x)
+end
+@test @interpret(add1234(map(Int32,(2,3,4,5)))) === map(Int32,(3,5,7,9))

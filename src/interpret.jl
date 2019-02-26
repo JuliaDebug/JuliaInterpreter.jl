@@ -177,6 +177,15 @@ function evaluate_call!(::Compiled, frame::JuliaStackFrame, call_expr::Expr, pc;
 end
 
 function evaluate_call!(stack, frame::JuliaStackFrame, call_expr::Expr, pc; exec!::Function=finish_and_return!)
+    idx = convert(Int, pc)
+    if isassigned(frame.code.methodtables, idx)
+        tme = frame.code.methodtables[idx]
+        if isa(tme, Compiled)
+            fargs = collect_args(frame, call_expr)
+            f = to_function(fargs[1])
+            return f(fargs[2:end]...)
+        end
+    end
     ret = maybe_evaluate_builtin(frame, call_expr)
     isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(frame, call_expr)
