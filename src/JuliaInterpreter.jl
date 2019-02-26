@@ -330,7 +330,7 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     args = allargs
     sig = method.sig
     isa(method, TypeMapEntry) && (method = method.func)
-    if method.module == Core.Compiler || method ∈ compiled_methods
+    if method.module == Core.Compiler || method.module == Base.Threads || method ∈ compiled_methods
         return Compiled()
     end
     # Get static parameters
