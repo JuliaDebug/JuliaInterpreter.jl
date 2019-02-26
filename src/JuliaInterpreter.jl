@@ -71,9 +71,9 @@ end
 
 function JuliaFrameCode(scope, code::CodeInfo; wrapper=false, generator=false, fullpath=true, optimize=true)
     if optimize
-        code, methodtables = optimize!(copy_codeinfo(code), moduleof(scope))
+        code, methodtables = optimize!(copy(code), moduleof(scope))
     else
-        code = copy_codeinfo(code)
+        code = copy(code)
         methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(code.code))
     end
     used = find_used(code)
@@ -551,17 +551,6 @@ function get_source(g::GeneratedFunctionStub)
     b = g(g.argnames...)
     b isa CodeInfo && return b
     return eval(b)
-end
-
-function copy_codeinfo(code::CodeInfo)
-    newcode = ccall(:jl_new_struct_uninit, Any, (Any,), CodeInfo)::CodeInfo
-    for (i, name) in enumerate(fieldnames(CodeInfo))
-        if isdefined(code, name)
-            val = getfield(code, name)
-            ccall(:jl_set_nth_field, Cvoid, (Any, Csize_t, Any), newcode, i-1, val===nothing || isa(val, Type) ? val : copy(val))
-        end
-    end
-    return newcode
 end
 
 const calllike = Set([:call, :foreigncall])
