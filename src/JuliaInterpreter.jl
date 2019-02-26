@@ -1070,7 +1070,7 @@ function set_compiled_methods()
     push!(compiled_methods, first(methods(Base._getindex_ra)))
     push!(compiled_methods, first(methods(Base._setindex_ra!)))
     push!(compiled_methods, which(Base.decompose, (BigFloat,)))
-    push!(compiled_methods, @eval DSFMT which(dsfmt_jump, (DSFMT_state, GF2X)))
+    push!(compiled_methods, which(DSFMT.dsfmt_jump, (DSFMT.DSFMT_state, DSFMT.GF2X)))
     if Sys.iswindows()
         push!(compiled_methods, which(InteractiveUtils.clipboard, (AbstractString,)))
     end
