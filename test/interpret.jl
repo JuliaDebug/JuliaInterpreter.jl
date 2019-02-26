@@ -220,6 +220,11 @@ frame = JuliaInterpreter.enter_call(f, 3)
 @test JuliaInterpreter.linenumber(frame, JuliaInterpreter.JuliaProgramCounter(3)) == defline + 4
 @test JuliaInterpreter.linenumber(frame, JuliaInterpreter.JuliaProgramCounter(5)) == defline + 6
 
+# issue #28
+let a = ['0'], b = ['a']
+    @test @interpret(vcat(a, b)) == vcat(a, b)
+end
+
 # issue #51
 if isdefined(Core.Compiler, :SNCA)
     ci = @code_lowered gcd(10, 20)

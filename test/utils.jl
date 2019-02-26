@@ -141,6 +141,7 @@ function configure_test()
     # in particular those that are used by the Test infrastructure
     cm = JuliaInterpreter.compiled_methods
     empty!(cm)
+    JuliaInterpreter.set_compiled_methods()
     push!(cm, which(Test.eval_test, Tuple{Expr, Expr, LineNumberNode}))
     push!(cm, which(Test.get_testset, Tuple{}))
     push!(cm, which(Test.push_testset, Tuple{Test.AbstractTestSet}))
