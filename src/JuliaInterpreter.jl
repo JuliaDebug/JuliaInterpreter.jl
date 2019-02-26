@@ -981,6 +981,17 @@ macro interpret(arg)
     end
 end
 
+function set_compiled_methods()
+    # Work around #28 by preventing interpretation of all Base methods that have a ccall to memcpy
+    push!(compiled_methods, which(vcat, (Vector,)))
+    push!(compiled_methods, first(methods(Base._getindex_ra)))
+    push!(compiled_methods, first(methods(Base._setindex_ra!)))
+end
+
+function __init__()
+    set_compiled_methods()
+end
+
 include("precompile.jl")
 _precompile_()
 
