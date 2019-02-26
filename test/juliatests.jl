@@ -29,12 +29,16 @@ function test_path(test)
 end
 
 nstmts = 10^4  # very quick, aborts a lot
+outputfile = "results.md"
 i = 1
 while i <= length(ARGS)
     global i
     a = ARGS[i]
     if a == "--nstmts"
         global nstmts = parse(Int, ARGS[i+1])
+        deleteat!(ARGS, i:i+1)
+    elseif a == "--output"
+        global outputfile = ARGS[i+1]
         deleteat!(ARGS, i:i+1)
     else
         i += 1
@@ -136,7 +140,7 @@ move_to_node1("Distributed")
         foreach(wait, all_tasks)
     end
 
-    open("results.md", "w") do io
+    open(outputfile, "w") do io
         versioninfo(io)
         println(io, "Test run at: ", now())
         println(io)
