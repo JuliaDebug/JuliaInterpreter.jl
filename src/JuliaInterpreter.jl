@@ -6,6 +6,10 @@ using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfo
             GeneratedFunctionStub, MethodInstance, NewvarNode, TypeName
 
 using UUIDs
+# The following are for circumventing #28, memcpy invalid instruction error,
+# in Base and stdlib
+using Random.DSFMT
+using InteractiveUtils
 
 export @enter, @make_stack, @interpret, Compiled, JuliaStackFrame
 
@@ -1065,6 +1069,11 @@ function set_compiled_methods()
     push!(compiled_methods, which(vcat, (Vector,)))
     push!(compiled_methods, first(methods(Base._getindex_ra)))
     push!(compiled_methods, first(methods(Base._setindex_ra!)))
+    push!(compiled_methods, which(Base.decompose, (BigFloat,)))
+    push!(compiled_methods, @eval DSFMT which(dsfmt_jump, (DSFMT_state, GF2X)))
+    if Sys.iswindows()
+        push!(compiled_methods, which(InteractiveUtils.clipboard, (AbstractString,)))
+    end
 end
 
 function __init__()
