@@ -256,3 +256,10 @@ function add1234(x::Tuple{Int32,Int32,Int32,Int32})
         x)
 end
 @test @interpret(add1234(map(Int32,(2,3,4,5)))) === map(Int32,(3,5,7,9))
+
+# issue #74
+let A = [1]
+    wkd = WeakKeyDict()
+    @interpret setindex!(wkd, 2, A)
+    @test wkd[A] == 2
+end
