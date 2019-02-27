@@ -206,6 +206,10 @@ function evaluate_call!(stack, frame::JuliaStackFrame, call_expr::Expr, pc; exec
     frame.pc[] = pc  # to mark position in the frame (e.g., if we hit breakpoint or error)
     push!(stack, frame)
     newframe = build_frame(framecode, fargs, lenv)
+    if shouldbreak(newframe)
+        push!(stack, newframe)
+        return Breakpoint(newframe.code, newframe.pc[])
+    end
     ret = exec!(stack, newframe)
     pop!(stack)
     push!(junk, newframe)  # rather than going through GC, just re-use it
@@ -358,6 +362,7 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 else
                     rhs = istoplevel ? @lookup(moduleof(frame), frame, rhs) : @lookup(frame, rhs)
                 end
+                isa(rhs, Breakpoint) && return rhs
                 do_assignment!(frame, lhs, rhs)
             elseif node.head == :gotoifnot
                 arg = @lookup(frame, node.args[1])
@@ -451,6 +456,7 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
     catch err
         return handle_err(frame, err)
     end
+    @isdefined(rhs) && isa(rhs, Breakpoint) && return rhs
     if isassign(frame, pc)
         if !@isdefined(rhs)
             @show frame node pc
@@ -474,7 +480,7 @@ by normal dispatch, whereas a vector of `JuliaStackFrame`s will use recursive in
 """
 function step_expr!(stack, frame, istoplevel::Bool=false)
     pc = _step_expr!(stack, frame, frame.pc[], istoplevel)
-    pc === nothing && return nothing
+    (pc === nothing || isa(pc, Breakpoint)) && return pc
     frame.pc[] = pc
 end
 
@@ -501,14 +507,24 @@ end
 Run `frame` until execution terminates. `pc` is the program counter for the final statement.
 `stack` controls call evaluation; `stack = Compiled()` evaluates :call expressions
 by normal dispatch, whereas a vector of `JuliaStackFrame`s will use recursive interpretation.
+
+If execution hits a breakpoint, then `pc` is a reference to the breakpoint. `stack[end]`,
+if not running in `Compiled()` mode, will contain the frame in which the breakpoint was hit.
 """
 function finish!(stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::Bool=false)
+    local new_pc
     while true
         new_pc = _step_expr!(stack, frame, pc, istoplevel)
-        new_pc == nothing && break
+        (new_pc == nothing || isa(new_pc, Breakpoint)) && break
         pc = new_pc
+        if shouldbreak(frame, pc)
+            push!(stack, frame)
+            new_pc = Breakpoint(frame.code, pc)
+            break
+        end
     end
     frame.pc[] = pc
+    return isa(new_pc, Breakpoint) ? new_pc : pc
 end
 finish!(stack, frame, istoplevel::Bool) = finish!(stack, frame, frame.pc[], istoplevel)
 
@@ -520,10 +536,14 @@ Run `frame` until execution terminates, and pass back the computed return value.
 `stack` controls call evaluation; `stack = Compiled()` evaluates :call expressions
 by normal dispatch, whereas a vector of `JuliaStackFrame`s will use recursive interpretation.
 
+If execution hits a breakpoint, then `ret` is a reference to the breakpoint. `stack[end]`,
+if not running in `Compiled()` mode, will contain the frame in which the breakpoint was hit.
+
 Optionally supply the starting `pc`, if you don't want to start at the current location in `frame`.
 """
 function finish_and_return!(stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::Bool=false)
     pc = finish!(stack, frame, pc, istoplevel)
+    isa(pc, Breakpoint) && return pc
     return get_return(frame, pc)
 end
 finish_and_return!(stack, frame, istoplevel::Bool) = finish_and_return!(stack, frame, frame.pc[], istoplevel)
@@ -542,6 +562,31 @@ function get_return(frame, pc = frame.pc[])
 end
 get_return(frame::Tuple{Module,Expr,JuliaStackFrame}) = get_return(frame[end])
 
+"""
+    ret = finish_stack!(stack)
+
+Completely unwind `stack`, finishing it frame-by-frame. If execution hits a breakpoint,
+`ret` will be a reference to the breakpoint.
+"""
+function finish_stack!(stack)
+    while !isempty(stack)
+        frame = pop!(stack)
+        ret = finish_and_return!(stack, frame)
+        isa(ret, Breakpoint) && return ret
+        isempty(stack) && return ret
+        parentframe = stack[end]
+        pc = parentframe.pc[]
+        if isassign(parentframe, pc)
+            lhs = getlhs(pc)
+            do_assignment!(parentframe, lhs, ret)
+        end
+        pc += 1
+        parentframe.pc[] = pc
+        shouldbreak(parentframe) && return Breakpoint(parentframe.code, pc)
+    end
+    error("stack is empty")
+end
+
 function is_call(node)
     isexpr(node, :call) ||
     (isexpr(node, :(=)) && (isexpr(node.args[2], :call)))
@@ -555,7 +600,10 @@ Step through statements of `frame` until the next statement satifies `predicate(
 function next_until!(f, stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::Bool=false)
     while (newpc = _step_expr!(stack, frame, pc, istoplevel)) != nothing
         pc = newpc
-        f(pc_expr(frame, pc)) && (frame.pc[] = pc; return pc)
+        if f(pc_expr(frame, pc)) || shouldbreak(frame, pc)
+            frame.pc[] = pc
+            return pc
+        end
     end
     frame.pc[] = pc
     return nothing
@@ -573,7 +621,9 @@ function through_methoddef_or_done!(stack, frame::JuliaStackFrame)
     predicate(stmt) = isexpr(stmt, :method, 3) || isexpr(stmt, :thunk)
     pc = next_until!(predicate, stack, frame, true)
     pc === nothing && return nothing
-    return _step_expr!(stack, frame, pc, true)
+    stmt = pc_expr(frame, pc)
+    return isexpr(stmt, :method, 3) ? #= normal exit =# _step_expr!(stack, frame, pc, true) :
+                                      #= breakpoint exit =# pc
 end
 through_methoddef_or_done!(stack, frame::Tuple{Module,Expr,JuliaStackFrame}) =
     through_methoddef_or_done!(stack, frame[end])
@@ -627,13 +677,25 @@ isgotonode(node) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
 
 Return line number for `frame` at `pc` or `nothing` if it cannot be determined.
 """
-function linenumber(frame, pc=frame.pc[])
-    codeloc = frame.code.code.codelocs[pc.next_stmt]
+function linenumber(framecode::JuliaFrameCode, pc)
+    codeloc = framecode.code.codelocs[convert(Int, pc)]
     codeloc == 0 && return nothing
-    return frame.code.scope isa Method ?
-        frame.code.code.linetable[codeloc].line :
+    return framecode.scope isa Method ?
+        framecode.code.linetable[codeloc].line :
         codeloc
 end
+linenumber(frame::JuliaStackFrame, pc=frame.pc[]) = linenumber(frame.code, pc)
+
+"""
+    statementnumber(frame, line)
+
+Return the index of the first statement in `frame`'s `CodeInfo` that corresponds to `line`.
+"""
+function statementnumber(framecode::JuliaFrameCode, line)
+    lineidx = searchsortedfirst(framecode.code.linetable, line; by=lin->lin.line)
+    return searchsortedfirst(framecode.code.codelocs, lineidx)
+end
+statementnumber(frame::JuliaStackFrame, line) = statementnumber(frame.code, line)
 
 function next_line!(stack, frame, dbstack = nothing)
     initial = linenumber(frame)
@@ -673,6 +735,7 @@ function next_line!(stack, frame, dbstack = nothing)
             pc == nothing && return nothing
         end
         frame.pc[] = pc
+        shouldbreak(frame, pc) && break
     end
     maybe_next_call!(stack, frame, pc)
 end

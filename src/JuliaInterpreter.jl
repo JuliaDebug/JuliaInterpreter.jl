@@ -11,7 +11,7 @@ using UUIDs
 using Random.DSFMT
 using InteractiveUtils
 
-export @enter, @make_stack, @interpret, Compiled, JuliaStackFrame
+export @enter, @make_stack, @interpret, Compiled, JuliaStackFrame, Breakpoints, breakpoint
 
 module CompiledCalls
 # This module is for handling intrinsics that must be compiled (llvmcall)
@@ -47,7 +47,7 @@ end
 
 """
 `JuliaFrameCode` holds static information about a method or toplevel code.
-One `JuliaFrameCode` can be shared by many `JuliaFrameState` calling frames.
+One `JuliaFrameCode` can be shared by many `JuliaStackFrame` calling frames.
 
 Important fields:
 - `scope`: the `Method` or `Module` in which this frame is to be evaluated
@@ -61,6 +61,7 @@ struct JuliaFrameCode
     scope::Union{Method,Module}
     code::CodeInfo
     methodtables::Vector{Union{Compiled,TypeMapEntry}} # line-by-line method tables for generic-function :call Exprs
+    breakpoints::Vector{Tuple{Bool,Function}}          # (isactive, condition)
     used::BitSet
     wrapper::Bool
     generator::Bool
@@ -69,7 +70,7 @@ struct JuliaFrameCode
 end
 
 function JuliaFrameCode(frame::JuliaFrameCode; wrapper = frame.wrapper, generator=frame.generator, fullpath=frame.fullpath)
-    JuliaFrameCode(frame.scope, frame.code, frame.methodtables, frame.used,
+    JuliaFrameCode(frame.scope, frame.code, frame.methodtables, frame.breakpoints, frame.used,
                    wrapper, generator, fullpath)
 end
 
@@ -80,8 +81,9 @@ function JuliaFrameCode(scope, code::CodeInfo; wrapper=false, generator=false, f
         code = copy_codeinfo(code)
         methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(code.code))
     end
+    breakpoints = Vector{Tuple{Bool,Function}}(undef, length(code.code))
     used = find_used(code)
-    return JuliaFrameCode(scope, code, methodtables, used, wrapper, generator, fullpath)
+    return JuliaFrameCode(scope, code, methodtables, breakpoints, used, wrapper, generator, fullpath)
 end
 
 """
@@ -211,6 +213,16 @@ function is_generated(meth)
     isdefined(meth, :generator)
 end
 
+function sparam_syms(meth::Method)
+    s = Symbol[]
+    sig = meth.sig
+    while sig isa UnionAll
+        push!(s, Symbol(sig.var.name))
+        sig = sig.body
+    end
+    return s
+end
+
 function namedtuple(kwargs)
     names, types, vals = Symbol[], [], []
     for pr in kwargs
@@ -267,6 +279,48 @@ function prepare_args(@nospecialize(f), allargs, kwargs)
         allargs = Base.append_any((allargs[2],), allargs[3:end]...)
     end
     return f, allargs
+end
+
+function prepare_framecode(method::Method, argtypes; enter_generated=false)
+    sig = method.sig
+    isa(method, TypeMapEntry) && (method = method.func)
+    if method.module == Core.Compiler || method.module == Base.Threads || method ∈ compiled_methods
+        return Compiled()
+    end
+    # Get static parameters
+    (ti, lenv::SimpleVector) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
+                        argtypes, sig)::SimpleVector
+    enter_generated &= is_generated(method)
+    if is_generated(method) && !enter_generated
+        framecode = get(genframedict, (method, argtypes), nothing)
+    else
+        framecode = get(framedict, method, nothing)
+    end
+    if framecode === nothing
+        if is_generated(method) && !enter_generated
+            # If we're stepping into a staged function, we need to use
+            # the specialization, rather than stepping through the
+            # unspecialized method.
+            code = Core.Compiler.get_staged(Core.Compiler.code_for_method(method, argtypes, lenv, typemax(UInt), false))
+            code === nothing && return nothing
+            generator = false
+        else
+            if is_generated(method)
+                code = get_source(method.generator)
+                generator = true
+            else
+                code = get_source(method)
+                generator = false
+            end
+        end
+        framecode = JuliaFrameCode(method, code; generator=generator)
+        if is_generated(method) && !enter_generated
+            genframedict[(method, argtypes)] = framecode
+        else
+            framedict[method] = framecode
+        end
+    end
+    return framecode, lenv
 end
 
 function whichtt(tt)
@@ -328,47 +382,17 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
         f(allargs[2:end]...)
     end
     args = allargs
-    sig = method.sig
-    isa(method, TypeMapEntry) && (method = method.func)
-    if method.module == Core.Compiler || method.module == Base.Threads || method ∈ compiled_methods
-        return Compiled()
+    ret = prepare_framecode(method, argtypes; enter_generated=enter_generated)
+    # Exceptional returns
+    if ret === nothing
+        # The generator threw an error. Let's generate the same error by calling it.
+        f(allargs[2:end]...)
     end
-    # Get static parameters
-    (ti, lenv::SimpleVector) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
-                        argtypes, sig)::SimpleVector
-    enter_generated &= is_generated(method)
-    if is_generated(method) && !enter_generated
-        framecode = get(genframedict, (method, argtypes), nothing)
-    else
-        framecode = get(framedict, method, nothing)
-    end
-    if framecode === nothing
-        if is_generated(method) && !enter_generated
-            # If we're stepping into a staged function, we need to use
-            # the specialization, rather than stepping through the
-            # unspecialized method.
-            code = Core.Compiler.get_staged(Core.Compiler.code_for_method(method, argtypes, lenv, typemax(UInt), false))
-            generator = false
-            if code === nothing
-                # The generator threw an error. Let's generate the same error by calling it.
-                f(allargs[2:end]...)
-            end
-        else
-            if is_generated(method)
-                args = Any[_Typeof(a) for a in args]
-                code = get_source(method.generator)
-                generator = true
-            else
-                code = get_source(method)
-                generator = false
-            end
-        end
-        framecode = JuliaFrameCode(method, code; generator=generator)
-        if is_generated(method) && !enter_generated
-            genframedict[(method, argtypes)] = framecode
-        else
-            framedict[method] = framecode
-        end
+    isa(ret, Compiled) && return ret
+    # Typical return
+    framecode, lenv = ret
+    if is_generated(method) && enter_generated
+        args = Any[_Typeof(a) for a in args]
     end
     return framecode, args, lenv, argtypes
 end
@@ -793,6 +817,7 @@ function prepare_locals(framecode, argvals::Vector{Any})
             pc = Ref(JuliaProgramCounter(1))
         end
         for i = 1:meth.nargs
+            last_reference[framecode.code.slotnames[i]] = i
             if meth.isva && i == meth.nargs
                 locals[i] = nargs < i ? Some{Any}(()) : (let i=i; Some{Any}(ntuple(k->argvals[i+k-1], nargs-i+1)); end)
                 break
@@ -1082,6 +1107,10 @@ end
 function __init__()
     set_compiled_methods()
 end
+
+include("breakpoints.jl")
+using .Breakpoints
+using .Breakpoints: shouldbreak, Breakpoint
 
 include("precompile.jl")
 _precompile_()
