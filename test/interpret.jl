@@ -270,3 +270,7 @@ let TT = Union{UInt8, Int8}
     pa = pointer(a)
     @interpret unsafe_store!(pa, 0x1, 2)
 end
+
+# Some expression can appear nontrivial but lower to nothing
+@test isa(JuliaInterpreter.prepare_thunk(Main, :(@static if ccall(:jl_get_UNAME, Any, ()) == :NoOS 1+1 end)), Nothing)
+@test isa(JuliaInterpreter.prepare_thunk(Main, :(Base.BaseDocs.@kw_str "using")), Nothing)

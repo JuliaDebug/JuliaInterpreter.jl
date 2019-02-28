@@ -388,7 +388,9 @@ function prepare_thunk(mod::Module, thunk::Expr, recursive=false)
         thunk = Meta.lower(mod, Expr(:block, nothing, thunk))
         framecode = JuliaFrameCode(mod, thunk.args[1])
     else
-        return prepare_thunk(mod, Meta.lower(mod, thunk), true)
+        lwr = Meta.lower(mod, thunk)
+        isa(lwr, Expr) && return prepare_thunk(mod, lwr, true)
+        return nothing
     end
     return prepare_locals(framecode, [])
 end
