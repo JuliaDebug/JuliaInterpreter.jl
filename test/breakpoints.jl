@@ -65,4 +65,16 @@ end
     bp = JuliaInterpreter.next_line!(stack, frame)
     @test isa(bp, Breakpoints.BreakpointRef)
     @test JuliaInterpreter.finish_stack!(stack) == 2
+
+    # break on error
+    inner(x) = error("oops")
+    outer() = inner(1)
+    JuliaInterpreter.break_on_error[] = true
+    stack = JuliaStackFrame[]
+    frame = JuliaInterpreter.enter_call(outer)
+    bp = JuliaInterpreter.finish_and_return!(stack, frame)
+    @test bp.err == ErrorException("oops")
+    @test length(stack) >= 2
+    @test stack[1].code.scope.name == :outer
+    @test stack[2].code.scope.name == :inner
 end

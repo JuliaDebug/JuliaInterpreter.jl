@@ -14,13 +14,17 @@ struct Unassigned end
 
 """
     BreakpointRef(framecode, stmtidx)
+    BreakpointRef(framecode, stmtidx, err)
 
 A reference to a breakpoint at a particular statement index `stmtidx` in `framecode`.
+If the break was due to an error, supply that as well.
 """
 struct BreakpointRef
     framecode::JuliaFrameCode
     stmtidx::Int
+    err
 end
+BreakpointRef(framecode, stmtidx) = BreakpointRef(framecode, stmtidx, nothing)
 
 function Base.show(io::IO, bp::BreakpointRef)
     lineno = linenumber(bp.framecode, bp.stmtidx)

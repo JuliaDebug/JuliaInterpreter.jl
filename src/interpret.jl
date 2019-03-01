@@ -211,6 +211,7 @@ function evaluate_call!(stack, frame::JuliaStackFrame, call_expr::Expr, pc; exec
         return BreakpointRef(newframe.code, newframe.pc[])
     end
     ret = exec!(stack, newframe)
+    isa(ret, BreakpointRef) && return ret
     pop!(stack)
     push!(junk, newframe)  # rather than going through GC, just re-use it
     return ret
@@ -454,7 +455,7 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
             rhs = @lookup(frame, node)
         end
     catch err
-        return handle_err(frame, err)
+        return handle_err(stack, frame, pc, err)
     end
     @isdefined(rhs) && isa(rhs, BreakpointRef) && return rhs
     if isassign(frame, pc)
@@ -484,7 +485,12 @@ function step_expr!(stack, frame, istoplevel::Bool=false)
     frame.pc[] = pc
 end
 
-function handle_err(frame, err)
+function handle_err(stack, frame, pc, err)
+    if break_on_error[]
+        frame.pc[] = pc
+        push!(stack, frame)
+        return BreakpointRef(frame.code, pc, err)
+    end
     # Check for world age errors, which generally indicate a failure to go back to toplevel
     if isa(err, MethodError)
         is_arg_types = isa(err.args, DataType)

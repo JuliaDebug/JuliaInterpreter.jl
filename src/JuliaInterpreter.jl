@@ -41,8 +41,10 @@ isless(x::JuliaProgramCounter, y::Integer) = isless(x.next_stmt, y)
 
 Base.show(io::IO, pc::JuliaProgramCounter) = print(io, "JuliaProgramCounter(", pc.next_stmt, ')')
 
+# Breakpoint support
 truecondition(frame) = true
 falsecondition(frame) = false
+const break_on_error = Ref(false)
 
 """
     BreakpointState(isactive=true, condition=JuliaInterpreter.truecondition)
