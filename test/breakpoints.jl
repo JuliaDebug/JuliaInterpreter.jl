@@ -48,4 +48,18 @@ end
     @test s_extractor(frame) == loop_radius2(7)
     Breakpoints.disable(bp)
     @test JuliaInterpreter.finish_stack!(stack) == loop_radius2(10)
+
+    # Next line with breakpoints
+    function outer(x)
+        inner(x)
+    end
+    function inner(x)
+        return 2
+    end
+    breakpoint(inner)
+    stack = JuliaStackFrame[]
+    frame = JuliaInterpreter.enter_call(outer, 2)
+    bp = JuliaInterpreter.next_line!(stack, frame)
+    @test isa(bp, Breakpoints.Breakpoint)
+    @test JuliaInterpreter.finish_stack!(stack) == 2
 end

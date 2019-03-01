@@ -710,7 +710,7 @@ function next_line!(stack, frame, dbstack = nothing)
         # If this is a goto node, step it and reevaluate
         if isgotonode(expr)
             pc = _step_expr!(stack, frame, pc)
-            pc == nothing && return nothing
+            (pc == nothing || isa(pc, Breakpoint)) && return pc
         elseif dbstack !== nothing && iswrappercall(expr)
             # With splatting it can happen that we do something like ssa = tuple(#self#), _apply(ssa), which
             # confuses the logic here, just step into the first call that's not a builtin
@@ -727,15 +727,15 @@ function next_line!(stack, frame, dbstack = nothing)
                     break
                 else
                     pc = _step_expr!(stack, frame, pc)
-                    pc == nothing && return nothing
+                    (pc == nothing || isa(pc, Breakpoint)) && return pc
                 end
             end
         else
             pc = _step_expr!(stack, frame, pc)
-            pc == nothing && return nothing
+            (pc == nothing || isa(pc, Breakpoint)) && return pc
         end
         frame.pc[] = pc
-        shouldbreak(frame, pc) && break
+        shouldbreak(frame, pc) && return Breakpoint(frame.code, pc)
     end
     maybe_next_call!(stack, frame, pc)
 end
