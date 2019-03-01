@@ -1,39 +1,61 @@
 module Breakpoints
 
 using ..JuliaInterpreter
-using JuliaInterpreter: JuliaFrameCode, JuliaStackFrame,
-                        prepare_framecode, framedict, get_source, sparam_syms,
-                        linenumber
+using JuliaInterpreter: JuliaFrameCode, JuliaStackFrame, BreakpointState,
+                        truecondition, falsecondition, prepare_framecode, get_framecode,
+                        sparam_syms, linenumber
+using Base.Meta: isexpr
+using InteractiveUtils
 
-export breakpoint
+export @breakpoint, breakpoint, enable, disable, remove
 
 # A type that is unique to this package for which there are no valid operations
 struct Unassigned end
 
 """
-    Breakpoint(framecode, stmtidx)
+    BreakpointRef(framecode, stmtidx)
 
 A reference to a breakpoint at a particular statement index `stmtidx` in `framecode`.
 """
-struct Breakpoint
+struct BreakpointRef
     framecode::JuliaFrameCode
     stmtidx::Int
 end
 
-function Base.show(io::IO, bp::Breakpoint)
+function Base.show(io::IO, bp::BreakpointRef)
     lineno = linenumber(bp.framecode, bp.stmtidx)
     print(io, "breakpoint(", bp.framecode.scope, ", ", lineno, ')')
 end
 
-const _breakpoints = Set{Breakpoint}()
+const _breakpoints = BreakpointRef[]
+breakpoints() = copy(_breakpoints)
+
+Base.getindex(bp::BreakpointRef) = bp.framecode.breakpoints[bp.stmtidx]
+function Base.setindex!(bp::BreakpointRef, isactive::Bool)
+    bp.framecode.breakpoints[bp.stmtidx] = BreakpointState(isactive, bp[].condition)
+end
+function toggle!(bp::BreakpointRef)
+    state = bp[]
+    bp.framecode.breakpoints[bp.stmtidx] = BreakpointState(!state.isactive, state.condition)
+end
+
+function add_breakpoint(framecode, stmtidx)
+    bp = BreakpointRef(framecode, stmtidx)
+    # Since there can be only one BreakpointState for a given framecode/stmtidx,
+    # check whether _breakpoints is already storing a reference to that location
+    idx = findfirst(isequal(bp), _breakpoints)
+    if idx === nothing
+        push!(_breakpoints, bp)
+    end
+    return bp
+end
 
 function shouldbreak(frame, pc=frame.pc[])
     idx = convert(Int, pc)
     isassigned(frame.code.breakpoints, idx) || return false
     bp = frame.code.breakpoints[idx]
-    bp[1] || return false
-    slotfunction = bp[2]
-    return slotfunction(frame)::Bool
+    bp.isactive || return false
+    return bp.condition(frame)::Bool
 end
 
 function prepare_slotfunction(framecode::JuliaFrameCode, body::Union{Symbol,Expr})
@@ -65,55 +87,27 @@ function prepare_slotfunction(framecode::JuliaFrameCode, body::Union{Symbol,Expr
     return Expr(:function, Expr(:call, funcname, framename), Expr(:block, assignments..., body))
 end
 
-truecondition(frame) = true
-falsecondition(frame) = false
 
 ## The fundamental implementations of breakpoint-setting
 function breakpoint!(framecode::JuliaFrameCode, pc, condition::Union{Bool,Expr}=true)
     stmtidx = convert(Int, pc)
     if isa(condition, Bool)
-        framecode.breakpoints[stmtidx] = condition ? (true, truecondition) : (false, falsecondition)
+        framecode.breakpoints[stmtidx] = BreakpointState(condition)
     else
         fex = prepare_slotfunction(framecode, condition)
-        framecode.breakpoints[stmtidx] = (true, eval(fex))
+        framecode.breakpoints[stmtidx] = BreakpointState(true, eval(fex))
     end
-    bp = Breakpoint(framecode, stmtidx)
-    push!(_breakpoints, bp)
-    return bp
+    return add_breakpoint(framecode, stmtidx)
 end
 breakpoint!(frame::JuliaStackFrame, pc=frame.pc[], condition::Union{Bool,Expr}=true) =
     breakpoint!(frame.code, pc, condition)
 
-function set_breakpoint_active!(framecode::JuliaFrameCode, active, pc)
-    stmtidx = convert(Int, pc)
-    _, condition = framecode.breakpoints[stmtidx]
-    framecode.breakpoints[stmtidx] = (active, condition)
-    active
-end
-set_breakpoint_active!(frame::JuliaStackFrame, active, pc) =
-    set_breakpoint_active!(frame.code, active, pc)
-
-function get_breakpoint_active(framecode::JuliaFrameCode, pc)
-    stmtidx = convert(Int, pc)
-    return framecode.breakpoints[stmtidx][1]
-end
-get_breakpoint_active(frame::JuliaStackFrame, pc) =
-    get_breakpoint_active(frame.code, pc)
-
-function toggle_breakpoint_active!(framecode::JuliaFrameCode, pc)
-    stmtidx = convert(Int, pc)
-    active, condition = framecode.breakpoints[stmtidx]
-    framecode.breakpoints[stmtidx] = (!active, condition)
-    !active
-end
-toggle_breakpoint_active!(frame::JuliaStackFrame, active, pc) =
-    toggle_breakpoint_active!(frame.code, active, pc)
-
-enable(bp::Breakpoint)  = set_breakpoint_active!(bp.framecode, true, bp.stmtidx)
-disable(bp::Breakpoint) = set_breakpoint_active!(bp.framecode, false, bp.stmtidx)
-function remove(bp::Breakpoint)
-    bp.framecode.breakpoints[bp.stmtidx] = (false, falsecondition)
-    delete!(_breakpoints, bp)
+enable(bp::BreakpointRef)  = bp[] = true
+disable(bp::BreakpointRef) = bp[] = false
+function remove(bp::BreakpointRef)
+    idx = findfirst(isequal(bp), _breakpoints)
+    deleteat!(_breakpoints, idx)
+    bp.framecode.breakpoints[bp.stmtidx] = BreakpointState(false, falsecondition)
     return nothing
 end
 
@@ -121,7 +115,7 @@ enable() = for bp in _breakpoints enable(bp) end
 disable() = for bp in _breakpoints disable(bp) end
 function remove()
     for bp in _breakpoints
-        bp.framecode.breakpoints[bp.stmtidx] = (false, falsecondition)
+        bp.framecode.breakpoints[bp.stmtidx] = BreakpointState(false, falsecondition)
     end
     empty!(_breakpoints)
     return nothing
@@ -155,18 +149,10 @@ end
     breakpoint(method::Method)
     breakpoint(method::Method, condition::Expr)
 
-Add a breakpoint upon entry to `method`. The first will break unconditionally, the second
-only if `condition` evaluates to `true`. `condition` should be written in terms of the
-arguments and local variables of `method`.
+Add a breakpoint upon entry to `method`.
 """
 function breakpoint(method::Method, condition::Union{Bool,Expr}=true)
-    # FIXME: this duplicates stuff in prepare_call
-    framecode = get(framedict, method, nothing)
-    if framecode === nothing
-        code = get_source(method)
-        framecode = JuliaFrameCode(method, code; generator=false)
-        framedict[method] = framecode
-    end
+    framecode = get_framecode(method)
     breakpoint!(framecode, 1, condition)
 end
 
@@ -177,10 +163,11 @@ end
 Break-on-entry to all methods of `f`.
 """
 function breakpoint(f, condition::Union{Bool,Expr}=true)
+    bps = BreakpointRef[]
     for method in methods(f)
-        breakpoint(method, condition)
+        push!(bps, breakpoint(method, condition))
     end
-    nothing
+    return bps
 end
 
 end

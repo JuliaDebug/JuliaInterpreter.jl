@@ -208,7 +208,7 @@ function evaluate_call!(stack, frame::JuliaStackFrame, call_expr::Expr, pc; exec
     newframe = build_frame(framecode, fargs, lenv)
     if shouldbreak(newframe)
         push!(stack, newframe)
-        return Breakpoint(newframe.code, newframe.pc[])
+        return BreakpointRef(newframe.code, newframe.pc[])
     end
     ret = exec!(stack, newframe)
     pop!(stack)
@@ -362,7 +362,7 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 else
                     rhs = istoplevel ? @lookup(moduleof(frame), frame, rhs) : @lookup(frame, rhs)
                 end
-                isa(rhs, Breakpoint) && return rhs
+                isa(rhs, BreakpointRef) && return rhs
                 do_assignment!(frame, lhs, rhs)
             elseif node.head == :gotoifnot
                 arg = @lookup(frame, node.args[1])
@@ -456,7 +456,7 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
     catch err
         return handle_err(frame, err)
     end
-    @isdefined(rhs) && isa(rhs, Breakpoint) && return rhs
+    @isdefined(rhs) && isa(rhs, BreakpointRef) && return rhs
     if isassign(frame, pc)
         if !@isdefined(rhs)
             @show frame node pc
@@ -480,7 +480,7 @@ by normal dispatch, whereas a vector of `JuliaStackFrame`s will use recursive in
 """
 function step_expr!(stack, frame, istoplevel::Bool=false)
     pc = _step_expr!(stack, frame, frame.pc[], istoplevel)
-    (pc === nothing || isa(pc, Breakpoint)) && return pc
+    (pc === nothing || isa(pc, BreakpointRef)) && return pc
     frame.pc[] = pc
 end
 
@@ -515,16 +515,16 @@ function finish!(stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::B
     local new_pc
     while true
         new_pc = _step_expr!(stack, frame, pc, istoplevel)
-        (new_pc == nothing || isa(new_pc, Breakpoint)) && break
+        (new_pc == nothing || isa(new_pc, BreakpointRef)) && break
         pc = new_pc
         if shouldbreak(frame, pc)
             push!(stack, frame)
-            new_pc = Breakpoint(frame.code, pc)
+            new_pc = BreakpointRef(frame.code, pc)
             break
         end
     end
     frame.pc[] = pc
-    return isa(new_pc, Breakpoint) ? new_pc : pc
+    return isa(new_pc, BreakpointRef) ? new_pc : pc
 end
 finish!(stack, frame, istoplevel::Bool) = finish!(stack, frame, frame.pc[], istoplevel)
 
@@ -543,7 +543,7 @@ Optionally supply the starting `pc`, if you don't want to start at the current l
 """
 function finish_and_return!(stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::Bool=false)
     pc = finish!(stack, frame, pc, istoplevel)
-    isa(pc, Breakpoint) && return pc
+    isa(pc, BreakpointRef) && return pc
     return get_return(frame, pc)
 end
 finish_and_return!(stack, frame, istoplevel::Bool) = finish_and_return!(stack, frame, frame.pc[], istoplevel)
@@ -572,7 +572,7 @@ function finish_stack!(stack)
     while !isempty(stack)
         frame = pop!(stack)
         ret = finish_and_return!(stack, frame)
-        isa(ret, Breakpoint) && return ret
+        isa(ret, BreakpointRef) && return ret
         isempty(stack) && return ret
         parentframe = stack[end]
         pc = parentframe.pc[]
@@ -582,7 +582,7 @@ function finish_stack!(stack)
         end
         pc += 1
         parentframe.pc[] = pc
-        shouldbreak(parentframe) && return Breakpoint(parentframe.code, pc)
+        shouldbreak(parentframe) && return BreakpointRef(parentframe.code, pc)
     end
     error("stack is empty")
 end
@@ -710,7 +710,7 @@ function next_line!(stack, frame, dbstack = nothing)
         # If this is a goto node, step it and reevaluate
         if isgotonode(expr)
             pc = _step_expr!(stack, frame, pc)
-            (pc == nothing || isa(pc, Breakpoint)) && return pc
+            (pc == nothing || isa(pc, BreakpointRef)) && return pc
         elseif dbstack !== nothing && iswrappercall(expr)
             # With splatting it can happen that we do something like ssa = tuple(#self#), _apply(ssa), which
             # confuses the logic here, just step into the first call that's not a builtin
@@ -727,15 +727,15 @@ function next_line!(stack, frame, dbstack = nothing)
                     break
                 else
                     pc = _step_expr!(stack, frame, pc)
-                    (pc == nothing || isa(pc, Breakpoint)) && return pc
+                    (pc == nothing || isa(pc, BreakpointRef)) && return pc
                 end
             end
         else
             pc = _step_expr!(stack, frame, pc)
-            (pc == nothing || isa(pc, Breakpoint)) && return pc
+            (pc == nothing || isa(pc, BreakpointRef)) && return pc
         end
         frame.pc[] = pc
-        shouldbreak(frame, pc) && return Breakpoint(frame.code, pc)
+        shouldbreak(frame, pc) && return BreakpointRef(frame.code, pc)
     end
     maybe_next_call!(stack, frame, pc)
 end

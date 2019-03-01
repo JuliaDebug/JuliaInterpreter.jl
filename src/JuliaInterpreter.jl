@@ -11,7 +11,8 @@ using UUIDs
 using Random.DSFMT
 using InteractiveUtils
 
-export @enter, @make_stack, @interpret, Compiled, JuliaStackFrame, Breakpoints, breakpoint
+export @enter, @make_stack, @interpret, Compiled, JuliaStackFrame,
+       Breakpoints, breakpoint, @breakpoint, breakpoints, enable, disable, remove
 
 module CompiledCalls
 # This module is for handling intrinsics that must be compiled (llvmcall)
@@ -40,6 +41,29 @@ isless(x::JuliaProgramCounter, y::Integer) = isless(x.next_stmt, y)
 
 Base.show(io::IO, pc::JuliaProgramCounter) = print(io, "JuliaProgramCounter(", pc.next_stmt, ')')
 
+truecondition(frame) = true
+falsecondition(frame) = false
+
+"""
+    BreakpointState(isactive=true, condition=JuliaInterpreter.truecondition)
+
+`BreakpointState` represents a breakpoint at a particular statement in
+a `JuliaFrameCode`. `isactive` indicates whether the breakpoint is currently
+[`enable`](@ref)d or [`disable`](@ref)d. `condition` is a function that accepts
+a single `JuliaStackFrame`, and `condition(frame)` must return either
+`true` or `false`. Execution will stop at a breakpoint only if `isactive`
+and `condition(frame)` both evaluate as `true`. The default `condition` always
+returns `true`.
+
+To create these objects, see [`breakpoint`](@ref).
+"""
+struct BreakpointState
+    isactive::Bool
+    condition::Function
+end
+BreakpointState(isactive::Bool) = BreakpointState(isactive, truecondition)
+BreakpointState() = BreakpointState(true)
+
 # A type used transiently in renumbering CodeInfo SSAValues (to distinguish a new SSAValue from an old one)
 struct NewSSAValue
     id::Int
@@ -61,7 +85,7 @@ struct JuliaFrameCode
     scope::Union{Method,Module}
     code::CodeInfo
     methodtables::Vector{Union{Compiled,TypeMapEntry}} # line-by-line method tables for generic-function :call Exprs
-    breakpoints::Vector{Tuple{Bool,Function}}          # (isactive, condition)
+    breakpoints::Vector{BreakpointState}
     used::BitSet
     wrapper::Bool
     generator::Bool
@@ -81,7 +105,7 @@ function JuliaFrameCode(scope, code::CodeInfo; wrapper=false, generator=false, f
         code = copy_codeinfo(code)
         methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(code.code))
     end
-    breakpoints = Vector{Tuple{Bool,Function}}(undef, length(code.code))
+    breakpoints = Vector{BreakpointState}(undef, length(code.code))
     used = find_used(code)
     return JuliaFrameCode(scope, code, methodtables, breakpoints, used, wrapper, generator, fullpath)
 end
@@ -321,6 +345,16 @@ function prepare_framecode(method::Method, argtypes; enter_generated=false)
         end
     end
     return framecode, lenv
+end
+
+function get_framecode(method)
+    framecode = get(framedict, method, nothing)
+    if framecode === nothing
+        code = get_source(method)
+        framecode = JuliaFrameCode(method, code; generator=false)
+        framedict[method] = framecode
+    end
+    return framecode
 end
 
 function whichtt(tt)
@@ -1110,7 +1144,7 @@ end
 
 include("breakpoints.jl")
 using .Breakpoints
-using .Breakpoints: shouldbreak, Breakpoint
+using .Breakpoints: shouldbreak, BreakpointRef
 
 include("precompile.jl")
 _precompile_()
