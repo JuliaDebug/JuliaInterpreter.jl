@@ -10,6 +10,7 @@ using UUIDs
 # in Base and stdlib
 using Random.DSFMT
 using InteractiveUtils
+using CodeTracking
 
 export @interpret, Compiled, JuliaStackFrame,
        Breakpoints, breakpoint, @breakpoint, breakpoints, enable, disable, remove
@@ -1084,7 +1085,8 @@ macro interpret(arg)
             push!(stack, frame)
             return stack, BreakpointRef(frame.code, 1)
         end
-        finish_and_return!(stack, frame)
+        ret = finish_and_return!(stack, frame)
+        isa(ret, BreakpointRef) ? (stack, ret) : ret
     end
 end
 
