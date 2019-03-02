@@ -213,7 +213,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.finish!",
     "category": "function",
-    "text": "pc = finish!(stack, frame, pc=frame.pc[])\n\nRun frame until execution terminates. pc is the program counter for the final statement. stack controls call evaluation; stack = Compiled() evaluates :call expressions by normal dispatch, whereas a vector of JuliaStackFrames will use recursive interpretation.\n\n\n\n\n\n"
+    "text": "pc = finish!(stack, frame, pc=frame.pc[])\n\nRun frame until execution terminates. pc is the program counter for the final statement. stack controls call evaluation; stack = Compiled() evaluates :call expressions by normal dispatch, whereas a vector of JuliaStackFrames will use recursive interpretation.\n\nIf execution hits a breakpoint, then pc is a reference to the breakpoint. stack[end], if not running in Compiled() mode, will contain the frame in which the breakpoint was hit.\n\n\n\n\n\n"
 },
 
 {
@@ -221,7 +221,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.finish_and_return!",
     "category": "function",
-    "text": "ret = finish_and_return!(stack, frame, istoplevel::Bool=false)\nret = finish_and_return!(stack, frame, pc, istoplevel::Bool)\n\nRun frame until execution terminates, and pass back the computed return value. stack controls call evaluation; stack = Compiled() evaluates :call expressions by normal dispatch, whereas a vector of JuliaStackFrames will use recursive interpretation.\n\nOptionally supply the starting pc, if you don\'t want to start at the current location in frame.\n\n\n\n\n\n"
+    "text": "ret = finish_and_return!(stack, frame, istoplevel::Bool=false)\nret = finish_and_return!(stack, frame, pc, istoplevel::Bool)\n\nRun frame until execution terminates, and pass back the computed return value. stack controls call evaluation; stack = Compiled() evaluates :call expressions by normal dispatch, whereas a vector of JuliaStackFrames will use recursive interpretation.\n\nIf execution hits a breakpoint, then ret is a reference to the breakpoint. stack[end], if not running in Compiled() mode, will contain the frame in which the breakpoint was hit.\n\nOptionally supply the starting pc, if you don\'t want to start at the current location in frame.\n\n\n\n\n\n"
 },
 
 {
@@ -293,7 +293,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.JuliaFrameCode",
     "category": "type",
-    "text": "JuliaFrameCode holds static information about a method or toplevel code. One JuliaFrameCode can be shared by many JuliaFrameState calling frames.\n\nImportant fields:\n\nscope: the Method or Module in which this frame is to be evaluated\ncode: the CodeInfo object storing (optimized) lowered code\nmethodtables: a vector, each entry potentially stores a \"local method table\" for the corresponding :call expression in code (undefined entries correspond to statements that do not contain :call expressions)\nused: a BitSet storing the list of SSAValues that get referenced by later statements.\n\n\n\n\n\n"
+    "text": "JuliaFrameCode holds static information about a method or toplevel code. One JuliaFrameCode can be shared by many JuliaStackFrame calling frames.\n\nImportant fields:\n\nscope: the Method or Module in which this frame is to be evaluated\ncode: the CodeInfo object storing (optimized) lowered code\nmethodtables: a vector, each entry potentially stores a \"local method table\" for the corresponding :call expression in code (undefined entries correspond to statements that do not contain :call expressions)\nused: a BitSet storing the list of SSAValues that get referenced by later statements.\n\n\n\n\n\n"
 },
 
 {
