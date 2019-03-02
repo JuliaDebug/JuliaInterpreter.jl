@@ -74,6 +74,15 @@ end
     @test isa(bp, Breakpoints.BreakpointRef)
     @test JuliaInterpreter.finish_stack!(stack) == 2
 
+    # Direct return
+    @breakpoint gcd(1,1) a==5
+    @test @interpret(gcd(10,20)) == 10
+    # FIXME: even though they pass, these tests break Test!
+    # stack, bp = @interpret gcd(5, 20)
+    # @test length(stack) == 1 && isa(stack[1], JuliaStackFrame)
+    # @test isa(bp, Breakpoints.BreakpointRef)
+    remove()
+
     # break on error
     inner(x) = error("oops")
     outer() = inner(1)

@@ -195,6 +195,7 @@ module Toplevel end
     @test @interpret(Toplevel.paramtype(Vector)) == Toplevel.NoParam
     @test @interpret(Toplevel.Inner.g()) == 5
     @test @interpret(Toplevel.Inner.InnerInner.g()) == 6
+    # FIXME: even though they pass, these tests break Test!
     # @test @interpret(isdefined(Toplevel, :Beat))
     # @test @interpret(Toplevel.Beat <: Toplevel.DatesMod.Period)
 

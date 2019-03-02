@@ -1119,6 +1119,10 @@ macro interpret(arg)
         if frame === nothing
             return eval(Expr(:call, map(QuoteNode, theargs)...))
         end
+        if shouldbreak(frame, 1)
+            push!(stack, frame)
+            return stack, BreakpointRef(frame.code, 1)
+        end
         finish_and_return!(stack, frame)
     end
 end
