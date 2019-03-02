@@ -11,7 +11,7 @@ using UUIDs
 using Random.DSFMT
 using InteractiveUtils
 
-export @enter, @interpret, Compiled, JuliaStackFrame
+export @interpret, Compiled, JuliaStackFrame
 
 module CompiledCalls
 # This module is for handling intrinsics that must be compiled (llvmcall)
