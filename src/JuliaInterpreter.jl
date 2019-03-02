@@ -1119,8 +1119,6 @@ macro interpret(arg)
         if frame === nothing
             return eval(Expr(:call, map(QuoteNode, theargs)...))
         end
-        empty!(framedict)  # start fresh each time; kind of like bumping the world age at the REPL prompt
-        empty!(genframedict)
         finish_and_return!(stack, frame)
     end
 end

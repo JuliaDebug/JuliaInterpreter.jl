@@ -91,7 +91,6 @@ function prepare_slotfunction(framecode::JuliaFrameCode, body::Union{Symbol,Expr
     return Expr(:function, Expr(:call, funcname, framename), Expr(:block, assignments..., body))
 end
 
-
 ## The fundamental implementations of breakpoint-setting
 function breakpoint!(framecode::JuliaFrameCode, pc, condition::Union{Bool,Expr}=true)
     stmtidx = convert(Int, pc)
@@ -172,6 +171,14 @@ function breakpoint(f, condition::Union{Bool,Expr}=true)
         push!(bps, breakpoint(method, condition))
     end
     return bps
+end
+
+macro breakpoint(call_expr, condition)
+    whichexpr = InteractiveUtils.gen_call_with_extracted_types(__module__, :which, call_expr)
+    return quote
+        local method = $whichexpr
+        $breakpoint(method, $(Expr(:quote, condition)))
+    end
 end
 
 end

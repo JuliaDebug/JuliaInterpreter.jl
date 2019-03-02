@@ -33,6 +33,14 @@ end
     remove()
     breakpoint(radius2, :(y > x))
     runsimple()
+    remove()
+    @breakpoint radius2(0,0) y>x
+    runsimple()
+    # Demonstrate the problem that we have with scope
+    local_identity(x) = identity(x)
+    remove()
+    @breakpoint radius2(0,0) y>local_identity(x)
+    @test_broken @interpret loop_radius2(2)
 
     # Conditional breakpoints on local variables
     remove()
