@@ -486,6 +486,11 @@ function step_expr!(stack, frame, istoplevel::Bool=false)
 end
 
 function handle_err(stack, frame, pc, err)
+    if !isempty(frame.exception_frames)
+        # Exception caught
+        frame.last_exception[] = err
+        return JuliaProgramCounter(frame.exception_frames[end])
+    end
     if break_on_error[]
         frame.pc[] = pc
         push!(stack, frame)
@@ -499,12 +504,9 @@ function handle_err(stack, frame, pc, err)
             hasmethod(err.f, arg_types) &&
             !hasmethod(err.f, arg_types, world = err.world))
             @warn "likely failure to return to toplevel, try JuliaInterpreter.split_expressions"
-            rethrow(err)
         end
     end
-    isempty(frame.exception_frames) && rethrow(err)
-    frame.last_exception[] = err
-    return JuliaProgramCounter(frame.exception_frames[end])
+    rethrow(err)
 end
 
 """
