@@ -11,7 +11,7 @@ using UUIDs
 using Random.DSFMT
 using InteractiveUtils
 
-export @enter, @make_stack, @interpret, Compiled, JuliaStackFrame,
+export @interpret, Compiled, JuliaStackFrame,
        Breakpoints, breakpoint, @breakpoint, breakpoints, enable, disable, remove
 
 module CompiledCalls
@@ -995,28 +995,6 @@ function enter_call(@nospecialize(finfo), @nospecialize(args...); kwargs...)
     return nothing
 end
 
-function maybe_step_through_wrapper!(stack)
-    length(stack[1].code.code.code) < 2 && return stack
-    last = stack[1].code.code.code[end-1]
-    isexpr(last, :(=)) && (last = last.args[2])
-    stack1 = stack[1]
-    is_kw = stack1.code.scope isa Method && startswith(String(Base.unwrap_unionall(Base.unwrap_unionall(stack1.code.scope.sig).parameters[1]).name.name), "#kw")
-    if is_kw || isexpr(last, :call) && any(x->x==SlotNumber(1), last.args)
-        # If the last expr calls #self# or passes it to an implementation method,
-        # this is a wrapper function that we might want to step through
-        frame = stack1
-        pc = frame.pc[]
-        while pc != JuliaProgramCounter(length(frame.code.code.code)-1)
-            pc = next_call!(Compiled(), frame, pc)
-        end
-        stack[1] = JuliaStackFrame(JuliaFrameCode(frame.code; wrapper=true), frame, pc)
-        newcall = Expr(:call, map(x->@lookup(frame, x), last.args)...)
-        pushfirst!(stack, enter_call_expr(newcall))
-        return maybe_step_through_wrapper!(stack)
-    end
-    stack
-end
-
 lower(mod, arg) = false ? expand(arg) : Meta.lower(mod, arg)
 
 # This is a version of gen_call_with_extracted_types, except that is passes back the call expression
@@ -1067,25 +1045,6 @@ function extract_args(__module__, ex0)
     return error("expression is not a function call, "
                * "or is too complex for @enter to analyze; "
                * "break it down to simpler parts if possible")
-end
-
-function _make_stack(mod, arg)
-    args = try
-        extract_args(mod, arg)
-    catch e
-        return :(throw($e))
-    end
-    quote
-        theargs = $(esc(args))
-        stack = [JuliaInterpreter.enter_call_expr(Expr(:call,theargs...))]
-        JuliaInterpreter.maybe_step_through_wrapper!(stack)
-        stack[1] = JuliaInterpreter.JuliaStackFrame(stack[1], JuliaInterpreter.maybe_next_call!(Compiled(), stack[1]))
-        stack
-    end
-end
-
-macro make_stack(arg)
-    _make_stack(__module__, arg)
 end
 
 """

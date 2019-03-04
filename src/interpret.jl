@@ -721,13 +721,13 @@ function next_line!(stack, frame, dbstack = nothing)
             # With splatting it can happen that we do something like ssa = tuple(#self#), _apply(ssa), which
             # confuses the logic here, just step into the first call that's not a builtin
             while true
-                dbstack[1] = JuliaStackFrame(JuliaFrameCode(frame.code; wrapper = true), frame, pc)
+                dbstack[end] = JuliaStackFrame(JuliaFrameCode(frame.code; wrapper = true), frame, pc)
                 call_expr = pc_expr(frame, pc)
                 isexpr(call_expr, :(=)) && (call_expr = call_expr.args[2])
                 call_expr = Expr(:call, map(x->@lookup(frame, x), call_expr.args)...)
                 new_frame = enter_call_expr(call_expr)
                 if new_frame !== nothing
-                    pushfirst!(dbstack, new_frame)
+                    push!(dbstack, new_frame)
                     frame = new_frame
                     pc = frame.pc[]
                     break
