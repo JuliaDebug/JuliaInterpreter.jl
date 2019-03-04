@@ -109,8 +109,25 @@ end
 breakpoint!(frame::JuliaStackFrame, pc=frame.pc[], condition::Condition=nothing) =
     breakpoint!(frame.code, pc, condition)
 
+"""
+    enable(bp::BreakpointRef)
+
+Enable breakpoint `bp`.
+"""
 enable(bp::BreakpointRef)  = bp[] = true
+
+"""
+    disable(bp::BreakpointRef)
+
+Disable breakpoint `bp`. Disabled breakpoints can be re-enabled with [`enable`](@ref).
+"""
 disable(bp::BreakpointRef) = bp[] = false
+
+"""
+    remove(bp::BreakpointRef)
+
+Remove (delete) breakpoint `bp`. Removed breakpoints cannot be re-enabled.
+"""
 function remove(bp::BreakpointRef)
     idx = findfirst(isequal(bp), _breakpoints)
     deleteat!(_breakpoints, idx)
@@ -118,8 +135,25 @@ function remove(bp::BreakpointRef)
     return nothing
 end
 
+"""
+    enable()
+
+Enable all breakpoints.
+"""
 enable() = for bp in _breakpoints enable(bp) end
+
+"""
+    disable()
+
+Disable all breakpoints.
+"""
 disable() = for bp in _breakpoints disable(bp) end
+
+"""
+    remove()
+
+Remove all breakpoints.
+"""
 function remove()
     for bp in _breakpoints
         bp.framecode.breakpoints[bp.stmtidx] = BreakpointState(false, falsecondition)

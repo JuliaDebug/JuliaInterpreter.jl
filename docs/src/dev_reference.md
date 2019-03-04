@@ -28,6 +28,7 @@ JuliaInterpreter.Compiled
 JuliaInterpreter.step_expr!
 JuliaInterpreter.finish!
 JuliaInterpreter.finish_and_return!
+JuliaInterpreter.finish_stack!
 JuliaInterpreter.get_return
 JuliaInterpreter.next_until!
 JuliaInterpreter.through_methoddef_or_done!
@@ -36,12 +37,24 @@ JuliaInterpreter.evaluate_foreigncall!
 JuliaInterpreter.maybe_evaluate_builtin
 ```
 
+## Breakpoints
+
+```@docs
+@breakpoint
+breakpoint
+enable
+disable
+remove
+```
+
 ## Types
 
 ```@docs
 JuliaInterpreter.JuliaStackFrame
 JuliaInterpreter.JuliaFrameCode
 JuliaInterpreter.JuliaProgramCounter
+JuliaInterpreter.BreakpointState
+JuliaInterpreter.BreakpointRef
 ```
 
 ## Internal storage
@@ -57,4 +70,7 @@ JuliaInterpreter.compiled_methods
 ```@docs
 JuliaInterpreter.@lookup
 JuliaInterpreter.iswrappercall
+JuliaInterpreter.isdocexpr
+JuliaInterpreter.isglobalref
+JuliaInterpreter.statementnumber
 ```
