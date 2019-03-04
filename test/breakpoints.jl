@@ -84,14 +84,23 @@ end
     remove()
 
     # break on error
-    inner(x) = error("oops")
-    outer() = inner(1)
-    JuliaInterpreter.break_on_error[] = true
-    stack = JuliaStackFrame[]
-    frame = JuliaInterpreter.enter_call(outer)
-    bp = JuliaInterpreter.finish_and_return!(stack, frame)
-    @test bp.err == ErrorException("oops")
-    @test length(stack) >= 2
-    @test stack[1].code.scope.name == :outer
-    @test stack[2].code.scope.name == :inner
+    try
+        JuliaInterpreter.break_on_error[] = true
+
+        inner(x) = error("oops")
+        outer() = inner(1)
+        stack = JuliaStackFrame[]
+        frame = JuliaInterpreter.enter_call(outer)
+        bp = JuliaInterpreter.finish_and_return!(stack, frame)
+        @test bp.err == ErrorException("oops")
+        @test length(stack) >= 2
+        @test stack[1].code.scope.name == :outer
+        @test stack[2].code.scope.name == :inner
+
+        f_catch() = try error(); catch; return 2; end
+        @test @interpret f_catch() == 2
+
+    finally
+        JuliaInterpreter.break_on_error[] = false
+    end
 end
