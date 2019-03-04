@@ -109,7 +109,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.enter_call",
     "category": "function",
-    "text": "frame = enter_call(f, args...; kwargs...)\n\nBuild a JuliaStackFrame ready to execute f with the specified positional and keyword arguments.\n\nExample\n\njulia> mymethod(x) = x+1\nmymethod (generic function with 1 method)\n\njulia> JuliaInterpreter.enter_call(mymethod, 1)\nJuliaStackFrame(JuliaInterpreter.JuliaFrameCode(mymethod(x) in Main at none:1, CodeInfo(\n1 ─ %1 = ($(QuoteNode(+)))(x, 1)\n└──      return %1\n), Core.TypeMapEntry[#undef, #undef], BitSet([1]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some(1)], Any[#undef, #undef], Any[], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{JuliaInterpreter.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict{Symbol,Int64}(), Any[])\n\njulia> mymethod(x::Vector{T}) where T = 1\nmymethod (generic function with 2 methods)\n\njulia> JuliaInterpreter.enter_call(mymethod, [1.0, 2.0])\nJuliaStackFrame(JuliaInterpreter.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(\n1 ─     return 1\n), Core.TypeMapEntry[#undef], BitSet([]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some([1.0, 2.0])], Any[#undef], Any[Float64], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{JuliaInterpreter.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict{Symbol,Int64}(), Any[])\n\nFor a @generated function you can use enter_call((f, true), args...; kwargs...) to execute the generator of a @generated function, rather than the code that would be created by the generator.\n\nSee enter_call_expr for a similar approach based on expressions.\n\n\n\n\n\n"
+    "text": "frame = enter_call(f, args...; kwargs...)\n\nBuild a JuliaStackFrame ready to execute f with the specified positional and keyword arguments.\n\nExample\n\njulia> mymethod(x) = x+1\nmymethod (generic function with 1 method)\n\njulia> JuliaInterpreter.enter_call(mymethod, 1)\nJuliaStackFrame(JuliaInterpreter.JuliaFrameCode(mymethod(x) in Main at none:1, CodeInfo(\n1 ─ %1 = ($(QuoteNode(+)))(x, 1)\n└──      return %1\n), Union{Compiled, TypeMapEntry}[#undef, #undef], JuliaInterpreter.BreakpointState[#undef, #undef], BitSet([1]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some(1)], Any[#undef, #undef], Any[], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{JuliaInterpreter.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict(Symbol(\"#self#\")=>1,:x=>2), Any[])\n\njulia> mymethod(x::Vector{T}) where T = 1\nmymethod (generic function with 2 methods)\n\njulia> JuliaInterpreter.enter_call(mymethod, [1.0, 2.0])\nJuliaStackFrame(JuliaInterpreter.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(\n1 ─     return 1\n), Union{Compiled, TypeMapEntry}[#undef], JuliaInterpreter.BreakpointState[#undef], BitSet([]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some([1.0, 2.0])], Any[#undef], Any[Float64], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{JuliaInterpreter.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict(Symbol(\"#self#\")=>1,:x=>2), Any[])\n\nFor a @generated function you can use enter_call((f, true), args...; kwargs...) to execute the generator of a @generated function, rather than the code that would be created by the generator.\n\nSee enter_call_expr for a similar approach based on expressions.\n\n\n\n\n\n"
 },
 
 {
@@ -117,7 +117,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.enter_call_expr",
     "category": "function",
-    "text": "frame = enter_call_expr(expr; enter_generated=false)\n\nBuild a JuliaStackFrame ready to execute the expression expr. Set enter_generated=true if you want to execute the generator of a @generated function, rather than the code that would be created by the generator.\n\nExample\n\njulia> mymethod(x) = x+1\nmymethod (generic function with 1 method)\n\njulia> JuliaInterpreter.enter_call_expr(:($mymethod(1)))\nJuliaStackFrame(JuliaInterpreter.JuliaFrameCode(mymethod(x) in Main at none:1, CodeInfo(\n1 ─ %1 = ($(QuoteNode(+)))(x, 1)\n└──      return %1\n), Core.TypeMapEntry[#undef, #undef], BitSet([1]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some(1)], Any[#undef, #undef], Any[], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{JuliaInterpreter.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict{Symbol,Int64}(), Any[])\n\njulia> mymethod(x::Vector{T}) where T = 1\nmymethod (generic function with 2 methods)\n\njulia> a = [1.0, 2.0]\n2-element Array{Float64,1}:\n 1.0\n 2.0\n\njulia> JuliaInterpreter.enter_call_expr(:($mymethod($a)))\nJuliaStackFrame(JuliaInterpreter.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(\n1 ─     return 1\n), Core.TypeMapEntry[#undef], BitSet([]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some([1.0, 2.0])], Any[#undef], Any[Float64], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{JuliaInterpreter.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict{Symbol,Int64}(), Any[])\n\nSee enter_call for a similar approach not based on expressions.\n\n\n\n\n\n"
+    "text": "frame = enter_call_expr(expr; enter_generated=false)\n\nBuild a JuliaStackFrame ready to execute the expression expr. Set enter_generated=true if you want to execute the generator of a @generated function, rather than the code that would be created by the generator.\n\nExample\n\njulia> mymethod(x) = x+1\nmymethod (generic function with 1 method)\n\njulia> JuliaInterpreter.enter_call_expr(:($mymethod(1)))\nJuliaStackFrame(JuliaInterpreter.JuliaFrameCode(mymethod(x) in Main at none:1, CodeInfo(\n1 ─ %1 = ($(QuoteNode(+)))(x, 1)\n└──      return %1\n), Union{Compiled, TypeMapEntry}[#undef, #undef], JuliaInterpreter.BreakpointState[#undef, #undef], BitSet([1]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some(1)], Any[#undef, #undef], Any[], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{JuliaInterpreter.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict(Symbol(\"#self#\")=>1,:x=>2), Any[])\n\njulia> mymethod(x::Vector{T}) where T = 1\nmymethod (generic function with 2 methods)\n\njulia> a = [1.0, 2.0]\n2-element Array{Float64,1}:\n 1.0\n 2.0\n\njulia> JuliaInterpreter.enter_call_expr(:($mymethod($a)))\nJuliaStackFrame(JuliaInterpreter.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(\n1 ─     return 1\n), Union{Compiled, TypeMapEntry}[#undef], JuliaInterpreter.BreakpointState[#undef], BitSet([]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some([1.0, 2.0])], Any[#undef], Any[Float64], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{JuliaInterpreter.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict(Symbol(\"#self#\")=>1,:x=>2), Any[])\n\nSee enter_call for a similar approach not based on expressions.\n\n\n\n\n\n"
 },
 
 {
@@ -149,7 +149,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.prepare_call",
     "category": "function",
-    "text": "framecode, frameargs, lenv, argtypes = prepare_call(f, allargs; enter_generated=false)\n\nPrepare all the information needed to execute lowered code for f given arguments allargs. f and allargs are the outputs of prepare_args. For @generated methods, set enter_generated=true if you want to extract the lowered code of the generator itself.\n\nOn return framecode is the JuliaFrameCode of the method. frameargs contains the actual arguments needed for executing this frame (for generators, this will be the types of allargs); lenv is the \"environment\", i.e., the static parameters for f given allargs. argtypes is the Tuple-type for this specific call (equivalent to the signature of the MethodInstance).\n\nExample\n\njulia> mymethod(x::Vector{T}) where T = 1\nmymethod (generic function with 1 method)\n\njulia> framecode, frameargs, lenv, argtypes = JuliaInterpreter.prepare_call(mymethod, [mymethod, [1.0,2.0]]);\n\njulia> framecode\nJuliaInterpreter.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(\n1 ─     return 1\n), Core.TypeMapEntry[#undef], BitSet([]), false, false, true)\n\njulia> frameargs\n2-element Array{Any,1}:\n mymethod\n [1.0, 2.0]\n\njulia> lenv\nsvec(Float64)\n\njulia> argtypes\nTuple{typeof(mymethod),Array{Float64,1}}\n\n\n\n\n\n"
+    "text": "framecode, frameargs, lenv, argtypes = prepare_call(f, allargs; enter_generated=false)\n\nPrepare all the information needed to execute lowered code for f given arguments allargs. f and allargs are the outputs of prepare_args. For @generated methods, set enter_generated=true if you want to extract the lowered code of the generator itself.\n\nOn return framecode is the JuliaFrameCode of the method. frameargs contains the actual arguments needed for executing this frame (for generators, this will be the types of allargs); lenv is the \"environment\", i.e., the static parameters for f given allargs. argtypes is the Tuple-type for this specific call (equivalent to the signature of the MethodInstance).\n\nExample\n\njulia> mymethod(x::Vector{T}) where T = 1\nmymethod (generic function with 1 method)\n\njulia> framecode, frameargs, lenv, argtypes = JuliaInterpreter.prepare_call(mymethod, [mymethod, [1.0,2.0]]);\n\njulia> framecode\nJuliaInterpreter.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(\n1 ─     return 1\n), Union{Compiled, TypeMapEntry}[#undef], JuliaInterpreter.BreakpointState[#undef], BitSet([]), false, false, true)\n\njulia> frameargs\n2-element Array{Any,1}:\n mymethod\n [1.0, 2.0]\n\njulia> lenv\nsvec(Float64)\n\njulia> argtypes\nTuple{typeof(mymethod),Array{Float64,1}}\n\n\n\n\n\n"
 },
 
 {
@@ -225,6 +225,14 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
+    "location": "dev_reference/#JuliaInterpreter.finish_stack!",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.finish_stack!",
+    "category": "function",
+    "text": "ret = finish_stack!(stack)\n\nCompletely unwind stack, finishing it frame-by-frame. If execution hits a breakpoint, ret will be a reference to the breakpoint.\n\n\n\n\n\n"
+},
+
+{
     "location": "dev_reference/#JuliaInterpreter.get_return",
     "page": "Function reference",
     "title": "JuliaInterpreter.get_return",
@@ -277,7 +285,55 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "Frame execution",
     "category": "section",
-    "text": "JuliaInterpreter.Compiled\nJuliaInterpreter.step_expr!\nJuliaInterpreter.finish!\nJuliaInterpreter.finish_and_return!\nJuliaInterpreter.get_return\nJuliaInterpreter.next_until!\nJuliaInterpreter.through_methoddef_or_done!\nJuliaInterpreter.evaluate_call!\nJuliaInterpreter.evaluate_foreigncall!\nJuliaInterpreter.maybe_evaluate_builtin"
+    "text": "JuliaInterpreter.Compiled\nJuliaInterpreter.step_expr!\nJuliaInterpreter.finish!\nJuliaInterpreter.finish_and_return!\nJuliaInterpreter.finish_stack!\nJuliaInterpreter.get_return\nJuliaInterpreter.next_until!\nJuliaInterpreter.through_methoddef_or_done!\nJuliaInterpreter.evaluate_call!\nJuliaInterpreter.evaluate_foreigncall!\nJuliaInterpreter.maybe_evaluate_builtin"
+},
+
+{
+    "location": "dev_reference/#JuliaInterpreter.Breakpoints.@breakpoint",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.Breakpoints.@breakpoint",
+    "category": "macro",
+    "text": "@breakpoint f(args...) condition=nothing\n@breakpoint f(args...) line condition=nothing\n\nBreak upon entry, or at the specified line number, in the method called by f(args...). Optionally supply a condition expressed in terms of the arguments and internal variables of the method. If line is supplied, it must be a literal integer.\n\nExample\n\nSuppose a method mysum is defined as follows, where the numbers to the left are the line number in the file:\n\n12 function mysum(A)\n13     s = zero(eltype(A))\n14     for a in A\n15         s += a\n16     end\n17     return s\n18 end\n\nThen\n\n@breakpoint mysum(A) 15 s>10\n\nwould cause execution of the loop to break whenever s>10.\n\n\n\n\n\n"
+},
+
+{
+    "location": "dev_reference/#JuliaInterpreter.Breakpoints.breakpoint",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.Breakpoints.breakpoint",
+    "category": "function",
+    "text": "breakpoint(f, sig)\nbreakpoint(f, sig, line)\nbreakpoint(f, sig, condition)\nbreakpoint(f, sig, line, condition)\nbreakpoint(...; enter_generated=false)\n\nAdd a breakpoint to f with the specified argument types sig. Optionally specify an absolute line number line in the source file; the default is to break upon entry at the first line of the body. Without condition, the breakpoint will be triggered every time it is encountered; the second only if condition evaluates to true. condition should be written in terms of the arguments and local variables of f.\n\nExample\n\nfunction radius2(x, y)\n    return x^2 + y^2\nend\n\nbreakpoint(radius2, Tuple{Int,Int}, :(y > x))\n\n\n\n\n\nbreakpoint(method::Method)\nbreakpoint(method::Method, line)\nbreakpoint(method::Method, condition::Expr)\nbreakpoint(method::Method, line, condition::Expr)\n\nAdd a breakpoint to method.\n\n\n\n\n\nbreakpoint(f)\nbreakpoint(f, condition)\n\nBreak-on-entry to all methods of f.\n\n\n\n\n\n"
+},
+
+{
+    "location": "dev_reference/#JuliaInterpreter.Breakpoints.enable",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.Breakpoints.enable",
+    "category": "function",
+    "text": "enable(bp::BreakpointRef)\n\nEnable breakpoint bp.\n\n\n\n\n\nenable()\n\nEnable all breakpoints.\n\n\n\n\n\n"
+},
+
+{
+    "location": "dev_reference/#JuliaInterpreter.Breakpoints.disable",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.Breakpoints.disable",
+    "category": "function",
+    "text": "disable(bp::BreakpointRef)\n\nDisable breakpoint bp. Disabled breakpoints can be re-enabled with enable.\n\n\n\n\n\ndisable()\n\nDisable all breakpoints.\n\n\n\n\n\n"
+},
+
+{
+    "location": "dev_reference/#JuliaInterpreter.Breakpoints.remove",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.Breakpoints.remove",
+    "category": "function",
+    "text": "remove(bp::BreakpointRef)\n\nRemove (delete) breakpoint bp. Removed breakpoints cannot be re-enabled.\n\n\n\n\n\nremove()\n\nRemove all breakpoints.\n\n\n\n\n\n"
+},
+
+{
+    "location": "dev_reference/#Breakpoints-1",
+    "page": "Function reference",
+    "title": "Breakpoints",
+    "category": "section",
+    "text": "@breakpoint\nbreakpoint\nenable\ndisable\nremove"
 },
 
 {
@@ -305,11 +361,27 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
+    "location": "dev_reference/#JuliaInterpreter.BreakpointState",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.BreakpointState",
+    "category": "type",
+    "text": "BreakpointState(isactive=true, condition=JuliaInterpreter.truecondition)\n\nBreakpointState represents a breakpoint at a particular statement in a JuliaFrameCode. isactive indicates whether the breakpoint is currently enabled or disabled. condition is a function that accepts a single JuliaStackFrame, and condition(frame) must return either true or false. Execution will stop at a breakpoint only if isactive and condition(frame) both evaluate as true. The default condition always returns true.\n\nTo create these objects, see breakpoint.\n\n\n\n\n\n"
+},
+
+{
+    "location": "dev_reference/#JuliaInterpreter.Breakpoints.BreakpointRef",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.Breakpoints.BreakpointRef",
+    "category": "type",
+    "text": "BreakpointRef(framecode, stmtidx)\nBreakpointRef(framecode, stmtidx, err)\n\nA reference to a breakpoint at a particular statement index stmtidx in framecode. If the break was due to an error, supply that as well.\n\n\n\n\n\n"
+},
+
+{
     "location": "dev_reference/#Types-1",
     "page": "Function reference",
     "title": "Types",
     "category": "section",
-    "text": "JuliaInterpreter.JuliaStackFrame\nJuliaInterpreter.JuliaFrameCode\nJuliaInterpreter.JuliaProgramCounter"
+    "text": "JuliaInterpreter.JuliaStackFrame\nJuliaInterpreter.JuliaFrameCode\nJuliaInterpreter.JuliaProgramCounter\nJuliaInterpreter.BreakpointState\nJuliaInterpreter.BreakpointRef"
 },
 
 {
@@ -361,11 +433,35 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
+    "location": "dev_reference/#JuliaInterpreter.isdocexpr",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.isdocexpr",
+    "category": "function",
+    "text": "isdocexpr(ex)\n\nTest whether expression ex is a @doc expression.\n\n\n\n\n\n"
+},
+
+{
+    "location": "dev_reference/#JuliaInterpreter.isglobalref",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.isglobalref",
+    "category": "function",
+    "text": "isglobalref(g, mod, name)\n\nTests whether g is equal to GlobalRef(mod, name).\n\n\n\n\n\n"
+},
+
+{
+    "location": "dev_reference/#JuliaInterpreter.statementnumber",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.statementnumber",
+    "category": "function",
+    "text": "stmtidx = statementnumber(frame, line)\n\nReturn the index of the first statement in frame\'s CodeInfo that corresponds to line.\n\n\n\n\n\nframecode, stmtidx = statementnumber(method, line)\n\nReturn the index of the first statement in framecode that corresponds to the given line in method.\n\n\n\n\n\n"
+},
+
+{
     "location": "dev_reference/#Utilities-1",
     "page": "Function reference",
     "title": "Utilities",
     "category": "section",
-    "text": "JuliaInterpreter.@lookup\nJuliaInterpreter.iswrappercall"
+    "text": "JuliaInterpreter.@lookup\nJuliaInterpreter.iswrappercall\nJuliaInterpreter.isdocexpr\nJuliaInterpreter.isglobalref\nJuliaInterpreter.statementnumber"
 },
 
 ]}
