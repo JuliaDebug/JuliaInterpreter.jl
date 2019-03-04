@@ -1,6 +1,6 @@
 using JuliaInterpreter
 using JuliaInterpreter: enter_call_expr
-using Test, InteractiveUtils
+using Test, InteractiveUtils, CodeTracking
 
 pc = JuliaInterpreter.JuliaProgramCounter(2)
 @test convert(Int, pc) == 2
@@ -216,9 +216,9 @@ function f(x)
     return x*x
 end
 frame = JuliaInterpreter.enter_call(f, 3)
-@test JuliaInterpreter.linenumber(frame, JuliaInterpreter.JuliaProgramCounter(1)) == defline + 1
-@test JuliaInterpreter.linenumber(frame, JuliaInterpreter.JuliaProgramCounter(3)) == defline + 4
-@test JuliaInterpreter.linenumber(frame, JuliaInterpreter.JuliaProgramCounter(5)) == defline + 6
+@test whereis(frame, JuliaInterpreter.JuliaProgramCounter(1))[2] == defline + 1
+@test whereis(frame, JuliaInterpreter.JuliaProgramCounter(3))[2] == defline + 4
+@test whereis(frame, JuliaInterpreter.JuliaProgramCounter(5))[2] == defline + 6
 
 # issue #28
 let a = ['0'], b = ['a']

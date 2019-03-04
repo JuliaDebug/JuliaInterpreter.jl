@@ -44,15 +44,11 @@ end
 
     # Conditional breakpoints on local variables
     remove()
-    stack = JuliaStackFrame[]
-    frame = JuliaInterpreter.enter_call(loop_radius2, 10)
     halfthresh = loop_radius2(5)
-    JuliaInterpreter.next_line!(stack, frame)
-    JuliaInterpreter.next_line!(stack, frame)
-    pc = frame.pc[]
-    Breakpoints.breakpoint!(frame.code, pc, :(s > $halfthresh))
-    bp = JuliaInterpreter.finish_and_return!(stack, frame)
+    @breakpoint loop_radius2(10) 5 s>$halfthresh
+    stack, bp = @interpret loop_radius2(10)
     @test isa(bp, Breakpoints.BreakpointRef)
+    frame = stack[end]
     s_extractor = eval(Breakpoints.prepare_slotfunction(frame.code, :s))
     @test s_extractor(frame) == loop_radius2(6)
     JuliaInterpreter.finish_stack!(stack)

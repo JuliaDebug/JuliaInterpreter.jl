@@ -681,29 +681,53 @@ end
 isgotonode(node) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
 
 """
-    linenumber(frame, pc=frame.pc[])
+    loc = whereis(frame, pc=frame.pc[])
 
-Return line number for `frame` at `pc` or `nothing` if it cannot be determined.
+Return the file and line number for `frame` at `pc`.  If this cannot be
+determined, `loc == nothing`. Otherwise `loc == (filepath, line)`.
+
+When `frame` represents top-level code,
 """
+function CodeTracking.whereis(framecode::JuliaFrameCode, pc)
+    codeloc = framecode.code.codelocs[convert(Int, pc)]
+    codeloc == 0 && return nothing
+    lineinfo = framecode.code.linetable[codeloc]
+    return framecode.scope isa Method ?
+        whereis(lineinfo, framecode.scope) : string(lineinfo.file), lineinfo.line
+end
+CodeTracking.whereis(frame::JuliaStackFrame, pc=frame.pc[]) = whereis(frame.code, pc)
+
+# Note: linenumber is now an internal method for use by `next_line!`
+# If you want to know the actual line number in a file, call `whereis`.
 function linenumber(framecode::JuliaFrameCode, pc)
     codeloc = framecode.code.codelocs[convert(Int, pc)]
     codeloc == 0 && return nothing
-    return framecode.scope isa Method ?
-        framecode.code.linetable[codeloc].line :
-        codeloc
+    return framecode.code.linetable[codeloc].line
 end
 linenumber(frame::JuliaStackFrame, pc=frame.pc[]) = linenumber(frame.code, pc)
 
 """
-    statementnumber(frame, line)
+    stmtidx = statementnumber(frame, line)
 
 Return the index of the first statement in `frame`'s `CodeInfo` that corresponds to `line`.
 """
 function statementnumber(framecode::JuliaFrameCode, line)
-    lineidx = searchsortedfirst(framecode.code.linetable, line; by=lin->lin.line)
+    lineidx = searchsortedfirst(framecode.code.linetable, line; by=lin->isa(lin,Integer) ? lin : lin.line)
+    1 <= lineidx <= length(framecode.code.linetable) || throw(ArgumentError("line $line not found in $(framecode.scope)"))
     return searchsortedfirst(framecode.code.codelocs, lineidx)
 end
 statementnumber(frame::JuliaStackFrame, line) = statementnumber(frame.code, line)
+
+"""
+    framecode, stmtidx = statementnumber(method, line)
+
+Return the index of the first statement in `framecode` that corresponds to the given `line` in `method`.
+"""
+function statementnumber(method::Method, line; line1=whereis(method)[2])
+    linec = line - line1 + method.line  # line number at time of compilation
+    framecode = get_framecode(method)
+    return framecode, statementnumber(framecode, linec)
+end
 
 function next_line!(stack, frame, dbstack = nothing)
     initial = linenumber(frame)
