@@ -6,4 +6,5 @@ using Test
     include("interpret.jl")
     include("toplevel.jl")
     include("limits.jl")
+    include("breakpoints.jl")
 end
