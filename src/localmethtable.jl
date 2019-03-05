@@ -1,5 +1,10 @@
 const max_methods = 4  # maximum number of MethodInstances tracked for a particular :call statement
 
+struct FrameInstance
+    framecode::JuliaFrameCode
+    sparam_vals::SimpleVector
+end
+
 """
     framecode, lenv = get_call_framecode(fargs, parentframe::JuliaFrameCode, idx::Int)
 
@@ -34,9 +39,8 @@ function get_call_framecode(fargs, parentframe::JuliaFrameCode, idx::Int)
                         tmeprev.next = tme.next
                         tme.next = tme1
                     end
-                    # The framecode is stashed in the `inferred` field of the MethodInstance
-                    mi = tme.func::MethodInstance
-                    return mi.inferred::JuliaFrameCode, mi.sparam_vals
+                    mi = tme.func::FrameInstance
+                    return mi.framecode, mi.sparam_vals
                 end
             end
             depth += 1
@@ -53,17 +57,17 @@ function get_call_framecode(fargs, parentframe::JuliaFrameCode, idx::Int)
     isa(ret, Compiled) && return ret, nothing
     framecode, args, env, argtypes = ret
     # Store the results of the method lookup in the local method table
+    mi = FrameInstance(framecode, env)
+    # it's sort of odd to call this a TypeMapEntry, then set most of the fields incorrectly
+    # but since we're just using it as a linked list, it's probably ok
     tme = ccall(:jl_new_struct_uninit, Any, (Any,), TypeMapEntry)::TypeMapEntry
-    tme.func = mi = ccall(:jl_new_struct_uninit, Any, (Any,), MethodInstance)::MethodInstance
-    tme.sig = mi.specTypes = argtypes
+    tme.func = mi
+    tme.simplesig = nothing
+    tme.sig = argtypes
     tme.isleafsig = true
     tme.issimplesig = false
     method = framecode.scope::Method
     tme.va = method.isva
-    mi.def = method
-    mi.rettype = Any
-    mi.sparam_vals = env
-    mi.inferred = framecode   # a slight abuse, but not insane
     if isassigned(parentframe.methodtables, idx)
         tme.next = parentframe.methodtables[idx]
         # Drop the oldest tme, if necessary

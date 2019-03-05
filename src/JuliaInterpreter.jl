@@ -347,9 +347,15 @@ function prepare_args(@nospecialize(f), allargs, kwargs)
     return f, allargs
 end
 
+if VERSION < v"1.2-" || !isdefined(Core.Compiler, :specialize_method)
+    specialize_method(method::Method, @nospecialize(atypes), sparams::SimpleVector) =
+        Core.Compiler.code_for_method(method, atypes, sparams, typemax(UInt))
+else
+    const specialize_method = Core.Compiler.specialize_method
+end
+
 function prepare_framecode(method::Method, argtypes; enter_generated=false)
     sig = method.sig
-    isa(method, TypeMapEntry) && (method = method.func)
     if method.module == Core.Compiler || method.module == Base.Threads || method ∈ compiled_methods
         return Compiled()
     end
@@ -367,7 +373,7 @@ function prepare_framecode(method::Method, argtypes; enter_generated=false)
             # If we're stepping into a staged function, we need to use
             # the specialization, rather than stepping through the
             # unspecialized method.
-            code = Core.Compiler.get_staged(Core.Compiler.code_for_method(method, argtypes, lenv, typemax(UInt), false))
+            code = Core.Compiler.get_staged(specialize_method(method, argtypes, lenv))
             code === nothing && return nothing
             generator = false
         else
@@ -645,13 +651,7 @@ function determine_method_for_expr(expr; enter_generated = false)
     return prepare_call(f, allargs; enter_generated=enter_generated)
 end
 
-function get_source(meth)
-    if isa(meth.source, Array{UInt8,1})
-        return ccall(:jl_uncompress_ast, Any, (Any, Any), meth, meth.source)
-    else
-        return meth.source
-    end
-end
+get_source(meth) = Base.uncompressed_ast(meth)
 
 function get_source(g::GeneratedFunctionStub)
     b = g(g.argnames...)
