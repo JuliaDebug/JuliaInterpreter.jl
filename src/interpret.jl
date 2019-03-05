@@ -689,7 +689,7 @@ determined, `loc == nothing`. Otherwise `loc == (filepath, line)`.
 When `frame` represents top-level code,
 """
 function CodeTracking.whereis(framecode::JuliaFrameCode, pc)
-    codeloc = framecode.code.codelocs[convert(Int, pc)]
+    codeloc = codelocation(framecode.code, convert(Int, pc))
     codeloc == 0 && return nothing
     lineinfo = framecode.code.linetable[codeloc]
     return framecode.scope isa Method ?
@@ -700,11 +700,20 @@ CodeTracking.whereis(frame::JuliaStackFrame, pc=frame.pc[]) = whereis(frame.code
 # Note: linenumber is now an internal method for use by `next_line!`
 # If you want to know the actual line number in a file, call `whereis`.
 function linenumber(framecode::JuliaFrameCode, pc)
-    codeloc = framecode.code.codelocs[convert(Int, pc)]
+    codeloc = codelocation(framecode.code, convert(Int, pc))
     codeloc == 0 && return nothing
     return framecode.code.linetable[codeloc].line
 end
 linenumber(frame::JuliaStackFrame, pc=frame.pc[]) = linenumber(frame.code, pc)
+
+function codelocation(code::CodeInfo, idx)
+    codeloc = code.codelocs[idx]
+    while codeloc == 0 && code.code[idx] === nothing && idx < length(code.code)
+        idx += 1
+        codeloc = code.codelocs[idx]
+    end
+    return codeloc
+end
 
 """
     stmtidx = statementnumber(frame, line)
