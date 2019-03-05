@@ -219,6 +219,9 @@ frame = JuliaInterpreter.enter_call(f, 3)
 @test whereis(frame, JuliaInterpreter.JuliaProgramCounter(1))[2] == defline + 1
 @test whereis(frame, JuliaInterpreter.JuliaProgramCounter(3))[2] == defline + 4
 @test whereis(frame, JuliaInterpreter.JuliaProgramCounter(5))[2] == defline + 6
+m = which(iterate, Tuple{Dict}) # this method has `nothing` as its first statement and codeloc == 0
+framecode = JuliaInterpreter.get_framecode(m)
+@test JuliaInterpreter.linenumber(framecode, 1) == m.line
 
 # issue #28
 let a = ['0'], b = ['a']
