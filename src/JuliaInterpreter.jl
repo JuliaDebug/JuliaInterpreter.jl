@@ -184,14 +184,8 @@ Return the local variables as a vector of `Variable`[@ref].
 """
 function locals(frame::JuliaStackFrame)
     vars = Variable[]
-    syms = Set{Symbol}()
-    for i = length(frame.locals):-1:1
-        if !isa(frame.locals[i], Nothing)
-            sym = frame.code.code.slotnames[i]
-            sym in syms && continue
-            push!(vars, Variable(something(frame.locals[i]), sym, false))
-            push!(syms, sym)
-        end
+    for (sym, idx) in frame.last_reference
+        push!(vars, Variable(something(frame.locals[idx]), sym, false))
     end
     reverse!(vars)
     if frame.code.scope isa Method
