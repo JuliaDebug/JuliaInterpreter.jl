@@ -75,4 +75,5 @@ JuliaInterpreter.isglobalref
 JuliaInterpreter.statementnumber
 JuliaInterpreter.Variable
 JuliaInterpreter.locals
+CodeTracking.whereis
 ```

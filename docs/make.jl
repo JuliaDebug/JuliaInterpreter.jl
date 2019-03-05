@@ -1,8 +1,9 @@
-using Documenter, JuliaInterpreter, Test
+using Documenter, JuliaInterpreter, Test, CodeTracking
 
 makedocs(
     modules = [JuliaInterpreter],
     clean = false,
+    strict = true,
     format = Documenter.HTML(prettyurls = get(ENV, "CI", nothing) == "true"),
     sitename = "JuliaInterpreter.jl",
     authors = "Keno Fischer, Tim Holy, and others",
