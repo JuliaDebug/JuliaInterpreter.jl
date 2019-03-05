@@ -271,6 +271,12 @@ let TT = Union{UInt8, Int8}
     @interpret unsafe_store!(pa, 0x1, 2)
 end
 
+# issue #92
+let x = Core.TypedSlot(1, Any)
+    f(x) = objectid(x)
+    @test isa(@interpret(f(x)), UInt)
+end
+
 # Some expression can appear nontrivial but lower to nothing
 @test isa(JuliaInterpreter.prepare_thunk(Main, :(@static if ccall(:jl_get_UNAME, Any, ()) == :NoOS 1+1 end)), Nothing)
 @test isa(JuliaInterpreter.prepare_thunk(Main, :(Base.BaseDocs.@kw_str "using")), Nothing)
