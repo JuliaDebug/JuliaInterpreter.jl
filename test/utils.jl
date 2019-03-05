@@ -58,7 +58,7 @@ function evaluate_limited!(stack, frame::JuliaStackFrame, nstmts::Int, pc::Julia
                     do_assignment!(frame, lhs, rhs)
                     new_pc = pc + 1
                 catch err
-                    new_pc = handle_err(frame, err)
+                    new_pc = handle_err(stack, frame, pc, err)
                 end
                 nstmts = refnstmts[]
             elseif stmt.head == :(=) && isexpr(stmt.args[2], :call) && !isa(stack, Compiled)
@@ -69,7 +69,7 @@ function evaluate_limited!(stack, frame::JuliaStackFrame, nstmts::Int, pc::Julia
                     do_assignment!(frame, stmt.args[1], rhs)
                     new_pc = pc + 1
                 catch err
-                    new_pc = handle_err(frame, err)
+                    new_pc = handle_err(stack, frame, pc, err)
                 end
                 nstmts = refnstmts[]
             elseif stmt.head == :thunk
