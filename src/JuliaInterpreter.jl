@@ -759,6 +759,7 @@ end
 function lookup_global_refs!(ex::Expr)
     (ex.head == :isdefined || ex.head == :thunk || ex.head == :toplevel) && return nothing
     for (i, a) in enumerate(ex.args)
+        ex.head == :(=) && i == 1 && continue # Don't look up globalrefs on the LHS of an assignment (issue #98)
         if isa(a, GlobalRef)
             r = getfield(a.mod, a.name)
             ex.args[i] = QuoteNode(r)
