@@ -27,8 +27,16 @@ end
 BreakpointRef(framecode, stmtidx) = BreakpointRef(framecode, stmtidx, nothing)
 
 function Base.show(io::IO, bp::BreakpointRef)
-    lineno = linenumber(bp.framecode, bp.stmtidx)
-    print(io, "breakpoint(", bp.framecode.scope, ", ", lineno, ')')
+    if checkbounds(Bool, bp.framecode.breakpoints, bp.stmtidx)
+        lineno = linenumber(bp.framecode, bp.stmtidx)
+        print(io, "breakpoint(", bp.framecode.scope, ", ", lineno)
+    else
+        print(io, "breakpoint(", bp.framecode.scope, ", %", bp.stmtidx)
+    end
+    if bp.err !== nothing
+        print(io, ", ", bp.err)
+    end
+    print(io, ')')
 end
 
 const _breakpoints = BreakpointRef[]
@@ -59,7 +67,7 @@ function shouldbreak(frame, pc=frame.pc[])
     isassigned(frame.code.breakpoints, idx) || return false
     bp = frame.code.breakpoints[idx]
     bp.isactive || return false
-    return bp.condition(frame)::Bool
+    return Base.invokelatest(bp.condition, frame)::Bool
 end
 
 function prepare_slotfunction(framecode::JuliaFrameCode, body::Union{Symbol,Expr})
