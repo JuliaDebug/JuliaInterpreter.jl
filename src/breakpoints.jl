@@ -27,8 +27,16 @@ end
 BreakpointRef(framecode, stmtidx) = BreakpointRef(framecode, stmtidx, nothing)
 
 function Base.show(io::IO, bp::BreakpointRef)
-    lineno = linenumber(bp.framecode, bp.stmtidx)
-    print(io, "breakpoint(", bp.framecode.scope, ", ", lineno, ')')
+    if checkbounds(Bool, bp.framecode.breakpoints, bp.stmtidx)
+        lineno = linenumber(bp.framecode, bp.stmtidx)
+        print(io, "breakpoint(", bp.framecode.scope, ", ", lineno)
+    else
+        print(io, "breakpoint(", bp.framecode.scope, ", %", bp.stmtidx)
+    end
+    if bp.err !== nothing
+        print(io, ", ", bp.err)
+    end
+    print(io, ')')
 end
 
 const _breakpoints = BreakpointRef[]
