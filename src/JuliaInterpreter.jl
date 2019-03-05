@@ -173,7 +173,7 @@ struct Variable
     name::Symbol
     isparam::Bool
 end
-Base.show(io::IO, var::Variable) = print(io, var.name, " = ", var.value)
+Base.show(io::IO, var::Variable) = (print(io, var.name, " = "); show(io,var.value))
 Base.isequal(var1::Variable, var2::Variable) = 
     var1.value == var2.value && var1.name == var2.name && var1.isparam == var2.isparam
 
