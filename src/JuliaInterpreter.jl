@@ -174,7 +174,7 @@ struct Variable
     isparam::Bool
 end
 Base.show(io::IO, var::Variable) = print(io, var.name, " = ", var.value)
-Base.isequal(var1::Variable, var2::Variable) = 
+Base.isequal(var1::Variable, var2::Variable) =
     var1.value == var2.value && var1.name == var2.name && var1.isparam == var2.isparam
 
 """
@@ -1148,6 +1148,8 @@ function set_compiled_methods()
     # issue #76
     push!(compiled_methods, which(unsafe_store!, (Ptr{Any}, Any, Int)))
     push!(compiled_methods, which(unsafe_store!, (Ptr, Any, Int)))
+    # issue #92
+    push!(compiled_methods, which(objectid, Tuple{Any}))
 end
 
 function __init__()
