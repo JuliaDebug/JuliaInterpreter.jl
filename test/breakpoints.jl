@@ -70,6 +70,16 @@ end
     @test isa(bp, Breakpoints.BreakpointRef)
     @test JuliaInterpreter.finish_stack!(stack) == 2
 
+    # Breakpoints by file/line
+    if isdefined(Main, :Revise)
+        remove()
+        method = which(JuliaInterpreter.locals, Tuple{JuliaStackFrame})
+        breakpoint(String(method.file), method.line+1)
+        frame = JuliaInterpreter.enter_call(loop_radius2, 2)
+        ret = @interpret JuliaInterpreter.locals(frame)
+        @test isa(bp, Breakpoints.BreakpointRef)
+    end
+
     # Direct return
     @breakpoint gcd(1,1) a==5
     @test @interpret(gcd(10,20)) == 10

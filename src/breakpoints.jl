@@ -5,7 +5,7 @@ using JuliaInterpreter: JuliaFrameCode, JuliaStackFrame, BreakpointState,
                         truecondition, falsecondition, prepare_framecode, get_framecode,
                         sparam_syms, linenumber, statementnumber
 using Base.Meta: isexpr
-using InteractiveUtils
+using CodeTracking, InteractiveUtils
 
 export @breakpoint, breakpoint, enable, disable, remove
 
@@ -236,6 +236,33 @@ function breakpoint(f, condition::Condition=nothing)
         push!(bps, breakpoint(method, condition))
     end
     return bps
+end
+
+"""
+    breakpoint(filename, line)
+
+Set a breakpoint at the specified file and line number.
+"""
+function breakpoint(filename::AbstractString, line::Integer, args...)
+    sigs = signatures_at(filename, line)
+    if sigs === nothing
+        # TODO: build a Revise-free fallback. Note this won't work well for methods with keywords.
+        error("no signatures found at $filename, $line. Restarting and `using Revise` may fix this problem.")
+    end
+    for sig in sigs
+        method = JuliaInterpreter.whichtt(sig)
+        method === nothing && continue
+        # Check to see if this method really contains that line. Methods that fill in a default positional argument,
+        # keyword arguments, and @generated sections may not contain the line.
+        _, line1 = whereis(method)
+        offset = line1 - method.line
+        src = JuliaInterpreter.get_source(method)
+        lastline = src.linetable[end]
+        if lastline.line + offset >= line
+            return breakpoint(method, line, args...)
+        end
+    end
+    error("no signatures found at $filename, $line among the signatures $sigs")
 end
 
 """
