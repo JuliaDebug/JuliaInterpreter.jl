@@ -274,3 +274,39 @@ end
 # Some expression can appear nontrivial but lower to nothing
 @test isa(JuliaInterpreter.prepare_thunk(Main, :(@static if ccall(:jl_get_UNAME, Any, ()) == :NoOS 1+1 end)), Nothing)
 @test isa(JuliaInterpreter.prepare_thunk(Main, :(Base.BaseDocs.@kw_str "using")), Nothing)
+
+@testset "locals" begin
+    f_locals(x::Int64, y::T, z::Vararg{Symbol}) where {T} = x
+    frame = JuliaInterpreter.enter_call(f_locals, 1, 2.0, :a, :b)
+    locals = JuliaInterpreter.locals(frame)
+    @test JuliaInterpreter.Variable(1, :x, false) in locals
+    @test JuliaInterpreter.Variable(2.0, :y, false) in locals
+    @test JuliaInterpreter.Variable((:a, :b), :z, false) in locals
+    @test JuliaInterpreter.Variable(Float64, :T, true) in locals
+
+    function f_multi(x)
+        c = x
+        x = 2
+        x = 3
+        x = 4
+        return x
+    end
+    frame = JuliaInterpreter.enter_call(f_multi, 1)
+    stack = [frame]
+    locals = JuliaInterpreter.locals(frame)
+    @test length(locals) == 2
+    @test JuliaInterpreter.Variable(1, :x, false) in locals
+    JuliaInterpreter.step_expr!(stack, frame)
+    JuliaInterpreter.step_expr!(stack, frame)
+    locals = JuliaInterpreter.locals(frame)
+    @test length(locals) == 3
+    @test JuliaInterpreter.Variable(1, :c, false) in locals
+    JuliaInterpreter.step_expr!(stack, frame)
+    locals = JuliaInterpreter.locals(frame)
+    @test length(locals) == 3
+    @test JuliaInterpreter.Variable(2, :x, false) in locals
+    JuliaInterpreter.step_expr!(stack, frame)
+    locals = JuliaInterpreter.locals(frame)
+    @test length(locals) == 3
+    @test JuliaInterpreter.Variable(3, :x, false) in locals
+end
