@@ -67,7 +67,7 @@ function shouldbreak(frame, pc=frame.pc[])
     isassigned(frame.code.breakpoints, idx) || return false
     bp = frame.code.breakpoints[idx]
     bp.isactive || return false
-    return bp.condition(frame)::Bool
+    return Base.invokelatest(bp.condition, frame)::Bool
 end
 
 function prepare_slotfunction(framecode::JuliaFrameCode, body::Union{Symbol,Expr})
