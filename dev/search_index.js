@@ -473,11 +473,19 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
+    "location": "dev_reference/#CodeTracking.whereis",
+    "page": "Function reference",
+    "title": "CodeTracking.whereis",
+    "category": "function",
+    "text": "loc = whereis(frame, pc=frame.pc[])\n\nReturn the file and line number for frame at pc.  If this cannot be determined, loc == nothing. Otherwise loc == (filepath, line).\n\nWhen frame represents top-level code,\n\n\n\n\n\n"
+},
+
+{
     "location": "dev_reference/#Utilities-1",
     "page": "Function reference",
     "title": "Utilities",
     "category": "section",
-    "text": "JuliaInterpreter.@lookup\nJuliaInterpreter.iswrappercall\nJuliaInterpreter.isdocexpr\nJuliaInterpreter.isglobalref\nJuliaInterpreter.statementnumber\nJuliaInterpreter.Variable\nJuliaInterpreter.locals"
+    "text": "JuliaInterpreter.@lookup\nJuliaInterpreter.iswrappercall\nJuliaInterpreter.isdocexpr\nJuliaInterpreter.isglobalref\nJuliaInterpreter.statementnumber\nJuliaInterpreter.Variable\nJuliaInterpreter.locals\nCodeTracking.whereis"
 },
 
 ]}
