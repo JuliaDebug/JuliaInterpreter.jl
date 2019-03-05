@@ -457,11 +457,27 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
+    "location": "dev_reference/#JuliaInterpreter.Variable",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.Variable",
+    "category": "type",
+    "text": "Variable is a struct representing a variable with an asigned value. By calling the function locals[@ref] on a JuliaStackFrame[@ref] a Vector of Variable\'s is returned.\n\nImportant fields:\n\nvalue::Any: the value of the local variable\nname::Symbol: the name of the variable as given in the source code\nisparam::Bool: if the variable is a type parameter, for example T in f(x::T) where {T} = x .\n\n\n\n\n\n"
+},
+
+{
+    "location": "dev_reference/#JuliaInterpreter.locals",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.locals",
+    "category": "function",
+    "text": "local_variables = locals(frame::JuliaStackFrame)::Vector{Variable}\n\nReturn the local variables as a vector of Variable[@ref].\n\n\n\n\n\n"
+},
+
+{
     "location": "dev_reference/#Utilities-1",
     "page": "Function reference",
     "title": "Utilities",
     "category": "section",
-    "text": "JuliaInterpreter.@lookup\nJuliaInterpreter.iswrappercall\nJuliaInterpreter.isdocexpr\nJuliaInterpreter.isglobalref\nJuliaInterpreter.statementnumber"
+    "text": "JuliaInterpreter.@lookup\nJuliaInterpreter.iswrappercall\nJuliaInterpreter.isdocexpr\nJuliaInterpreter.isglobalref\nJuliaInterpreter.statementnumber\nJuliaInterpreter.Variable\nJuliaInterpreter.locals"
 },
 
 ]}
