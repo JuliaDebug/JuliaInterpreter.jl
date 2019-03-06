@@ -4,7 +4,7 @@ using JuliaInterpreter: finish_and_return!, @lookup, evaluate_call!, _step_expr!
                         do_assignment!, getlhs, isassign, pc_expr, handle_err, get_return,
                         moduleof, prepare_thunk
 using Base.Meta: isexpr
-using Test, Random
+using Test, Random, SHA
 
 # Execute a frame using Julia's regular compiled-code dispatch for any :call expressions
 runframe(frame, pc=frame.pc[]) = Some{Any}(finish_and_return!(Compiled(), frame, pc))
@@ -157,6 +157,8 @@ function configure_test()
     push!(cm, which(Base.include, Tuple{Module, String}))
     push!(cm, which(Base.show_backtrace, Tuple{IO, Vector}))
     push!(cm, which(Base.show_backtrace, Tuple{IO, Vector{Any}}))
+    # issue #101
+    push!(cm, which(SHA.update!, Tuple{SHA.SHA1_CTX,Vector{UInt8}}))
 end
 
 function run_test_by_eval(test, fullpath, nstmts)
