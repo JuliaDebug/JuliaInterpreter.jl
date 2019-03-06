@@ -353,23 +353,3 @@ end
     @test length(locals) == 3
     @test JuliaInterpreter.Variable(3, :x, false) in locals
 end
-
-@testset "empty stack after try catch" begin
-    function f_exc_outer()
-        try
-            f_exc_inner()
-        catch err
-            return err
-        end
-    end
-
-    function f_exc_inner()
-        error()
-    end
-
-    stack = JuliaStackFrame[];
-    frame = JuliaInterpreter.enter_call(f_exc_outer);
-    v = JuliaInterpreter.finish_and_return!(stack, frame)
-    @test v isa ErrorException
-    @test length(stack) == 0
-end
