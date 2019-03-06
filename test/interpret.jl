@@ -145,6 +145,11 @@ ex = quote
 end
 frame = JuliaInterpreter.prepare_thunk(Main, ex)
 @test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) == 1
+function cfcfun()
+    cf = @cfunction(fcfun, Int, (Int, Int))
+    ccall(cf, Int, (Int, Int), 1, 2)
+end
+@test @interpret(cfcfun()) == 1
 
 # From Julia's test/ambiguous.jl. This tests whether we renumber :enter statements correctly.
 ambig(x, y) = 1

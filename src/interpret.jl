@@ -145,11 +145,13 @@ Evaluate a `:foreigncall` (from a `ccall`) statement `callexpr` in the context o
 `stack` and `pc` are unused, but supplied for consistency with [`evaluate_call!`](@ref).
 """
 function evaluate_foreigncall!(stack, frame::JuliaStackFrame, call_expr::Expr, pc)
-    args = collect_args(frame, call_expr; isfc=true)
+    head = call_expr.head
+    args = collect_args(frame, call_expr; isfc = head==:foreigncall)
     for i = 2:length(args)
         arg = args[i]
         args[i] = isa(arg, Symbol) ? QuoteNode(arg) : arg
     end
+    head == :cfunction && (args[2] = QuoteNode(args[2]))
     scope = frame.code.scope
     if !isempty(frame.sparams) && scope isa Method
         sig = scope.sig
@@ -158,7 +160,7 @@ function evaluate_foreigncall!(stack, frame::JuliaStackFrame, call_expr::Expr, p
             instantiate_type_in_env(arg, sig, frame.sparams)
         end...)
     end
-    return Core.eval(moduleof(frame), Expr(:foreigncall, args...))
+    return Core.eval(moduleof(frame), Expr(head, args...))
 end
 
 function evaluate_call!(::Compiled, frame::JuliaStackFrame, call_expr::Expr, pc;  #=unused=# exec!::Function=finish_and_return!)
@@ -318,7 +320,7 @@ function eval_rhs(stack, frame, node::Expr, pc)
         return check_isdefined(frame, node.args[1])
     elseif head == :call
         return evaluate_call!(stack, frame, node, pc)
-    elseif head == :foreigncall
+    elseif head == :foreigncall || head == :cfunction
         return evaluate_foreigncall!(stack, frame, node, pc)
     elseif head == :copyast
         val = (node.args[1]::QuoteNode).value
