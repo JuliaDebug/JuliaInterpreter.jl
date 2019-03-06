@@ -280,6 +280,16 @@ let x = Core.TypedSlot(1, Any)
     @test isa(@interpret(f(x)), UInt)
 end
 
+# issue #98
+x98 = 5
+function f98()
+    global x98
+    x98 = 7
+    return nothing
+end
+@interpret f98()
+@test x98 == 7
+
 # Some expression can appear nontrivial but lower to nothing
 @test isa(JuliaInterpreter.prepare_thunk(Main, :(@static if ccall(:jl_get_UNAME, Any, ()) == :NoOS 1+1 end)), Nothing)
 @test isa(JuliaInterpreter.prepare_thunk(Main, :(Base.BaseDocs.@kw_str "using")), Nothing)
