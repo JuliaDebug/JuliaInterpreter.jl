@@ -1145,6 +1145,10 @@ function set_compiled_methods()
     push!(compiled_methods, which(unsafe_store!, (Ptr, Any, Int)))
     # issue #92
     push!(compiled_methods, which(objectid, Tuple{Any}))
+    # issue #106 --- anything that uses sigatomic_(begin|end)
+    push!(compiled_methods, which(flush, Tuple{IOStream}))
+    push!(compiled_methods, which(disable_sigint, Tuple{Function}))
+    push!(compiled_methods, which(reenable_sigint, Tuple{Function}))
 end
 
 function __init__()

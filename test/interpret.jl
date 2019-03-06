@@ -295,6 +295,25 @@ end
 @interpret f98()
 @test x98 == 7
 
+# issue #106
+function f106()
+    n = tempname()
+    w = open(n, "a")
+    write(w, "A")
+    flush(w)
+    return true
+end
+@test @interpret(f106()) == 1
+f106b() = rand()
+f106c() = disable_sigint(f106b)
+function f106d()
+    disable_sigint() do
+        reenable_sigint(f106b)
+    end
+end
+@interpret f106c()
+@interpret f106d()
+
 # Some expression can appear nontrivial but lower to nothing
 @test isa(JuliaInterpreter.prepare_thunk(Main, :(@static if ccall(:jl_get_UNAME, Any, ()) == :NoOS 1+1 end)), Nothing)
 @test isa(JuliaInterpreter.prepare_thunk(Main, :(Base.BaseDocs.@kw_str "using")), Nothing)
