@@ -92,10 +92,6 @@ end
         @test length(stack) >= 2
         @test stack[1].code.scope.name == :outer
         @test stack[2].code.scope.name == :inner
-
-        f_catch() = try error(); catch; return 2; end
-        @test @interpret f_catch() == 2
-
     finally
         JuliaInterpreter.break_on_error[] = false
     end
