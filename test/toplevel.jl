@@ -6,16 +6,16 @@ end
 end
 
 @testset "Basics" begin
-    @test JuliaInterpreter.isdocexpr(:(@doc "string" sum))
-    @test JuliaInterpreter.isdocexpr(:(Core.@doc "string" sum))
+    @test JuliaInterpreter.is_doc_expr(:(@doc "string" sum))
+    @test JuliaInterpreter.is_doc_expr(:(Core.@doc "string" sum))
     ex = quote
         """
         a docstring
         """
         sum
     end
-    @test JuliaInterpreter.isdocexpr(ex.args[2])
-    @test !JuliaInterpreter.isdocexpr(:(1+1))
+    @test JuliaInterpreter.is_doc_expr(ex.args[2])
+    @test !JuliaInterpreter.is_doc_expr(:(1+1))
 
     @test isa(JuliaInterpreter.prepare_thunk(Main, :(export foo)), JuliaStackFrame)
 

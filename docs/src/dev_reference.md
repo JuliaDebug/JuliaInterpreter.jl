@@ -70,7 +70,7 @@ JuliaInterpreter.compiled_methods
 ```@docs
 JuliaInterpreter.@lookup
 JuliaInterpreter.iswrappercall
-JuliaInterpreter.isdocexpr
+JuliaInterpreter.is_doc_expr
 JuliaInterpreter.isglobalref
 JuliaInterpreter.statementnumber
 JuliaInterpreter.Variable
