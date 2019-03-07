@@ -92,6 +92,22 @@ end
         @test length(stack) >= 2
         @test stack[1].code.scope.name == :outer
         @test stack[2].code.scope.name == :inner
+
+        # Don't break on caught exceptions
+        function f_exc_outer()
+            try
+                f_exc_inner()
+            catch err
+                return err
+            end
+        end
+        function f_exc_inner()
+            error()
+        end
+        stack = JuliaStackFrame[];
+        frame = JuliaInterpreter.enter_call(f_exc_outer);
+        v = JuliaInterpreter.finish_and_return!(stack, frame)
+        @test v isa ErrorException
     finally
         JuliaInterpreter.break_on_error[] = false
     end

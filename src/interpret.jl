@@ -489,9 +489,21 @@ end
 
 function handle_err(stack, frame, pc, err)
     if break_on_error[]
-        frame.pc[] = pc
-        push!(stack, frame)
-        return BreakpointRef(frame.code, pc, err)
+        # See if the current frame or a frame in the stack will catch this exception,
+        # otherwise this exception would have been thrown to the user and we should
+        # return a breakpoint
+        exception_caught = false
+        for fr in Iterators.flatten(((frame,), (Iterators.reverse(stack))))
+            if !isempty(fr.exception_frames)
+                exception_caught = true
+                break
+            end
+        end
+        if !exception_caught
+            frame.pc[] = pc
+            push!(stack, frame)
+            return BreakpointRef(frame.code, pc, err)
+        end
     end
     # Check for world age errors, which generally indicate a failure to go back to toplevel
     if isa(err, MethodError)
