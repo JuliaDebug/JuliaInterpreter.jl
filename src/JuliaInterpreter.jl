@@ -354,7 +354,7 @@ else
     const specialize_method = Core.Compiler.specialize_method
 end
 
-function prepare_framecode(method::Method, argtypes; enter_generated=false)
+function prepare_framecode(method::Method, @nospecialize(argtypes); enter_generated=false)
     sig = method.sig
     if method.module == Core.Compiler || method.module == Base.Threads || method ∈ compiled_methods
         return Compiled()
@@ -485,7 +485,7 @@ end
 Prepare `expr` for evaluation in `mod`. `expr` should be a "straightforward" expression,
 one that does not require special top-level handling (see [`JuliaInterpreter.split_expressions`](@ref)).
 """
-function prepare_thunk(mod::Module, thunk::Expr, recursive=false)
+function prepare_thunk(mod::Module, thunk::Expr, recursive::Bool=false)
     if isexpr(thunk, :thunk)
         framecode = JuliaFrameCode(mod, thunk.args[1])
     elseif isexpr(thunk, :error) || isexpr(thunk, :incomplete)
@@ -1038,22 +1038,18 @@ end
 
 lower(mod, arg) = false ? expand(arg) : Meta.lower(mod, arg)
 
-# This is a version of gen_call_with_extracted_types, except that is passes back the call expression
-# for further processing.
+separate_kwargs(args...; kwargs...) = (args, kwargs.data)
+
+# This is a version of InteractiveUtils.gen_call_with_extracted_types, except that is passes back the
+# call expression for further processing.
 function extract_args(__module__, ex0)
     if isa(ex0, Expr)
-        kws = collect(filter(x->isexpr(x,:kw),ex0.args))
-        if !isempty(kws)
-            names = []
-            values = Tuple(map(x-> begin
-                push!(names,x.args[1])
-                x.args[2]
-            end,kws))
-            names = Tuple(names)
-            return Expr(:tuple,:(Core.kwfunc($(ex0.args[1]))),
-                Expr(:call, NamedTuple{names,typeof(values)}, values),
-                map(x->isexpr(x, :parameters) ? QuoteNode(x) : x,
-                filter(x->!isexpr(x, :kw),ex0.args))...)
+        if any(a->(Meta.isexpr(a, :kw) || Meta.isexpr(a, :parameters)), ex0.args)
+            return quote
+                local arg1 = $(ex0.args[1])
+                local args, kwargs = $separate_kwargs($(ex0.args[2:end]...))
+                tuple(Core.kwfunc(arg1), kwargs, arg1, args...)
+            end
         elseif ex0.head == :.
             return Expr(:tuple, :getproperty, ex0.args...)
         elseif ex0.head == :(<:)
