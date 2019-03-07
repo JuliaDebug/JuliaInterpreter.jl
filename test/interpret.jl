@@ -314,6 +314,15 @@ end
 @interpret f106c()
 @interpret f106d()
 
+# issue #113
+f113(;x) = x
+@interpret(f113(;x=[1,2,3])) == f113(;x=[1,2,3])
+@test @interpret(begin
+    let x113 = 1, y113 = 2
+        x113 + y113
+    end
+end) == 3
+
 # Some expression can appear nontrivial but lower to nothing
 @test isa(JuliaInterpreter.prepare_thunk(Main, :(@static if ccall(:jl_get_UNAME, Any, ()) == :NoOS 1+1 end)), Nothing)
 @test isa(JuliaInterpreter.prepare_thunk(Main, :(Base.BaseDocs.@kw_str "using")), Nothing)

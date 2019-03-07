@@ -1108,24 +1108,11 @@ julia> @interpret sum(a)
 8
 ```
 """
-macro interpret(arg)
-    args = try
-        extract_args(__module__, arg)
-    catch e
-        return :(throw($e))
-    end
+macro interpret(ex)
+    frame = prepare_thunk(__module__, ex)
     quote
-        theargs = $(esc(args))
         stack = JuliaStackFrame[]
-        frame = JuliaInterpreter.enter_call_expr(Expr(:call, theargs...))
-        if frame === nothing
-            return eval(Expr(:call, map(QuoteNode, theargs)...))
-        end
-        if shouldbreak(frame, 1)
-            push!(stack, frame)
-            return stack, BreakpointRef(frame.code, 1)
-        end
-        ret = finish_and_return!(stack, frame)
+        ret = finish_and_return!(stack, $frame)
         isa(ret, BreakpointRef) ? (stack, ret) : ret
     end
 end
