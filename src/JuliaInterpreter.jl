@@ -354,7 +354,7 @@ else
     const specialize_method = Core.Compiler.specialize_method
 end
 
-function prepare_framecode(method::Method, argtypes; enter_generated=false)
+function prepare_framecode(method::Method, @nospecialize(argtypes); enter_generated=false)
     sig = method.sig
     if method.module == Core.Compiler || method.module == Base.Threads || method ∈ compiled_methods
         return Compiled()
@@ -485,7 +485,7 @@ end
 Prepare `expr` for evaluation in `mod`. `expr` should be a "straightforward" expression,
 one that does not require special top-level handling (see [`JuliaInterpreter.split_expressions`](@ref)).
 """
-function prepare_thunk(mod::Module, thunk::Expr, recursive=false)
+function prepare_thunk(mod::Module, thunk::Expr, recursive::Bool=false)
     if isexpr(thunk, :thunk)
         framecode = JuliaFrameCode(mod, thunk.args[1])
     elseif isexpr(thunk, :error) || isexpr(thunk, :incomplete)
