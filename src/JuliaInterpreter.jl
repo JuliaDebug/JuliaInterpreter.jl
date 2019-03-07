@@ -761,8 +761,10 @@ function lookup_global_refs!(ex::Expr)
     for (i, a) in enumerate(ex.args)
         ex.head == :(=) && i == 1 && continue # Don't look up globalrefs on the LHS of an assignment (issue #98)
         if isa(a, GlobalRef)
-            r = getfield(a.mod, a.name)
-            ex.args[i] = QuoteNode(r)
+            if isdefined(a.mod, a.name) && isconst(a.mod, a.name)
+                r = getfield(a.mod, a.name)
+                ex.args[i] = QuoteNode(r)
+            end
         elseif isa(a, Expr)
             lookup_global_refs!(a)
         end

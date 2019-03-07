@@ -357,3 +357,21 @@ f113(;x) = x
     @test length(locals) == 3
     @test JuliaInterpreter.Variable(3, :x, false) in locals
 end
+
+@testset "getfield replacements" begin
+    f_gf(x) = false ? some_undef_var_zzzzzzz : x
+    @test @interpret f_gf(2) == 2
+  
+    function g_gf()
+        eval(:(z = 2))
+        return z
+    end
+    @test @interpret g_gf() == 2
+    
+    global q_gf = 0
+    function h_gf()
+        eval(:(q_gf = 2))
+        return q_gf
+    end
+    @test @interpret h_gf() == 2
+end
