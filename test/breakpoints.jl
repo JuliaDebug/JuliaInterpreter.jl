@@ -118,6 +118,7 @@ end
         frame = JuliaInterpreter.enter_call(f_exc_outer);
         v = JuliaInterpreter.finish_and_return!(stack, frame)
         @test v isa ErrorException
+        @test isempty(stack)
     finally
         JuliaInterpreter.break_on_error[] = false
     end

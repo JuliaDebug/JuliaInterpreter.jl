@@ -212,7 +212,12 @@ function evaluate_call!(stack, frame::JuliaStackFrame, call_expr::Expr, pc; exec
         push!(stack, newframe)
         return BreakpointRef(newframe.code, newframe.pc[])
     end
-    ret = exec!(stack, newframe)
+    ret = try
+        exec!(stack, newframe)
+    catch e
+        pop!(stack)
+        rethrow(e)
+    end
     isa(ret, BreakpointRef) && return ret
     pop!(stack)
     push!(junk, newframe)  # rather than going through GC, just re-use it
