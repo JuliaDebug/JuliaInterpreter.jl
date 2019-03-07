@@ -477,7 +477,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "CodeTracking.whereis",
     "category": "function",
-    "text": "loc = whereis(frame, pc=frame.pc[])\n\nReturn the file and line number for frame at pc.  If this cannot be determined, loc == nothing. Otherwise loc == (filepath, line).\n\nWhen frame represents top-level code,\n\n\n\n\n\n"
+    "text": "loc = whereis(frame, pc=frame.pc[])\n\nReturn the file and line number for frame at pc.  If this cannot be determined, loc == nothing. Otherwise loc == (filepath, line).\n\n\n\n\n\n"
 },
 
 {
