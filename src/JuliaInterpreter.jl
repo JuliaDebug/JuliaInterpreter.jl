@@ -1038,22 +1038,18 @@ end
 
 lower(mod, arg) = false ? expand(arg) : Meta.lower(mod, arg)
 
-# This is a version of gen_call_with_extracted_types, except that is passes back the call expression
-# for further processing.
+separate_kwargs(args...; kwargs...) = (args, kwargs.data)
+
+# This is a version of InteractiveUtils.gen_call_with_extracted_types, except that is passes back the
+# call expression for further processing.
 function extract_args(__module__, ex0)
     if isa(ex0, Expr)
-        kws = collect(filter(x->isexpr(x,:kw),ex0.args))
-        if !isempty(kws)
-            names = []
-            values = Tuple(map(x-> begin
-                push!(names,x.args[1])
-                x.args[2]
-            end,kws))
-            names = Tuple(names)
-            return Expr(:tuple,:(Core.kwfunc($(ex0.args[1]))),
-                Expr(:call, NamedTuple{names,typeof(values)}, values),
-                map(x->isexpr(x, :parameters) ? QuoteNode(x) : x,
-                filter(x->!isexpr(x, :kw),ex0.args))...)
+        if any(a->(Meta.isexpr(a, :kw) || Meta.isexpr(a, :parameters)), ex0.args)
+            return quote
+                local arg1 = $(ex0.args[1])
+                local args, kwargs = $separate_kwargs($(ex0.args[2:end]...))
+                tuple(Core.kwfunc(arg1), kwargs, arg1, args...)
+            end
         elseif ex0.head == :.
             return Expr(:tuple, :getproperty, ex0.args...)
         elseif ex0.head == :(<:)
