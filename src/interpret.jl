@@ -697,8 +697,6 @@ isgotonode(node) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
 
 Return the file and line number for `frame` at `pc`.  If this cannot be
 determined, `loc == nothing`. Otherwise `loc == (filepath, line)`.
-
-When `frame` represents top-level code,
 """
 function CodeTracking.whereis(framecode::JuliaFrameCode, pc)
     codeloc = codelocation(framecode.code, convert(Int, pc))
