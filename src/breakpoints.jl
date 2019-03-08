@@ -1,44 +1,3 @@
-module Breakpoints
-
-using ..JuliaInterpreter
-using JuliaInterpreter: JuliaFrameCode, JuliaStackFrame, BreakpointState,
-                        truecondition, falsecondition, prepare_framecode, get_framecode,
-                        sparam_syms, linenumber, statementnumber
-using Base.Meta: isexpr
-using CodeTracking, InteractiveUtils
-
-export @breakpoint, breakpoint, enable, disable, remove
-
-# A type that is unique to this package for which there are no valid operations
-struct Unassigned end
-
-"""
-    BreakpointRef(framecode, stmtidx)
-    BreakpointRef(framecode, stmtidx, err)
-
-A reference to a breakpoint at a particular statement index `stmtidx` in `framecode`.
-If the break was due to an error, supply that as well.
-"""
-struct BreakpointRef
-    framecode::JuliaFrameCode
-    stmtidx::Int
-    err
-end
-BreakpointRef(framecode, stmtidx) = BreakpointRef(framecode, stmtidx, nothing)
-
-function Base.show(io::IO, bp::BreakpointRef)
-    if checkbounds(Bool, bp.framecode.breakpoints, bp.stmtidx)
-        lineno = linenumber(bp.framecode, bp.stmtidx)
-        print(io, "breakpoint(", bp.framecode.scope, ", ", lineno)
-    else
-        print(io, "breakpoint(", bp.framecode.scope, ", %", bp.stmtidx)
-    end
-    if bp.err !== nothing
-        print(io, ", ", bp.err)
-    end
-    print(io, ')')
-end
-
 const _breakpoints = BreakpointRef[]
 breakpoints() = copy(_breakpoints)
 
@@ -321,6 +280,4 @@ macro breakpoint(call_expr, args...)
             $breakpoint(method, $condexpr)
         end
     end
-end
-
 end

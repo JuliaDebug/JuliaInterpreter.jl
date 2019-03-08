@@ -12,11 +12,11 @@ end
     stack = JuliaStackFrame[]
     frame = JuliaInterpreter.enter_call(loop_radius2, 2)
     bp = JuliaInterpreter.finish_and_return!(stack, frame)
-    @test isa(bp, Breakpoints.BreakpointRef)
+    @test isa(bp, JuliaInterpreter.BreakpointRef)
     @test length(stack) == 2
     @test stack[end].code.scope == @which radius2(0, 0)
     bp = JuliaInterpreter.finish_stack!(stack)
-    @test isa(bp, Breakpoints.BreakpointRef)
+    @test isa(bp, JuliaInterpreter.BreakpointRef)
     @test length(stack) == 2
     @test JuliaInterpreter.finish_stack!(stack) == loop_radius2(2)
 
@@ -25,7 +25,7 @@ end
         stack = JuliaStackFrame[]
         frame = JuliaInterpreter.enter_call(loop_radius2, 2)
         bp = JuliaInterpreter.finish_and_return!(stack, frame)
-        @test isa(bp, Breakpoints.BreakpointRef)
+        @test isa(bp, JuliaInterpreter.BreakpointRef)
         @test length(stack) == 2
         @test stack[end].code.scope == @which radius2(0, 0)
         @test JuliaInterpreter.finish_stack!(stack) == loop_radius2(2)
@@ -47,9 +47,9 @@ end
     halfthresh = loop_radius2(5)
     @breakpoint loop_radius2(10) 5 s>$halfthresh
     stack, bp = @interpret loop_radius2(10)
-    @test isa(bp, Breakpoints.BreakpointRef)
+    @test isa(bp, JuliaInterpreter.BreakpointRef)
     frame = stack[end]
-    s_extractor = eval(Breakpoints.prepare_slotfunction(frame.code, :s))
+    s_extractor = eval(JuliaInterpreter.prepare_slotfunction(frame.code, :s))
     @test s_extractor(frame) == loop_radius2(6)
     JuliaInterpreter.finish_stack!(stack)
     @test s_extractor(frame) == loop_radius2(7)
@@ -67,7 +67,7 @@ end
     stack = JuliaStackFrame[]
     frame = JuliaInterpreter.enter_call(outer, 2)
     bp = JuliaInterpreter.next_line!(stack, frame)
-    @test isa(bp, Breakpoints.BreakpointRef)
+    @test isa(bp, JuliaInterpreter.BreakpointRef)
     @test JuliaInterpreter.finish_stack!(stack) == 2
 
     # Breakpoints by file/line
@@ -77,7 +77,7 @@ end
         breakpoint(String(method.file), method.line+1)
         frame = JuliaInterpreter.enter_call(loop_radius2, 2)
         ret = @interpret JuliaInterpreter.locals(frame)
-        @test isa(bp, Breakpoints.BreakpointRef)
+        @test isa(bp, JuliaInterpreter.BreakpointRef)
     end
 
     # Direct return
@@ -86,7 +86,7 @@ end
     # FIXME: even though they pass, these tests break Test!
     # stack, bp = @interpret gcd(5, 20)
     # @test length(stack) == 1 && isa(stack[1], JuliaStackFrame)
-    # @test isa(bp, Breakpoints.BreakpointRef)
+    # @test isa(bp, JuliaInterpreter.BreakpointRef)
     remove()
 
     # break on error
