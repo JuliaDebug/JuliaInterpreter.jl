@@ -121,11 +121,11 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
-    "location": "dev_reference/#JuliaInterpreter.build_frame",
+    "location": "dev_reference/#JuliaInterpreter.prepare_frame",
     "page": "Function reference",
-    "title": "JuliaInterpreter.build_frame",
+    "title": "JuliaInterpreter.prepare_frame",
     "category": "function",
-    "text": "frame = build_frame(framecode::JuliaFrameCode, frameargs, lenv)\n\nConstruct a new JuliaStackFrame for framecode, given lowered-code arguments frameargs and static parameters lenv. See JuliaInterpreter.prepare_call for information about how to prepare the inputs.\n\n\n\n\n\n"
+    "text": "frame = prepare_frame(framecode::JuliaFrameCode, frameargs, lenv)\n\nConstruct a new JuliaStackFrame for framecode, given lowered-code arguments frameargs and static parameters lenv. See JuliaInterpreter.prepare_call for information about how to prepare the inputs.\n\n\n\n\n\n"
 },
 
 {
@@ -189,7 +189,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "Frame creation",
     "category": "section",
-    "text": "JuliaInterpreter.enter_call\nJuliaInterpreter.enter_call_expr\nJuliaInterpreter.build_frame\nJuliaInterpreter.determine_method_for_expr\nJuliaInterpreter.prepare_args\nJuliaInterpreter.prepare_call\nJuliaInterpreter.prepare_thunk\nJuliaInterpreter.split_expressions\nJuliaInterpreter.get_call_framecode\nJuliaInterpreter.optimize!"
+    "text": "JuliaInterpreter.enter_call\nJuliaInterpreter.enter_call_expr\nJuliaInterpreter.prepare_frame\nJuliaInterpreter.determine_method_for_expr\nJuliaInterpreter.prepare_args\nJuliaInterpreter.prepare_call\nJuliaInterpreter.prepare_thunk\nJuliaInterpreter.split_expressions\nJuliaInterpreter.get_call_framecode\nJuliaInterpreter.optimize!"
 },
 
 {
@@ -289,41 +289,41 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
-    "location": "dev_reference/#JuliaInterpreter.Breakpoints.@breakpoint",
+    "location": "dev_reference/#JuliaInterpreter.@breakpoint",
     "page": "Function reference",
-    "title": "JuliaInterpreter.Breakpoints.@breakpoint",
+    "title": "JuliaInterpreter.@breakpoint",
     "category": "macro",
     "text": "@breakpoint f(args...) condition=nothing\n@breakpoint f(args...) line condition=nothing\n\nBreak upon entry, or at the specified line number, in the method called by f(args...). Optionally supply a condition expressed in terms of the arguments and internal variables of the method. If line is supplied, it must be a literal integer.\n\nExample\n\nSuppose a method mysum is defined as follows, where the numbers to the left are the line number in the file:\n\n12 function mysum(A)\n13     s = zero(eltype(A))\n14     for a in A\n15         s += a\n16     end\n17     return s\n18 end\n\nThen\n\n@breakpoint mysum(A) 15 s>10\n\nwould cause execution of the loop to break whenever s>10.\n\n\n\n\n\n"
 },
 
 {
-    "location": "dev_reference/#JuliaInterpreter.Breakpoints.breakpoint",
+    "location": "dev_reference/#JuliaInterpreter.breakpoint",
     "page": "Function reference",
-    "title": "JuliaInterpreter.Breakpoints.breakpoint",
+    "title": "JuliaInterpreter.breakpoint",
     "category": "function",
     "text": "breakpoint(f, sig)\nbreakpoint(f, sig, line)\nbreakpoint(f, sig, condition)\nbreakpoint(f, sig, line, condition)\nbreakpoint(...; enter_generated=false)\n\nAdd a breakpoint to f with the specified argument types sig. Optionally specify an absolute line number line in the source file; the default is to break upon entry at the first line of the body. Without condition, the breakpoint will be triggered every time it is encountered; the second only if condition evaluates to true. condition should be written in terms of the arguments and local variables of f.\n\nExample\n\nfunction radius2(x, y)\n    return x^2 + y^2\nend\n\nbreakpoint(radius2, Tuple{Int,Int}, :(y > x))\n\n\n\n\n\nbreakpoint(method::Method)\nbreakpoint(method::Method, line)\nbreakpoint(method::Method, condition::Expr)\nbreakpoint(method::Method, line, condition::Expr)\n\nAdd a breakpoint to method.\n\n\n\n\n\nbreakpoint(f)\nbreakpoint(f, condition)\n\nBreak-on-entry to all methods of f.\n\n\n\n\n\nbreakpoint(filename, line)\n\nSet a breakpoint at the specified file and line number.\n\n\n\n\n\n"
 },
 
 {
-    "location": "dev_reference/#JuliaInterpreter.Breakpoints.enable",
+    "location": "dev_reference/#JuliaInterpreter.enable",
     "page": "Function reference",
-    "title": "JuliaInterpreter.Breakpoints.enable",
+    "title": "JuliaInterpreter.enable",
     "category": "function",
     "text": "enable(bp::BreakpointRef)\n\nEnable breakpoint bp.\n\n\n\n\n\nenable()\n\nEnable all breakpoints.\n\n\n\n\n\n"
 },
 
 {
-    "location": "dev_reference/#JuliaInterpreter.Breakpoints.disable",
+    "location": "dev_reference/#JuliaInterpreter.disable",
     "page": "Function reference",
-    "title": "JuliaInterpreter.Breakpoints.disable",
+    "title": "JuliaInterpreter.disable",
     "category": "function",
     "text": "disable(bp::BreakpointRef)\n\nDisable breakpoint bp. Disabled breakpoints can be re-enabled with enable.\n\n\n\n\n\ndisable()\n\nDisable all breakpoints.\n\n\n\n\n\n"
 },
 
 {
-    "location": "dev_reference/#JuliaInterpreter.Breakpoints.remove",
+    "location": "dev_reference/#JuliaInterpreter.remove",
     "page": "Function reference",
-    "title": "JuliaInterpreter.Breakpoints.remove",
+    "title": "JuliaInterpreter.remove",
     "category": "function",
     "text": "remove(bp::BreakpointRef)\n\nRemove (delete) breakpoint bp. Removed breakpoints cannot be re-enabled.\n\n\n\n\n\nremove()\n\nRemove all breakpoints.\n\n\n\n\n\n"
 },
@@ -369,9 +369,9 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
-    "location": "dev_reference/#JuliaInterpreter.Breakpoints.BreakpointRef",
+    "location": "dev_reference/#JuliaInterpreter.BreakpointRef",
     "page": "Function reference",
-    "title": "JuliaInterpreter.Breakpoints.BreakpointRef",
+    "title": "JuliaInterpreter.BreakpointRef",
     "category": "type",
     "text": "BreakpointRef(framecode, stmtidx)\nBreakpointRef(framecode, stmtidx, err)\n\nA reference to a breakpoint at a particular statement index stmtidx in framecode. If the break was due to an error, supply that as well.\n\n\n\n\n\n"
 },
@@ -433,19 +433,19 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
-    "location": "dev_reference/#JuliaInterpreter.isdocexpr",
+    "location": "dev_reference/#JuliaInterpreter.is_doc_expr",
     "page": "Function reference",
-    "title": "JuliaInterpreter.isdocexpr",
+    "title": "JuliaInterpreter.is_doc_expr",
     "category": "function",
-    "text": "isdocexpr(ex)\n\nTest whether expression ex is a @doc expression.\n\n\n\n\n\n"
+    "text": "is_doc_expr(ex)\n\nTest whether expression ex is a @doc expression.\n\n\n\n\n\n"
 },
 
 {
-    "location": "dev_reference/#JuliaInterpreter.isglobalref",
+    "location": "dev_reference/#JuliaInterpreter.is_global_ref",
     "page": "Function reference",
-    "title": "JuliaInterpreter.isglobalref",
+    "title": "JuliaInterpreter.is_global_ref",
     "category": "function",
-    "text": "isglobalref(g, mod, name)\n\nTests whether g is equal to GlobalRef(mod, name).\n\n\n\n\n\n"
+    "text": "is_global_ref(g, mod, name)\n\nTests whether g is equal to GlobalRef(mod, name).\n\n\n\n\n\n"
 },
 
 {
@@ -485,7 +485,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "Utilities",
     "category": "section",
-    "text": "JuliaInterpreter.@lookup\nJuliaInterpreter.iswrappercall\nJuliaInterpreter.isdocexpr\nJuliaInterpreter.isglobalref\nJuliaInterpreter.statementnumber\nJuliaInterpreter.Variable\nJuliaInterpreter.locals\nCodeTracking.whereis"
+    "text": "JuliaInterpreter.@lookup\nJuliaInterpreter.iswrappercall\nJuliaInterpreter.is_doc_expr\nJuliaInterpreter.is_global_ref\nJuliaInterpreter.statementnumber\nJuliaInterpreter.Variable\nJuliaInterpreter.locals\nCodeTracking.whereis"
 },
 
 ]}
