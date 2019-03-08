@@ -7,6 +7,23 @@ function loop_radius2(n)
     s
 end
 
+tmppath = ""
+if isdefined(Main, :Revise)
+    global tmppath
+    tmppath, io = mktemp()
+    print(io, """
+    function jikwfunc(x, y=0; z="hello")
+        a = x + y
+        b = z^a
+        return length(b)
+    end
+    """)
+    close(io)
+    includet(tmppath)
+end
+
+using JuliaInterpreter, Test
+
 @testset "Breakpoints" begin
     breakpoint(radius2)
     stack = JuliaStackFrame[]
@@ -78,6 +95,13 @@ end
         frame = JuliaInterpreter.enter_call(loop_radius2, 2)
         ret = @interpret JuliaInterpreter.locals(frame)
         @test isa(bp, JuliaInterpreter.BreakpointRef)
+        # Test kwarg method
+        bp = breakpoint(tmppath, 3)
+        stack, bp2 = @interpret jikwfunc(2)
+        @test bp2 == bp
+        var = JuliaInterpreter.locals(stack[end])
+        @test !any(v->v.name == :b, var)
+        @test filter(v->v.name == :a, var)[1].value == 2
     end
 
     # Direct return
@@ -135,4 +159,8 @@ end
     bp = JuliaInterpreter.BreakpointRef(frame.code, 1, ArgumentError("whoops"))
     show(io, bp)
     @test String(take!(io)) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, 3, ArgumentError(\"whoops\"))"
+end
+
+if tmppath != ""
+    rm(tmppath)
 end
