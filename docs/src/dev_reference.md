@@ -11,7 +11,7 @@
 ```@docs
 JuliaInterpreter.enter_call
 JuliaInterpreter.enter_call_expr
-JuliaInterpreter.build_frame
+JuliaInterpreter.prepare_frame
 JuliaInterpreter.determine_method_for_expr
 JuliaInterpreter.prepare_args
 JuliaInterpreter.prepare_call
@@ -70,8 +70,8 @@ JuliaInterpreter.compiled_methods
 ```@docs
 JuliaInterpreter.@lookup
 JuliaInterpreter.iswrappercall
-JuliaInterpreter.isdocexpr
-JuliaInterpreter.isglobalref
+JuliaInterpreter.is_doc_expr
+JuliaInterpreter.is_global_ref
 JuliaInterpreter.statementnumber
 JuliaInterpreter.Variable
 JuliaInterpreter.locals

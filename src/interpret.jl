@@ -207,7 +207,7 @@ function evaluate_call!(stack, frame::JuliaStackFrame, call_expr::Expr, pc; exec
     end
     frame.pc[] = pc  # to mark position in the frame (e.g., if we hit breakpoint or error)
     push!(stack, frame)
-    newframe = build_frame(framecode, fargs, lenv)
+    newframe = prepare_frame(framecode, fargs, lenv)
     if shouldbreak(newframe)
         push!(stack, newframe)
         return BreakpointRef(newframe.code, newframe.pc[])
