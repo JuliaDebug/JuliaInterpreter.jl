@@ -1,18 +1,13 @@
 const max_methods = 4  # maximum number of MethodInstances tracked for a particular :call statement
 
-struct FrameInstance
-    framecode::JuliaFrameCode
-    sparam_vals::SimpleVector
-end
-
 """
-    framecode, lenv = get_call_framecode(fargs, parentframe::JuliaFrameCode, idx::Int)
+    framecode, lenv = get_call_framecode(fargs, parentframe::FrameCode, idx::Int)
 
 Return the framecode and environment for a call specified by `fargs = [f, args...]` (see [`prepare_args`](@ref)).
 `parentframecode` is the caller, and `idx` is the program-counter index.
 If possible, `framecode` will be looked up from the local method tables of `parentframe`.
 """
-function get_call_framecode(fargs, parentframe::JuliaFrameCode, idx::Int)
+function get_call_framecode(fargs, parentframe::FrameCode, idx::Int)
     nargs = length(fargs)  # includes f as the first "argument"
     # Determine whether we can look up the appropriate framecode in the local method table
     if isassigned(parentframe.methodtables, idx)  # if this is the first call, this may not yet be set

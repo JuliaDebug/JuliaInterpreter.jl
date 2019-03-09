@@ -24,28 +24,36 @@ end
 
 using JuliaInterpreter, Test
 
+function stacklength(frame)
+    n = 1
+    frame = frame.callee
+    while frame !== nothing
+        n += 1
+        frame = frame.callee
+    end
+    return n
+end
+
 @testset "Breakpoints" begin
     breakpoint(radius2)
-    stack = JuliaStackFrame[]
     frame = JuliaInterpreter.enter_call(loop_radius2, 2)
-    bp = JuliaInterpreter.finish_and_return!(stack, frame)
+    bp = JuliaInterpreter.finish_and_return!(frame)
     @test isa(bp, JuliaInterpreter.BreakpointRef)
-    @test length(stack) == 2
-    @test stack[end].code.scope == @which radius2(0, 0)
-    bp = JuliaInterpreter.finish_stack!(stack)
+    @test stacklength(frame) == 2
+    @test leaf(frame).framecode.scope == @which radius2(0, 0)
+    bp = JuliaInterpreter.finish_stack!(frame)
     @test isa(bp, JuliaInterpreter.BreakpointRef)
-    @test length(stack) == 2
-    @test JuliaInterpreter.finish_stack!(stack) == loop_radius2(2)
+    @test stacklength(frame) == 2
+    @test JuliaInterpreter.finish_stack!(frame) == loop_radius2(2)
 
     # Conditional breakpoints
     function runsimple()
-        stack = JuliaStackFrame[]
         frame = JuliaInterpreter.enter_call(loop_radius2, 2)
-        bp = JuliaInterpreter.finish_and_return!(stack, frame)
+        bp = JuliaInterpreter.finish_and_return!(frame)
         @test isa(bp, JuliaInterpreter.BreakpointRef)
-        @test length(stack) == 2
-        @test stack[end].code.scope == @which radius2(0, 0)
-        @test JuliaInterpreter.finish_stack!(stack) == loop_radius2(2)
+        @test stacklength(frame) == 2
+        @test leaf(frame).framecode.scope == @which radius2(0, 0)
+        @test JuliaInterpreter.finish_stack!(frame) == loop_radius2(2)
     end
     remove()
     breakpoint(radius2, :(y > x))
@@ -63,15 +71,15 @@ using JuliaInterpreter, Test
     remove()
     halfthresh = loop_radius2(5)
     @breakpoint loop_radius2(10) 5 s>$halfthresh
-    stack, bp = @interpret loop_radius2(10)
+    frame, bp = @interpret loop_radius2(10)
     @test isa(bp, JuliaInterpreter.BreakpointRef)
-    frame = stack[end]
-    s_extractor = eval(JuliaInterpreter.prepare_slotfunction(frame.code, :s))
-    @test s_extractor(frame) == loop_radius2(6)
-    JuliaInterpreter.finish_stack!(stack)
-    @test s_extractor(frame) == loop_radius2(7)
+    lframe = leaf(frame)
+    s_extractor = eval(JuliaInterpreter.prepare_slotfunction(lframe.framecode, :s))
+    @test s_extractor(lframe) == loop_radius2(6)
+    JuliaInterpreter.finish_stack!(frame)
+    @test s_extractor(lframe) == loop_radius2(7)
     disable(bp)
-    @test JuliaInterpreter.finish_stack!(stack) == loop_radius2(10)
+    @test JuliaInterpreter.finish_stack!(frame) == loop_radius2(10)
 
     # Next line with breakpoints
     function outer(x)
@@ -81,25 +89,25 @@ using JuliaInterpreter, Test
         return 2
     end
     breakpoint(inner)
-    stack = JuliaStackFrame[]
-    frame = JuliaInterpreter.enter_call(outer, 2)
-    bp = JuliaInterpreter.next_line!(stack, frame)
+    frame = JuliaInterpreter.enter_call(outer, 0)
+    bp = JuliaInterpreter.next_line!(frame)
     @test isa(bp, JuliaInterpreter.BreakpointRef)
-    @test JuliaInterpreter.finish_stack!(stack) == 2
+    @test JuliaInterpreter.finish_stack!(frame) == 2
 
     # Breakpoints by file/line
     if isdefined(Main, :Revise)
         remove()
-        method = which(JuliaInterpreter.locals, Tuple{JuliaStackFrame})
+        method = which(JuliaInterpreter.locals, Tuple{Frame})
         breakpoint(String(method.file), method.line+1)
         frame = JuliaInterpreter.enter_call(loop_radius2, 2)
         ret = @interpret JuliaInterpreter.locals(frame)
-        @test isa(bp, JuliaInterpreter.BreakpointRef)
+        @test isa(ret, JuliaInterpreter.BreakpointRef)
         # Test kwarg method
+        remove()
         bp = breakpoint(tmppath, 3)
-        stack, bp2 = @interpret jikwfunc(2)
+        frame, bp2 = @interpret jikwfunc(2)
         @test bp2 == bp
-        var = JuliaInterpreter.locals(stack[end])
+        var = JuliaInterpreter.locals(leaf(frame))
         @test !any(v->v.name == :b, var)
         @test filter(v->v.name == :a, var)[1].value == 2
     end
@@ -108,8 +116,8 @@ using JuliaInterpreter, Test
     @breakpoint gcd(1,1) a==5
     @test @interpret(gcd(10,20)) == 10
     # FIXME: even though they pass, these tests break Test!
-    # stack, bp = @interpret gcd(5, 20)
-    # @test length(stack) == 1 && isa(stack[1], JuliaStackFrame)
+    # frame, bp = @interpret gcd(5, 20)
+    # @test stacklength(frame) == 1
     # @test isa(bp, JuliaInterpreter.BreakpointRef)
     remove()
 
@@ -119,13 +127,13 @@ using JuliaInterpreter, Test
 
         inner(x) = error("oops")
         outer() = inner(1)
-        stack = JuliaStackFrame[]
         frame = JuliaInterpreter.enter_call(outer)
-        bp = JuliaInterpreter.finish_and_return!(stack, frame)
+        bp = JuliaInterpreter.finish_and_return!(frame)
         @test bp.err == ErrorException("oops")
-        @test length(stack) >= 2
-        @test stack[1].code.scope.name == :outer
-        @test stack[2].code.scope.name == :inner
+        @test stacklength(frame) >= 2
+        @test frame.framecode.scope.name == :outer
+        cframe = frame.callee
+        @test cframe.framecode.scope.name == :inner
 
         # Don't break on caught exceptions
         function f_exc_outer()
@@ -138,11 +146,10 @@ using JuliaInterpreter, Test
         function f_exc_inner()
             error()
         end
-        stack = JuliaStackFrame[];
         frame = JuliaInterpreter.enter_call(f_exc_outer);
-        v = JuliaInterpreter.finish_and_return!(stack, frame)
+        v = JuliaInterpreter.finish_and_return!(frame)
         @test v isa ErrorException
-        @test isempty(stack)
+        @test stacklength(frame) == 1
     finally
         JuliaInterpreter.break_on_error[] = false
     end
@@ -150,15 +157,15 @@ using JuliaInterpreter, Test
     # Breakpoint display
     io = IOBuffer()
     frame = JuliaInterpreter.enter_call(loop_radius2, 2)
-    bp = JuliaInterpreter.BreakpointRef(frame.code, 1)
+    bp = JuliaInterpreter.BreakpointRef(frame.framecode, 1)
     show(io, bp)
-    @test String(take!(io)) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, 3)"
-    bp = JuliaInterpreter.BreakpointRef(frame.code, 0)  # fictive breakpoint
+    @test String(take!(io)) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, line 3)"
+    bp = JuliaInterpreter.BreakpointRef(frame.framecode, 0)  # fictive breakpoint
     show(io, bp)
     @test String(take!(io)) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, %0)"
-    bp = JuliaInterpreter.BreakpointRef(frame.code, 1, ArgumentError("whoops"))
+    bp = JuliaInterpreter.BreakpointRef(frame.framecode, 1, ArgumentError("whoops"))
     show(io, bp)
-    @test String(take!(io)) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, 3, ArgumentError(\"whoops\"))"
+    @test String(take!(io)) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, line 3, ArgumentError(\"whoops\"))"
 end
 
 if tmppath != ""

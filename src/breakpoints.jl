@@ -21,37 +21,38 @@ function add_breakpoint(framecode, stmtidx)
     return bp
 end
 
-function shouldbreak(frame, pc=frame.pc[])
-    idx = convert(Int, pc)
-    isassigned(frame.code.breakpoints, idx) || return false
-    bp = frame.code.breakpoints[idx]
+function shouldbreak(frame, pc=frame.pc)
+    idx = pc
+    bps = frame.framecode.breakpoints
+    isassigned(bps, idx) || return false
+    bp = bps[idx]
     bp.isactive || return false
     return Base.invokelatest(bp.condition, frame)::Bool
 end
 
-function prepare_slotfunction(framecode::JuliaFrameCode, body::Union{Symbol,Expr})
+function prepare_slotfunction(framecode::FrameCode, body::Union{Symbol,Expr})
     ismeth = framecode.scope isa Method
     uslotnames = Set{Symbol}()
     slotnames  = Symbol[]
-    for name in framecode.code.slotnames
+    for name in framecode.src.slotnames
         if name ∉ uslotnames
             push!(slotnames, name)
             push!(uslotnames, name)
         end
     end
-    assignments = Expr[]
-    framename = gensym("frame")
+    framename, dataname = gensym("frame"), gensym("data")
+    assignments = Expr[:($dataname = $framename.framedata)]
     default = Unassigned()
     for i = 1:length(slotnames)
-        slotname = framecode.code.slotnames[i]
+        slotname = framecode.src.slotnames[i]
         qslotname = QuoteNode(slotname)
-        getexpr = :(something($framename.locals[$framename.last_reference[$qslotname]]))
-        push!(assignments, Expr(:(=), slotname, :(haskey($framename.last_reference, $qslotname) ? $getexpr : $default)))
+        getexpr = :(something($dataname.locals[$dataname.last_reference[$qslotname]]))
+        push!(assignments, Expr(:(=), slotname, :(haskey($dataname.last_reference, $qslotname) ? $getexpr : $default)))
     end
     if ismeth
         syms = sparam_syms(framecode.scope)
         for i = 1:length(syms)
-            push!(assignments, Expr(:(=), syms[i], :($framename.sparams[$i])))
+            push!(assignments, Expr(:(=), syms[i], :($dataname.sparams[$i])))
         end
     end
     funcname = ismeth ? gensym("slotfunction") : gensym(Symbol(framecode.scope.name, "_slotfunction"))
@@ -62,8 +63,8 @@ const Condition = Union{Nothing,Expr,Tuple{Module,Expr}}
 _unpack(condition) = isa(condition, Expr) ? (Main, condition) : condition
 
 ## The fundamental implementations of breakpoint-setting
-function breakpoint!(framecode::JuliaFrameCode, pc, condition::Condition=nothing)
-    stmtidx = convert(Int, pc)
+function breakpoint!(framecode::FrameCode, pc, condition::Condition=nothing)
+    stmtidx = pc
     if condition === nothing
         framecode.breakpoints[stmtidx] = BreakpointState()
     else
@@ -73,8 +74,8 @@ function breakpoint!(framecode::JuliaFrameCode, pc, condition::Condition=nothing
     end
     return add_breakpoint(framecode, stmtidx)
 end
-breakpoint!(frame::JuliaStackFrame, pc=frame.pc[], condition::Condition=nothing) =
-    breakpoint!(frame.code, pc, condition)
+breakpoint!(frame::Frame, pc=frame.pc, condition::Condition=nothing) =
+    breakpoint!(frame.framecode, pc, condition)
 
 """
     enable(bp::BreakpointRef)

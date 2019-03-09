@@ -1,22 +1,22 @@
 # Implements a simple interpreter for julia's lowered AST
 
-getlhs(pc) = SSAValue(pc.next_stmt)
+getlhs(pc) = SSAValue(pc)
 
-isassign(fr) = isassign(fr, fr.pc[])
-isassign(fr, pc) = (pc.next_stmt in fr.code.used)
+isassign(frame) = isassign(frame, frame.pc)
+isassign(frame, pc) = (pc in frame.framecode.used)
 
-lookup_var(frame, val::SSAValue) = frame.ssavalues[val.id]
+lookup_var(frame, val::SSAValue) = frame.framedata.ssavalues[val.id]
 lookup_var(frame, ref::GlobalRef) = getfield(ref.mod, ref.name)
 function lookup_var(frame, slot::SlotNumber)
-    val = frame.locals[slot.id]
+    val = frame.framedata.locals[slot.id]
     val !== nothing && return val.value
-    error("slot ", slot, " with name ", frame.code.code.slotnames[slot.id], " not assigned")
+    error("slot ", slot, " with name ", frame.framecode.code.slotnames[slot.id], " not assigned")
 end
 
 function lookup_expr(frame, e::Expr)
     head = e.head
-    head == :the_exception && return frame.last_exception[]
-    head == :static_parameter && return frame.sparams[e.args[1]::Int]
+    head == :the_exception && return frame.framedata.last_exception[]
+    head == :static_parameter && return frame.framedata.sparams[e.args[1]::Int]
     head == :boundscheck && length(e.args) == 0 && return true
     error("invalid lookup expr ", e)
 end
@@ -65,10 +65,10 @@ end
 
 # This is used only for new struct/abstract/primitive nodes.
 # The most important issue is that in these expressions, :call Exprs can be nested,
-# and hence our re-use of the `callargs` field of JuliaStackFrame would introduce
+# and hence our re-use of the `callargs` field of Frame would introduce
 # bugs. Since these nodes use a very limited repertoire of calls, we can special-case
 # this quite easily.
-function lookup_or_eval(stack, frame, @nospecialize(node), pc)
+function lookup_or_eval(@nospecialize(recurse), frame, @nospecialize(node))
     if isa(node, SSAValue)
         return lookup_var(frame, node)
     elseif isa(node, SlotNumber)
@@ -82,7 +82,7 @@ function lookup_or_eval(stack, frame, @nospecialize(node), pc)
     elseif isa(node, Expr)
         ex = Expr(node.head)
         for arg in node.args
-            push!(ex.args, lookup_or_eval(stack, frame, arg, pc))
+            push!(ex.args, lookup_or_eval(recurse, frame, arg))
         end
         if ex.head == :call
             f = ex.args[1]
@@ -104,13 +104,10 @@ function lookup_or_eval(stack, frame, @nospecialize(node), pc)
     elseif isa(node, Type)
         return node
     end
-    return eval_rhs(stack, frame, node, pc)
+    return eval_rhs(recurse, frame, node)
 end
 
-instantiate_type_in_env(arg, spsig, spvals) =
-    ccall(:jl_instantiate_type_in_env, Any, (Any, Any, Ptr{Any}), arg, spsig, spvals)
-
-function resolvefc(frame, @nospecialize expr)
+function resolvefc(frame, @nospecialize(expr))
     if isa(expr, SlotNumber)
         expr = lookup_var(frame, expr)
     end
@@ -128,7 +125,7 @@ function resolvefc(frame, @nospecialize expr)
 end
 
 function collect_args(frame, call_expr; isfc=false)
-    args = frame.callargs
+    args = frame.framedata.callargs
     resize!(args, length(call_expr.args))
     mod = moduleof(frame)
     args[1] = isfc ? resolvefc(frame, call_expr.args[1]) : @lookup(mod, frame, call_expr.args[1])
@@ -139,12 +136,11 @@ function collect_args(frame, call_expr; isfc=false)
 end
 
 """
-    ret = evaluate_foreigncall!(stack, frame::JuliaStackFrame, call_expr, pc)
+    ret = evaluate_foreigncall(frame::Frame, call_expr)
 
 Evaluate a `:foreigncall` (from a `ccall`) statement `callexpr` in the context of `frame`.
-`stack` and `pc` are unused, but supplied for consistency with [`evaluate_call!`](@ref).
 """
-function evaluate_foreigncall!(stack, frame::JuliaStackFrame, call_expr::Expr, pc)
+function evaluate_foreigncall(frame::Frame, call_expr::Expr)
     head = call_expr.head
     args = collect_args(frame, call_expr; isfc = head==:foreigncall)
     for i = 2:length(args)
@@ -152,52 +148,57 @@ function evaluate_foreigncall!(stack, frame::JuliaStackFrame, call_expr::Expr, p
         args[i] = isa(arg, Symbol) ? QuoteNode(arg) : arg
     end
     head == :cfunction && (args[2] = QuoteNode(args[2]))
-    scope = frame.code.scope
-    if !isempty(frame.sparams) && scope isa Method
+    scope = frame.framecode.scope
+    data = frame.framedata
+    if !isempty(data.sparams) && scope isa Method
         sig = scope.sig
-        args[2] = instantiate_type_in_env(args[2], sig, frame.sparams)
+        args[2] = instantiate_type_in_env(args[2], sig, data.sparams)
         args[3] = Core.svec(map(args[3]) do arg
-            instantiate_type_in_env(arg, sig, frame.sparams)
+            instantiate_type_in_env(arg, sig, data.sparams)
         end...)
     end
     return Core.eval(moduleof(frame), Expr(head, args...))
 end
 
-function evaluate_call!(::Compiled, frame::JuliaStackFrame, call_expr::Expr, pc;  #=unused=# exec!::Function=finish_and_return!)
+# We have to intercept llvmcall before we try it as a builtin
+function bypass_builtins(frame, call_expr, pc)
+    if isassigned(frame.framecode.methodtables, pc)
+        tme = frame.framecode.methodtables[pc]
+        if isa(tme, Compiled)
+            fargs = collect_args(frame, call_expr)
+            f = to_function(fargs[1])
+            return Some{Any}(f(fargs[2:end]...))
+        end
+    end
+    return nothing
+end
+
+function evaluate_call!(::Compiled, frame::Frame, call_expr::Expr)
+    pc = frame.pc
+    ret = bypass_builtins(frame, call_expr, pc)
+    isa(ret, Some{Any}) && return ret.value
     ret = maybe_evaluate_builtin(frame, call_expr)
     isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(frame, call_expr)
     f = fargs[1]
-    if isa(f, CodeInfo)
-        error("CodeInfo")
-        ret = finish_and_return!(Compiled(), enter_call_expr(frame, call_expr))
-    else
-        popfirst!(fargs)  # now it's really just `args`
-        ret = f(fargs...)
-    end
-    return ret
+    popfirst!(fargs)  # now it's really just `args`
+    return f(fargs...)
 end
 
-function evaluate_call!(stack, frame::JuliaStackFrame, call_expr::Expr, pc; exec!::Function=finish_and_return!)
-    idx = convert(Int, pc)
-    if isassigned(frame.code.methodtables, idx)
-        tme = frame.code.methodtables[idx]
-        if isa(tme, Compiled)
-            fargs = collect_args(frame, call_expr)
-            f = to_function(fargs[1])
-            return f(fargs[2:end]...)
-        end
-    end
+function evaluate_call!(@nospecialize(recurse::Function), frame::Frame, call_expr::Expr)
+    pc = frame.pc
+    ret = bypass_builtins(frame, call_expr, pc)
+    isa(ret, Some{Any}) && return ret.value
     ret = maybe_evaluate_builtin(frame, call_expr)
     isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(frame, call_expr)
     if (f = fargs[1]) === Core.eval
         return Core.eval(fargs[2], fargs[3])  # not a builtin, but worth treating specially
     elseif fargs[1] === Base.rethrow
-        err = length(fargs) > 1 ? fargs[2] : frame.last_exception[]
+        err = length(fargs) > 1 ? fargs[2] : frame.framedata.last_exception[]
         throw(err)
     end
-    framecode, lenv = get_call_framecode(fargs, frame.code, pc.next_stmt)
+    framecode, lenv = get_call_framecode(fargs, frame.framecode, frame.pc)
     if lenv === nothing
         if isa(framecode, Compiled)
             popfirst!(fargs)  # now it's really just `args`
@@ -205,37 +206,35 @@ function evaluate_call!(stack, frame::JuliaStackFrame, call_expr::Expr, pc; exec
         end
         return framecode  # this was a Builtin
     end
-    frame.pc[] = pc  # to mark position in the frame (e.g., if we hit breakpoint or error)
-    push!(stack, frame)
-    newframe = prepare_frame(framecode, fargs, lenv)
-    if shouldbreak(newframe)
-        push!(stack, newframe)
-        return BreakpointRef(newframe.code, newframe.pc[])
-    end
+    newframe = prepare_frame(frame, framecode, fargs, lenv)
+    shouldbreak(newframe) && return BreakpointRef(newframe.framecode, newframe.pc)
     ret = try
-        exec!(stack, newframe)
+        recurse(recurse, newframe)
     catch e
-        pop!(stack)
+        frame.callee == nothing
+        recycle(newframe)
         rethrow(e)
     end
     isa(ret, BreakpointRef) && return ret
-    pop!(stack)
-    push!(junk, newframe)  # rather than going through GC, just re-use it
+    frame.callee = nothing
+    recycle(newframe)
     return ret
 end
+evaluate_call!(frame::Frame, call_expr::Expr) = evaluate_call!(finish_and_return!, frame, call_expr)
 
 """
-    ret = evaluate_call!(Compiled(), frame::JuliaStackFrame, call_expr, pc)
-    ret = evaluate_call!(stack,      frame::JuliaStackFrame, call_expr, pc)
+    ret = evaluate_call!(Compiled(), frame::Frame, call_expr)
+    ret = evaluate_call!(recurse,    frame::Frame, call_expr)
 
 Evaluate a `:call` expression `call_expr` in the context of `frame`.
 The first causes it to be executed using Julia's normal dispatch (compiled code),
-whereas the second recurses in via the interpreter. `stack` should be a vector of [`JuliaStackFrame`](@ref).
+whereas the second recurses in via the interpreter.
+`recurse` has a default value of [`JuliaInterpreter.finish_and_return!`](@ref).
 """
 evaluate_call!
 
 # The following come up only when evaluating toplevel code
-function evaluate_methoddef!(stack, frame, node, pc)
+function evaluate_methoddef(frame, node)
     f = node.args[1]
     if isa(f, Symbol)
         mod = moduleof(frame)
@@ -264,51 +263,51 @@ function set_structtype_const(mod::Module, name::Symbol)
     ccall(:jl_set_const, Cvoid, (Any, Any, Any), mod, dt.name.name, dt.name.wrapper)
 end
 
-
-function evaluate_structtype!(stack, frame, node, pc)
+function evaluate_structtype(@nospecialize(recurse), frame, node)
     name, mod = structname(frame, node)
-    params = lookup_or_eval(stack, frame, node.args[2], pc)::SimpleVector
-    fieldnames = lookup_or_eval(stack, frame, node.args[3], pc)::SimpleVector
-    supertype = lookup_or_eval(stack, frame, node.args[4], pc)::Type
-    fieldtypes = lookup_or_eval(stack, frame, node.args[5], pc)::SimpleVector
+    params = lookup_or_eval(recurse, frame, node.args[2])::SimpleVector
+    fieldnames = lookup_or_eval(recurse, frame, node.args[3])::SimpleVector
+    supertype = lookup_or_eval(recurse, frame, node.args[4])::Type
+    fieldtypes = lookup_or_eval(recurse, frame, node.args[5])::SimpleVector
     ismutable = node.args[6]
     ninit = node.args[7]
     Core.eval(mod, Expr(:struct_type, name, params, fieldnames, supertype, fieldtypes, ismutable, ninit))
     VERSION < v"1.2.0-DEV.239" && set_structtype_const(mod, name)
 end
 
-function evaluate_abstracttype!(stack, frame, node, pc)
+function evaluate_abstracttype(@nospecialize(recurse), frame, node)
     name, mod = structname(frame, node)
-    params = lookup_or_eval(stack, frame, node.args[2], pc)::SimpleVector
-    supertype = lookup_or_eval(stack, frame, node.args[3], pc)::Type
+    params = lookup_or_eval(recurse, frame, node.args[2])::SimpleVector
+    supertype = lookup_or_eval(recurse, frame, node.args[3])::Type
     Core.eval(mod, Expr(:abstract_type, name, params, supertype))
     VERSION < v"1.2.0-DEV.239" && set_structtype_const(mod, name)
 end
 
-function evaluate_primitivetype!(stack, frame, node, pc)
+function evaluate_primitivetype(@nospecialize(recurse), frame, node)
     name, mod = structname(frame, node)
-    params = lookup_or_eval(stack, frame, node.args[2], pc)::SimpleVector
+    params = lookup_or_eval(recurse, frame, node.args[2])::SimpleVector
     nbits = node.args[3]::Int
-    supertype = lookup_or_eval(stack, frame, node.args[4], pc)::Type
+    supertype = lookup_or_eval(recurse, frame, node.args[4])::Type
     Core.eval(mod, Expr(:primitive_type, name, params, nbits, supertype))
     VERSION < v"1.2.0-DEV.239" && set_structtype_const(mod, name)
 end
 
 function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
+    code, data = frame.framecode, frame.framedata
     if isa(lhs, SSAValue)
-        frame.ssavalues[lhs.id] = rhs
+        data.ssavalues[lhs.id] = rhs
     elseif isa(lhs, SlotNumber)
-        frame.locals[lhs.id] = Some{Any}(rhs)
-        frame.last_reference[frame.code.code.slotnames[lhs.id]] =
+        data.locals[lhs.id] = Some{Any}(rhs)
+        data.last_reference[code.src.slotnames[lhs.id]] =
             lhs.id
     elseif isa(lhs, GlobalRef)
         Core.eval(lhs.mod, :($(lhs.name) = $(QuoteNode(rhs))))
     elseif isa(lhs, Symbol)
-        Core.eval(moduleof(frame), :($lhs = $(QuoteNode(rhs))))
+        Core.eval(moduleof(code), :($lhs = $(QuoteNode(rhs))))
     end
 end
 
-function eval_rhs(stack, frame, node::Expr, pc)
+function eval_rhs(@nospecialize(recurse), frame, node::Expr)
     head = node.head
     if head == :new
         mod = moduleof(frame)
@@ -324,29 +323,30 @@ function eval_rhs(stack, frame, node::Expr, pc)
     elseif head == :isdefined
         return check_isdefined(frame, node.args[1])
     elseif head == :call
-        return evaluate_call!(stack, frame, node, pc)
+        return evaluate_call!(recurse, frame, node)
     elseif head == :foreigncall || head == :cfunction
-        return evaluate_foreigncall!(stack, frame, node, pc)
+        return evaluate_foreigncall(frame, node)
     elseif head == :copyast
         val = (node.args[1]::QuoteNode).value
         return isa(val, Expr) ? copy(val) : val
     elseif head == :enter
-        return length(frame.exception_frames)
+        return length(frame.framedata.exception_frames)
     elseif head == :boundscheck
         return true
     elseif head == :meta || head == :inbounds || head == :simdloop || head == :gc_preserve_begin || head == :gc_preserve_end
         return nothing
     elseif head == :method && length(node.args) == 1
-        return evaluate_methoddef!(stack, frame, node, pc)
+        return evaluate_methoddef(frame, node)
     end
     return lookup_expr(frame, node)
 end
 
-function check_isdefined(frame, node)
+function check_isdefined(frame, @nospecialize(node))
+    data = frame.framedata
     if isa(node, SlotNumber)
-        return frame.locals[node.id] !== nothing
+        return data.locals[node.id] !== nothing
     elseif isexpr(node, :static_parameter)
-        return isassigned(frame.sparams, node.args[1]::Int)
+        return isassigned(data.sparams, node.args[1]::Int)
     elseif isa(node, GlobalRef)
         return isdefined(node.mod, node.name)
     elseif isa(node, Symbol)
@@ -356,9 +356,11 @@ function check_isdefined(frame, node)
 end
 
 
-function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter, istoplevel::Bool)
+function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplevel::Bool)
+    pc, code, data = frame.pc, frame.framecode, frame.framedata
+    @assert is_leaf(frame)
     local rhs
-    # show_stackloc(stack, frame, pc)
+    # show_stackloc(frame)
     # @show node
     try
         if isa(node, Expr)
@@ -366,7 +368,7 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                 lhs = node.args[1]
                 rhs = node.args[2]
                 if isa(rhs, Expr)
-                    rhs = eval_rhs(stack, frame, rhs, pc)
+                    rhs = eval_rhs(recurse, frame, rhs)
                 else
                     rhs = istoplevel ? @lookup(moduleof(frame), frame, rhs) : @lookup(frame, rhs)
                 end
@@ -378,29 +380,29 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                     throw(TypeError(nameof(frame), "if", Bool, node.args[1]))
                 end
                 if !arg
-                    return JuliaProgramCounter(node.args[2])
+                    return (frame.pc = node.args[2])
                 end
             elseif node.head == :enter
                 rhs = node.args[1]
-                push!(frame.exception_frames, rhs)
+                push!(data.exception_frames, rhs)
             elseif node.head == :leave
                 for _ = 1:node.args[1]
-                    pop!(frame.exception_frames)
+                    pop!(data.exception_frames)
                 end
             elseif node.head == :pop_exception
                 n = lookup_var(frame, node.args[1])
-                deleteat!(frame.exception_frames, n+1:length(frame.exception_frames))
+                deleteat!(data.exception_frames, n+1:length(data.exception_frames))
             elseif node.head == :return
                 return nothing
             elseif istoplevel
                 if node.head == :method && length(node.args) > 1
-                    evaluate_methoddef!(stack, frame, node, pc)
+                    evaluate_methoddef(frame, node)
                 elseif node.head == :struct_type
-                    evaluate_structtype!(stack, frame, node, pc)
+                    evaluate_structtype(recurse, frame, node)
                 elseif node.head == :abstract_type
-                    evaluate_abstracttype!(stack, frame, node, pc)
+                    evaluate_abstracttype(recurse, frame, node)
                 elseif node.head == :primitive_type
-                    evaluate_primitivetype!(stack, frame, node, pc)
+                    evaluate_primitivetype(recurse, frame, node)
                 elseif node.head == :module
                     error("this should have been handled by split_expressions")
                 elseif node.head == :using || node.head == :import || node.head == :export
@@ -417,42 +419,42 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
                     end
                 elseif node.head == :thunk
                     newframe = prepare_thunk(moduleof(frame), node)
-                    frame.pc[] = pc
-                    if isa(stack, Compiled)
-                        finish!(stack, newframe, true)
+                    if isa(recurse, Compiled)
+                        finish!(recurse, newframe, true)
                     else
-                        push!(stack, frame)
-                        finish!(stack, newframe, true)
-                        pop!(stack)
-                        push!(junk, newframe)  # rather than going through GC, just re-use it
+                        newframe.caller = frame
+                        frame.callee = newframe
+                        finish!(recurse, newframe, true)
+                        frame.callee = nothing
                     end
+                    recycle(newframe)
                 elseif node.head == :global
                     # error("fixme")
                 elseif node.head == :toplevel
                     mod = moduleof(frame)
-                    newstack = similar(stack, 0)
                     modexs, _ = split_expressions(mod, node)
                     Core.eval(mod, Expr(:toplevel,
                         :(for modex in $modexs
                               newframe = ($prepare_thunk)(modex)
                               while true
-                                  ($through_methoddef_or_done!)($newstack, newframe) === nothing && break
+                                  ($through_methoddef_or_done!)($recurse, newframe) === nothing && break
                               end
+                              $recycle(newframe)
                           end)))
                 elseif node.head == :error
                     error("unexpected error statement ", node)
                 elseif node.head == :incomplete
                     error("incomplete statement ", node)
                 else
-                    rhs = eval_rhs(stack, frame, node, pc)
+                    rhs = eval_rhs(recurse, frame, node)
                 end
             elseif node.head == :thunk || node.head == :toplevel
                 error("this frame needs to be run at top level")
             else
-                rhs = eval_rhs(stack, frame, node, pc)
+                rhs = eval_rhs(recurse, frame, node)
             end
         elseif isa(node, GotoNode)
-            return JuliaProgramCounter(node.label)
+            return (frame.pc = node.label)
         elseif isa(node, NewvarNode)
             # FIXME: undefine the slot?
         elseif istoplevel && isa(node, LineNumberNode)
@@ -462,52 +464,65 @@ function _step_expr!(stack, frame, @nospecialize(node), pc::JuliaProgramCounter,
             rhs = @lookup(frame, node)
         end
     catch err
-        return handle_err(stack, frame, pc, err)
+        return handle_err(recurse, frame, err)
     end
     @isdefined(rhs) && isa(rhs, BreakpointRef) && return rhs
     if isassign(frame, pc)
         if !@isdefined(rhs)
-            @show frame node pc
+            @show frame node
         end
         lhs = getlhs(pc)
         do_assignment!(frame, lhs, rhs)
     end
-    return pc + 1
+    return (frame.pc = pc + 1)
 end
 
-_step_expr!(stack, frame, pc::JuliaProgramCounter, istoplevel::Bool=false) =
-    _step_expr!(stack, frame, pc_expr(frame, pc), pc, istoplevel)
-
 """
-    pc = step_expr!(stack, frame)
+    pc = step_expr!(recurse, frame, istoplevel=false)
+    pc = step_expr!(frame, istoplevel=false)
 
 Execute the next statement in `frame`. `pc` is the new program counter, or `nothing`
-if execution terminates.
-`stack` controls call evaluation; `stack = Compiled()` evaluates :call expressions
-by normal dispatch, whereas a vector of `JuliaStackFrame`s will use recursive interpretation.
-"""
-function step_expr!(stack, frame, istoplevel::Bool=false)
-    pc = _step_expr!(stack, frame, frame.pc[], istoplevel)
-    (pc === nothing || isa(pc, BreakpointRef)) && return pc
-    frame.pc[] = pc
-end
+if execution terminates, or a [`BreakpointRef`](@ref) if execution hits a breakpoint.
 
-function handle_err(stack, frame, pc, err)
+`recurse` controls call evaluation; `recurse = Compiled()` evaluates :call expressions
+by normal dispatch. The default value `recurse = finish_and_return!` will use recursive
+interpretation.
+
+If you are evaluating `frame` at module scope you should pass `istoplevel=true`.
+"""
+step_expr!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false) =
+    step_expr!(recurse, frame, pc_expr(frame), istoplevel)
+step_expr!(frame::Frame, istoplevel::Bool=false) =
+    step_expr!(finish_and_return!, frame, istoplevel)
+
+"""
+    loc = handle_err(recurse, frame, err)
+
+Deal with an error `err` that arose while evaluating `frame`. There are one of three
+behaviors:
+
+- if `frame` catches the error, `loc` is the program counter at which to resume
+  evaluation of `frame`;
+- if `frame` doesn't catch the error, but `break_on_error[]` is `true`,
+  `loc` is a `BreakpointRef`;
+- otherwise, `err` gets rethrown.
+"""
+function handle_err(@nospecialize(recurse), frame, err)
     if break_on_error[]
         # See if the current frame or a frame in the stack will catch this exception,
         # otherwise this exception would have been thrown to the user and we should
         # return a breakpoint
         exception_caught = false
-        for fr in Iterators.flatten(((frame,), (Iterators.reverse(stack))))
-            if !isempty(fr.exception_frames)
+        fr = frame
+        while fr !== nothing
+            if !isempty(fr.framedata.exception_frames)
                 exception_caught = true
                 break
             end
+            fr = caller(fr)
         end
         if !exception_caught
-            frame.pc[] = pc
-            push!(stack, frame)
-            return BreakpointRef(frame.code, pc, err)
+            return BreakpointRef(frame.framecode, frame.pc, err)
         end
     end
     # Check for world age errors, which generally indicate a failure to go back to toplevel
@@ -521,285 +536,22 @@ function handle_err(stack, frame, pc, err)
             rethrow(err)
         end
     end
-    isempty(frame.exception_frames) && rethrow(err)
-    frame.last_exception[] = err
-    return JuliaProgramCounter(frame.exception_frames[end])
+    data = frame.framedata
+    isempty(data.exception_frames) && rethrow(err)
+    data.last_exception[] = err
+    return (frame.pc = data.exception_frames[end])
 end
 
 """
-    pc = finish!(stack, frame, pc=frame.pc[])
+    ret = get_return(frame)
 
-Run `frame` until execution terminates. `pc` is the program counter for the final statement.
-`stack` controls call evaluation; `stack = Compiled()` evaluates :call expressions
-by normal dispatch, whereas a vector of `JuliaStackFrame`s will use recursive interpretation.
-
-If execution hits a breakpoint, then `pc` is a reference to the breakpoint. `stack[end]`,
-if not running in `Compiled()` mode, will contain the frame in which the breakpoint was hit.
-"""
-function finish!(stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::Bool=false)
-    local new_pc
-    while true
-        new_pc = _step_expr!(stack, frame, pc, istoplevel)
-        (new_pc == nothing || isa(new_pc, BreakpointRef)) && break
-        pc = new_pc
-        if shouldbreak(frame, pc)
-            push!(stack, frame)
-            new_pc = BreakpointRef(frame.code, pc)
-            break
-        end
-    end
-    frame.pc[] = pc
-    return isa(new_pc, BreakpointRef) ? new_pc : pc
-end
-finish!(stack, frame, istoplevel::Bool) = finish!(stack, frame, frame.pc[], istoplevel)
-
-"""
-    ret = finish_and_return!(stack, frame, istoplevel::Bool=false)
-    ret = finish_and_return!(stack, frame, pc, istoplevel::Bool)
-
-Run `frame` until execution terminates, and pass back the computed return value.
-`stack` controls call evaluation; `stack = Compiled()` evaluates :call expressions
-by normal dispatch, whereas a vector of `JuliaStackFrame`s will use recursive interpretation.
-
-If execution hits a breakpoint, then `ret` is a reference to the breakpoint. `stack[end]`,
-if not running in `Compiled()` mode, will contain the frame in which the breakpoint was hit.
-
-Optionally supply the starting `pc`, if you don't want to start at the current location in `frame`.
-"""
-function finish_and_return!(stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::Bool=false)
-    pc = finish!(stack, frame, pc, istoplevel)
-    isa(pc, BreakpointRef) && return pc
-    return get_return(frame, pc)
-end
-finish_and_return!(stack, frame, istoplevel::Bool) = finish_and_return!(stack, frame, frame.pc[], istoplevel)
-
-"""
-    ret = get_return(frame, pc=frame.pc[])
-
-Get the return value of `frame`. Throws an error if `pc` does not point to a `return` expression.
+Get the return value of `frame`. Throws an error if `frame.pc` does not point to a `return` expression.
 `frame` must have already been executed so that the return value has been computed (see,
 e.g., [`JuliaInterpreter.finish!`](@ref)).
 """
-function get_return(frame, pc = frame.pc[])
-    node = pc_expr(frame, pc)
+function get_return(frame)
+    node = pc_expr(frame)
     isexpr(node, :return) || error("expected return statement, got ", node)
     return @lookup(frame, (node::Expr).args[1])
 end
-get_return(frame::Tuple{Module,Expr,JuliaStackFrame}) = get_return(frame[end])
-
-"""
-    ret = finish_stack!(stack)
-
-Completely unwind `stack`, finishing it frame-by-frame. If execution hits a breakpoint,
-`ret` will be a reference to the breakpoint.
-"""
-function finish_stack!(stack)
-    while !isempty(stack)
-        frame = pop!(stack)
-        ret = finish_and_return!(stack, frame)
-        isa(ret, BreakpointRef) && return ret
-        isempty(stack) && return ret
-        parentframe = stack[end]
-        pc = parentframe.pc[]
-        if isassign(parentframe, pc)
-            lhs = getlhs(pc)
-            do_assignment!(parentframe, lhs, ret)
-        end
-        pc += 1
-        parentframe.pc[] = pc
-        shouldbreak(parentframe) && return BreakpointRef(parentframe.code, pc)
-    end
-    error("stack is empty")
-end
-
-function is_call(node)
-    isexpr(node, :call) ||
-    (isexpr(node, :(=)) && (isexpr(node.args[2], :call)))
-end
-
-"""
-    next_until!(predicate, stack, frame, pc=frame.pc[])
-
-Step through statements of `frame` until the next statement satifies `predicate(stmt)`.
-"""
-function next_until!(f, stack, frame, pc::JuliaProgramCounter=frame.pc[], istoplevel::Bool=false)
-    while (newpc = _step_expr!(stack, frame, pc, istoplevel)) != nothing
-        pc = newpc
-        if f(pc_expr(frame, pc)) || shouldbreak(frame, pc)
-            frame.pc[] = pc
-            return pc
-        end
-    end
-    frame.pc[] = pc
-    return nothing
-end
-next_until!(f, stack, frame, istoplevel::Bool) = next_until!(f, stack, frame, frame.pc[], istoplevel)
-next_call!(stack, frame, pc=frame.pc[]) = next_until!(node->is_call(node)||isexpr(node,:return), stack, frame, pc)
-
-"""
-    through_methoddef_or_done!(stack, frame)
-
-Runs `frame` at top level until it either finishes (e.g., hits a `return` statement)
-or defines a new method.
-"""
-function through_methoddef_or_done!(stack, frame::JuliaStackFrame)
-    predicate(stmt) = isexpr(stmt, :method, 3) || isexpr(stmt, :thunk)
-    pc = next_until!(predicate, stack, frame, true)
-    pc === nothing && return nothing
-    stmt = pc_expr(frame, pc)
-    return isexpr(stmt, :method, 3) ? #= normal exit =# _step_expr!(stack, frame, pc, true) :
-                                      #= breakpoint exit =# pc
-end
-through_methoddef_or_done!(stack, frame::Tuple{Module,Expr,JuliaStackFrame}) =
-    through_methoddef_or_done!(stack, frame[end])
-through_methoddef_or_done!(stack, modex::Tuple{Module,Expr,Expr}) = Core.eval(modex[1], modex[3])
-
-function changed_line!(expr, line, fls)
-    if length(fls) == 1 && isa(expr, LineNumberNode)
-        return expr.line != line
-    elseif length(fls) == 1 && isa(expr, Expr) && isexpr(expr, :line)
-        return expr.args[1] != line
-    else
-        if is_loc_meta(expr, :pop_loc)
-            pop!(fls)
-        elseif is_loc_meta(expr, :push_loc)
-            push!(fls,(expr.args[2],0))
-        end
-        return false
-    end
-end
-
-"""
-Determine whether we are calling a function for which the current function
-is a wrapper (either because of optional arguments or becaue of keyword arguments).
-"""
-function iswrappercall(expr)
-    isexpr(expr, :(=)) && (expr = expr.args[2])
-    isexpr(expr, :call) && any(x->x==SlotNumber(1), expr.args)
-end
-
-pc_expr(frame, pc) = frame.code.code.code[pc.next_stmt]
-pc_expr(frame) = pc_expr(frame, frame.pc[])
-
-function find_used(code::CodeInfo)
-    used = BitSet()
-    stmts = code.code
-    for stmt in stmts
-        Core.Compiler.scan_ssa_use!(push!, used, stmt)
-        if isexpr(stmt, :struct_type)  # this one is missed
-            for a in stmt.args
-                Core.Compiler.scan_ssa_use!(push!, used, a)
-            end
-        end
-    end
-    return used
-end
-
-isgotonode(node) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
-
-"""
-    loc = whereis(frame, pc=frame.pc[])
-
-Return the file and line number for `frame` at `pc`.  If this cannot be
-determined, `loc == nothing`. Otherwise `loc == (filepath, line)`.
-"""
-function CodeTracking.whereis(framecode::JuliaFrameCode, pc)
-    codeloc = codelocation(framecode.code, convert(Int, pc))
-    codeloc == 0 && return nothing
-    lineinfo = framecode.code.linetable[codeloc]
-    return framecode.scope isa Method ?
-        whereis(lineinfo, framecode.scope) : string(lineinfo.file), lineinfo.line
-end
-CodeTracking.whereis(frame::JuliaStackFrame, pc=frame.pc[]) = whereis(frame.code, pc)
-
-# Note: linenumber is now an internal method for use by `next_line!`
-# If you want to know the actual line number in a file, call `whereis`.
-function linenumber(framecode::JuliaFrameCode, pc)
-    codeloc = codelocation(framecode.code, convert(Int, pc))
-    codeloc == 0 && return nothing
-    return framecode.code.linetable[codeloc].line
-end
-linenumber(frame::JuliaStackFrame, pc=frame.pc[]) = linenumber(frame.code, pc)
-
-function codelocation(code::CodeInfo, idx)
-    codeloc = code.codelocs[idx]
-    while codeloc == 0 && code.code[idx] === nothing && idx < length(code.code)
-        idx += 1
-        codeloc = code.codelocs[idx]
-    end
-    return codeloc
-end
-
-"""
-    stmtidx = statementnumber(frame, line)
-
-Return the index of the first statement in `frame`'s `CodeInfo` that corresponds to `line`.
-"""
-function statementnumber(framecode::JuliaFrameCode, line)
-    lineidx = searchsortedfirst(framecode.code.linetable, line; by=lin->isa(lin,Integer) ? lin : lin.line)
-    1 <= lineidx <= length(framecode.code.linetable) || throw(ArgumentError("line $line not found in $(framecode.scope)"))
-    return searchsortedfirst(framecode.code.codelocs, lineidx)
-end
-statementnumber(frame::JuliaStackFrame, line) = statementnumber(frame.code, line)
-
-"""
-    framecode, stmtidx = statementnumber(method, line)
-
-Return the index of the first statement in `framecode` that corresponds to the given `line` in `method`.
-"""
-function statementnumber(method::Method, line; line1=whereis(method)[2])
-    linec = line - line1 + method.line  # line number at time of compilation
-    framecode = get_framecode(method)
-    return framecode, statementnumber(framecode, linec)
-end
-
-function next_line!(stack, frame, dbstack = nothing)
-    initial = linenumber(frame)
-    first = true
-    pc = frame.pc[]
-    while linenumber(frame, pc) == initial
-        # If this is a return node, interrupt execution. This is the same
-        # special case as in `s`.
-        expr = pc_expr(frame, pc)
-        (!first && isexpr(expr, :return)) && return pc
-        first = false
-        # If this is a goto node, step it and reevaluate
-        if isgotonode(expr)
-            pc = _step_expr!(stack, frame, pc)
-            (pc == nothing || isa(pc, BreakpointRef)) && return pc
-        elseif dbstack !== nothing && iswrappercall(expr)
-            # With splatting it can happen that we do something like ssa = tuple(#self#), _apply(ssa), which
-            # confuses the logic here, just step into the first call that's not a builtin
-            while true
-                dbstack[end] = JuliaStackFrame(JuliaFrameCode(frame.code; wrapper = true), frame, pc)
-                call_expr = pc_expr(frame, pc)
-                isexpr(call_expr, :(=)) && (call_expr = call_expr.args[2])
-                call_expr = Expr(:call, map(x->@lookup(frame, x), call_expr.args)...)
-                new_frame = enter_call_expr(call_expr)
-                if new_frame !== nothing
-                    push!(dbstack, new_frame)
-                    frame = new_frame
-                    pc = frame.pc[]
-                    break
-                else
-                    pc = _step_expr!(stack, frame, pc)
-                    (pc == nothing || isa(pc, BreakpointRef)) && return pc
-                end
-            end
-        else
-            pc = _step_expr!(stack, frame, pc)
-            (pc == nothing || isa(pc, BreakpointRef)) && return pc
-        end
-        frame.pc[] = pc
-        shouldbreak(frame, pc) && return BreakpointRef(frame.code, pc)
-    end
-    maybe_next_call!(stack, frame, pc)
-end
-
-function maybe_next_call!(stack, frame, pc)
-    call_or_return(node) = is_call(node) || isexpr(node, :return)
-    call_or_return(pc_expr(frame, pc)) ||
-        (pc = next_until!(call_or_return, stack, frame, pc, false))
-    pc
-end
-maybe_next_call!(stack, frame) = maybe_next_call!(stack, frame, frame.pc[])
+get_return(t::Tuple{Module,Expr,Frame}) = get_return(t[end])

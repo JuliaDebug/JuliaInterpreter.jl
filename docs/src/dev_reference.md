@@ -33,7 +33,7 @@ JuliaInterpreter.get_return
 JuliaInterpreter.next_until!
 JuliaInterpreter.through_methoddef_or_done!
 JuliaInterpreter.evaluate_call!
-JuliaInterpreter.evaluate_foreigncall!
+JuliaInterpreter.evaluate_foreigncall
 JuliaInterpreter.maybe_evaluate_builtin
 ```
 
@@ -50,9 +50,9 @@ remove
 ## Types
 
 ```@docs
-JuliaInterpreter.JuliaStackFrame
-JuliaInterpreter.JuliaFrameCode
-JuliaInterpreter.JuliaProgramCounter
+JuliaInterpreter.Frame
+JuliaInterpreter.FrameCode
+JuliaInterpreter.FrameData
 JuliaInterpreter.BreakpointState
 JuliaInterpreter.BreakpointRef
 ```
@@ -69,7 +69,7 @@ JuliaInterpreter.compiled_methods
 
 ```@docs
 JuliaInterpreter.@lookup
-JuliaInterpreter.iswrappercall
+JuliaInterpreter.is_wrapper_call
 JuliaInterpreter.is_doc_expr
 JuliaInterpreter.is_global_ref
 JuliaInterpreter.statementnumber

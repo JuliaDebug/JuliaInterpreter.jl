@@ -1,18 +1,18 @@
 """
-`framedict[method]` returns the `JuliaFrameCode` for `method`. For `@generated` methods,
+`framedict[method]` returns the `FrameCode` for `method`. For `@generated` methods,
 see [`genframedict`](@ref).
 """
-const framedict = Dict{Method,JuliaFrameCode}()                # essentially a method table for lowered code
+const framedict = Dict{Method,FrameCode}()                # essentially a method table for lowered code
 
 """
-`genframedict[(method,argtypes)]` returns the `JuliaFrameCode` for a `@generated` method `method`,
+`genframedict[(method,argtypes)]` returns the `FrameCode` for a `@generated` method `method`,
 for the particular argument types `argtypes`.
 
 The framecodes stored in `genframedict` are for the code returned by the generator
 (i.e, what will run when you call the method on particular argument types);
 for the generator itself, its framecode would be stored in [`framedict`](@ref).
 """
-const genframedict = Dict{Tuple{Method,Type},JuliaFrameCode}() # the same for @generated functions
+const genframedict = Dict{Tuple{Method,Type},FrameCode}() # the same for @generated functions
 
 """
 `meth ∈ compiled_methods` indicates that `meth` should be run using [`Compiled`](@ref)
@@ -20,19 +20,10 @@ rather than recursed into via the interpreter.
 """
 const compiled_methods = Set{Method}()
 
-const junk = JuliaStackFrame[]      # to allow re-use of allocated memory (this is otherwise a bottleneck)
+const junk = FrameData[]      # to allow re-use of allocated memory (this is otherwise a bottleneck)
+recycle(frame) = push!(junk, frame.framedata)
 
 const empty_svec = Core.svec()
-
-function sparam_syms(meth::Method)
-    s = Symbol[]
-    sig = meth.sig
-    while sig isa UnionAll
-        push!(s, Symbol(sig.var.name))
-        sig = sig.body
-    end
-    return s
-end
 
 function namedtuple(kwargs)
     names, types, vals = Symbol[], [], []
@@ -108,7 +99,7 @@ julia> JuliaInterpreter.prepare_args(mymethod, [mymethod, 1, 2], [:verbose=>true
 function prepare_args(@nospecialize(f), allargs, kwargs)
     if !isempty(kwargs)
         f = Core.kwfunc(f)
-        allargs = [f,namedtuple(kwargs),allargs...]
+        allargs = [f, namedtuple(kwargs), allargs...]
     elseif f === Core._apply
         f = to_function(allargs[2])
         allargs = Base.append_any((allargs[2],), allargs[3:end]...)
@@ -154,7 +145,7 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
                 generator = false
             end
         end
-        framecode = JuliaFrameCode(method, code; generator=generator)
+        framecode = FrameCode(method, code; generator=generator)
         if is_generated(method) && !enter_generated
             genframedict[(method, argtypes)] = framecode
         else
@@ -168,7 +159,7 @@ function get_framecode(method)
     framecode = get(framedict, method, nothing)
     if framecode === nothing
         code = get_source(method)
-        framecode = JuliaFrameCode(method, code; generator=false)
+        framecode = FrameCode(method, code; generator=false)
         framedict[method] = framecode
     end
     return framecode
@@ -182,7 +173,7 @@ Prepare all the information needed to execute lowered code for `f` given argumen
 For `@generated` methods, set `enter_generated=true` if you want to extract the lowered code
 of the generator itself.
 
-On return `framecode` is the [`JuliaFrameCode`](@ref) of the method.
+On return `framecode` is the [`FrameCode`](@ref) of the method.
 `frameargs` contains the actual arguments needed for executing this frame (for generators,
 this will be the types of `allargs`);
 `lenv` is the "environment", i.e., the static parameters for `f` given `allargs`.
@@ -197,7 +188,7 @@ mymethod (generic function with 1 method)
 julia> framecode, frameargs, lenv, argtypes = JuliaInterpreter.prepare_call(mymethod, [mymethod, [1.0,2.0]]);
 
 julia> framecode
-JuliaInterpreter.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(
+JuliaInterpreter.FrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(
 1 ─     return 1
 ), Union{Compiled, TypeMapEntry}[#undef], JuliaInterpreter.BreakpointState[#undef], BitSet([]), false, false, true)
 
@@ -242,6 +233,85 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     return framecode, args, lenv, argtypes
 end
 
+function prepare_framedata(framecode, argvals::Vector{Any})
+    if isa(framecode.scope, Method)
+        meth, src = framecode.scope::Method, framecode.src
+        ssavt = src.ssavaluetypes
+        ng = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any})
+        nargs = length(argvals)
+        if !isempty(junk)
+            olddata = pop!(junk)
+            locals, ssavalues, sparams = olddata.locals, olddata.ssavalues, olddata.sparams
+            exception_frames, last_reference = olddata.exception_frames, olddata.last_reference
+            last_exception = olddata.last_exception
+            callargs = olddata.callargs
+            resize!(locals, length(src.slotflags))
+            resize!(ssavalues, ng)
+            # for check_isdefined to work properly, we need sparams to start out unassigned
+            resize!(sparams, 0)
+            empty!(exception_frames)
+            empty!(last_reference)
+            last_exception[] = nothing
+        else
+            locals = Vector{Union{Nothing,Some{Any}}}(undef, length(src.slotflags))
+            ssavalues = Vector{Any}(undef, ng)
+            sparams = Vector{Any}(undef, 0)
+            exception_frames = Int[]
+            last_reference = Dict{Symbol,Int}()
+            callargs = Any[]
+            last_exception = Ref{Any}(nothing)
+        end
+        for i = 1:meth.nargs
+            last_reference[framecode.src.slotnames[i]] = i
+            if meth.isva && i == meth.nargs
+                locals[i] = nargs < i ? Some{Any}(()) : (let i=i; Some{Any}(ntuple(k->argvals[i+k-1], nargs-i+1)); end)
+                break
+            end
+            locals[i] = nargs >= i ? Some{Any}(argvals[i]) : Some{Any}(())
+        end
+        # add local variables initially undefined
+        for i = (meth.nargs+1):length(src.slotnames)
+            locals[i] = nothing
+        end
+    else
+        src = framecode.src
+        locals = Vector{Union{Nothing,Some{Any}}}(undef, length(src.slotflags))
+        fill!(locals, nothing)
+        ssavalues = Vector{Any}(undef, length(src.code))
+        sparams = Any[]
+        exception_frames = Int[]
+        last_reference = Dict{Symbol,Int}()
+        callargs = Any[]
+        last_exception = Ref{Any}(nothing)
+    end
+    FrameData(locals, ssavalues, sparams, exception_frames, last_exception, last_reference, callargs)
+end
+
+"""
+    frame = prepare_frame(framecode::FrameCode, frameargs, lenv)
+    frame = prepare_frame(caller::Frame, framecode::FrameCode, frameargs, lenv)
+
+Construct a new `Frame` for `framecode`, given lowered-code arguments `frameargs` and
+static parameters `lenv`. See [`JuliaInterpreter.prepare_call`](@ref) for information about how to prepare the inputs.
+"""
+function prepare_frame(framecode, args, lenv)
+    framedata = prepare_framedata(framecode, args)
+    resize!(framedata.sparams, length(lenv))
+    # Add static parameters to environment
+    for i = 1:length(lenv)
+        T = lenv[i]
+        isa(T, TypeVar) && continue  # only fill concrete types
+        framedata.sparams[i] = T
+    end
+    return Frame(framecode, framedata)
+end
+
+function prepare_frame(caller::Frame, framecode, args, lenv)
+    caller.callee = frame = prepare_frame(framecode, args, lenv)
+    frame.caller = caller
+    return frame
+end
+
 """
     frame = prepare_thunk(mod::Module, expr::Expr)
 
@@ -250,18 +320,18 @@ one that does not require special top-level handling (see [`JuliaInterpreter.spl
 """
 function prepare_thunk(mod::Module, thunk::Expr, recursive::Bool=false)
     if isexpr(thunk, :thunk)
-        framecode = JuliaFrameCode(mod, thunk.args[1])
+        framecode = FrameCode(mod, thunk.args[1])
     elseif isexpr(thunk, :error) || isexpr(thunk, :incomplete)
         error("lowering returned an error, ", thunk)
     elseif recursive
         thunk = Meta.lower(mod, Expr(:block, nothing, thunk))
-        framecode = JuliaFrameCode(mod, thunk.args[1])
+        framecode = FrameCode(mod, thunk.args[1])
     else
         lwr = Meta.lower(mod, thunk)
         isa(lwr, Expr) && return prepare_thunk(mod, lwr, true)
         return nothing
     end
-    return prepare_locals(framecode, [])
+    return Frame(framecode, prepare_framedata(framecode, []))
 end
 prepare_thunk((mod, ex)::Tuple{Module,Expr}) = prepare_thunk(mod, ex)
 
@@ -278,7 +348,7 @@ needs to be evaluated at top level.
 For code that defines new structs, new methods, or new macros, it can be important to evaluate
 these expressions carefully:
 
-    stack = JuliaStackFrame[]
+    stack = Frame[]
     for modex in modexs    # or use `for (mod, ex) in modexs` to split the tuple
         frame = JuliaInterpreter.prepare_thunk(modex)
         while true
@@ -394,86 +464,10 @@ function determine_method_for_expr(expr; enter_generated = false)
     return prepare_call(f, allargs; enter_generated=enter_generated)
 end
 
-function prepare_locals(framecode, argvals::Vector{Any})
-    if isa(framecode.scope, Method)
-        meth, code = framecode.scope::Method, framecode.code
-        ssavt = code.ssavaluetypes
-        ng = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any})
-        nargs = length(argvals)
-        if !isempty(junk)
-            oldframe = pop!(junk)
-            locals, ssavalues, sparams = oldframe.locals, oldframe.ssavalues, oldframe.sparams
-            exception_frames, last_reference = oldframe.exception_frames, oldframe.last_reference
-            callargs = oldframe.callargs
-            last_exception, pc = oldframe.last_exception, oldframe.pc
-            resize!(locals, length(code.slotflags))
-            resize!(ssavalues, ng)
-            # for check_isdefined to work properly, we need sparams to start out unassigned
-            resize!(sparams, 0)
-            empty!(exception_frames)
-            empty!(last_reference)
-            last_exception[] = nothing
-            pc[] = JuliaProgramCounter(1)
-        else
-            locals = Vector{Union{Nothing,Some{Any}}}(undef, length(code.slotflags))
-            ssavalues = Vector{Any}(undef, ng)
-            sparams = Vector{Any}(undef, 0)
-            exception_frames = Int[]
-            last_reference = Dict{Symbol,Int}()
-            callargs = Any[]
-            last_exception = Ref{Any}(nothing)
-            pc = Ref(JuliaProgramCounter(1))
-        end
-        for i = 1:meth.nargs
-            last_reference[framecode.code.slotnames[i]] = i
-            if meth.isva && i == meth.nargs
-                locals[i] = nargs < i ? Some{Any}(()) : (let i=i; Some{Any}(ntuple(k->argvals[i+k-1], nargs-i+1)); end)
-                break
-            end
-            locals[i] = nargs >= i ? Some{Any}(argvals[i]) : Some{Any}(())
-        end
-        # add local variables initially undefined
-        for i = (meth.nargs+1):length(code.slotnames)
-            locals[i] = nothing
-        end
-    else
-        code = framecode.code
-        locals = Vector{Union{Nothing,Some{Any}}}(undef, length(code.slotflags))
-        fill!(locals, nothing)
-        ssavalues = Vector{Any}(undef, length(code.code))
-        sparams = Any[]
-        exception_frames = Int[]
-        last_reference = Dict{Symbol,Int}()
-        callargs = Any[]
-        last_exception = Ref{Any}(nothing)
-        pc = Ref(JuliaProgramCounter(1))
-    end
-    JuliaStackFrame(framecode, locals, ssavalues, sparams, exception_frames, last_exception,
-                    pc, last_reference, callargs)
-end
-
-"""
-    frame = prepare_frame(framecode::JuliaFrameCode, frameargs, lenv)
-
-Construct a new `JuliaStackFrame` for `framecode`, given lowered-code arguments `frameargs` and
-static parameters `lenv`. See [`JuliaInterpreter.prepare_call`](@ref) for information about how to prepare the inputs.
-"""
-function prepare_frame(framecode, args, lenv)
-    frame = prepare_locals(framecode, args)
-    resize!(frame.sparams, length(lenv))
-    # Add static parameters to environment
-    for i = 1:length(lenv)
-        T = lenv[i]
-        isa(T, TypeVar) && continue  # only fill concrete types
-        frame.sparams[i] = T
-    end
-    return frame
-end
-
 """
     frame = enter_call_expr(expr; enter_generated=false)
 
-Build a `JuliaStackFrame` ready to execute the expression `expr`. Set `enter_generated=true`
+Build a `Frame` ready to execute the expression `expr`. Set `enter_generated=true`
 if you want to execute the generator of a `@generated` function, rather than the code that
 would be created by the generator.
 
@@ -484,7 +478,7 @@ julia> mymethod(x) = x+1
 mymethod (generic function with 1 method)
 
 julia> JuliaInterpreter.enter_call_expr(:(\$mymethod(1)))
-JuliaStackFrame(JuliaInterpreter.JuliaFrameCode(mymethod(x) in Main at none:1, CodeInfo(
+Frame(JuliaInterpreter.FrameCode(mymethod(x) in Main at none:1, CodeInfo(
 1 ─ %1 = ($(QuoteNode(+)))(x, 1)
 └──      return %1
 ), Union{Compiled, TypeMapEntry}[#undef, #undef], JuliaInterpreter.BreakpointState[#undef, #undef], BitSet([1]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some(1)], Any[#undef, #undef], Any[], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{JuliaInterpreter.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict(Symbol("#self#")=>1,:x=>2), Any[])
@@ -498,7 +492,7 @@ julia> a = [1.0, 2.0]
  2.0
 
 julia> JuliaInterpreter.enter_call_expr(:(\$mymethod(\$a)))
-JuliaStackFrame(JuliaInterpreter.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(
+Frame(JuliaInterpreter.FrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(
 1 ─     return 1
 ), Union{Compiled, TypeMapEntry}[#undef], JuliaInterpreter.BreakpointState[#undef], BitSet([]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some([1.0, 2.0])], Any[#undef], Any[Float64], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{JuliaInterpreter.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict(Symbol("#self#")=>1,:x=>2), Any[])
 ```
@@ -516,7 +510,7 @@ end
 """
     frame = enter_call(f, args...; kwargs...)
 
-Build a `JuliaStackFrame` ready to execute `f` with the specified positional and keyword arguments.
+Build a `Frame` ready to execute `f` with the specified positional and keyword arguments.
 
 # Example
 
@@ -525,7 +519,7 @@ julia> mymethod(x) = x+1
 mymethod (generic function with 1 method)
 
 julia> JuliaInterpreter.enter_call(mymethod, 1)
-JuliaStackFrame(JuliaInterpreter.JuliaFrameCode(mymethod(x) in Main at none:1, CodeInfo(
+Frame(JuliaInterpreter.FrameCode(mymethod(x) in Main at none:1, CodeInfo(
 1 ─ %1 = ($(QuoteNode(+)))(x, 1)
 └──      return %1
 ), Union{Compiled, TypeMapEntry}[#undef, #undef], JuliaInterpreter.BreakpointState[#undef, #undef], BitSet([1]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some(1)], Any[#undef, #undef], Any[], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{JuliaInterpreter.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict(Symbol("#self#")=>1,:x=>2), Any[])
@@ -534,7 +528,7 @@ julia> mymethod(x::Vector{T}) where T = 1
 mymethod (generic function with 2 methods)
 
 julia> JuliaInterpreter.enter_call(mymethod, [1.0, 2.0])
-JuliaStackFrame(JuliaInterpreter.JuliaFrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(
+Frame(JuliaInterpreter.FrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(
 1 ─     return 1
 ), Union{Compiled, TypeMapEntry}[#undef], JuliaInterpreter.BreakpointState[#undef], BitSet([]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some([1.0, 2.0])], Any[#undef], Any[Float64], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{JuliaInterpreter.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict(Symbol("#self#")=>1,:x=>2), Any[])
 ```
@@ -637,16 +631,14 @@ macro interpret(arg)
     end
     quote
         theargs = $(esc(args))
-        stack = JuliaStackFrame[]
         frame = JuliaInterpreter.enter_call_expr(Expr(:call, theargs...))
         if frame === nothing
             return eval(Expr(:call, map(QuoteNode, theargs)...))
         end
         if shouldbreak(frame, 1)
-            push!(stack, frame)
-            return stack, BreakpointRef(frame.code, 1)
+            return frame, BreakpointRef(frame.framecode, 1)
         end
-        ret = finish_and_return!(stack, frame)
-        isa(ret, BreakpointRef) ? (stack, ret) : ret
+        ret = finish_and_return!(frame)
+        isa(ret, BreakpointRef) ? (frame, ret) : ret
     end
 end

@@ -74,7 +74,7 @@ function generate_builtins(io::IO)
 
 function getargs(args, frame)
     nargs = length(args)-1  # skip f
-    callargs = resize!(frame.callargs, nargs)
+    callargs = resize!(frame.framedata.callargs, nargs)
     for i = 1:nargs
         callargs[i] = @lookup(frame, args[i+1])
     end
