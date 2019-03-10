@@ -208,13 +208,7 @@ function evaluate_call!(@nospecialize(recurse::Function), frame::Frame, call_exp
     end
     newframe = prepare_frame(frame, framecode, fargs, lenv)
     shouldbreak(newframe) && return BreakpointRef(newframe.framecode, newframe.pc)
-    ret = try
-        recurse(recurse, newframe)
-    catch e
-        frame.callee == nothing
-        recycle(newframe)
-        rethrow(e)
-    end
+    ret = recurse(recurse, newframe)  # if this errors, handle_err will pop the stack and recycle newframe
     isa(ret, BreakpointRef) && return ret
     frame.callee = nothing
     recycle(newframe)
@@ -358,6 +352,10 @@ end
 
 function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplevel::Bool)
     pc, code, data = frame.pc, frame.framecode, frame.framedata
+    if !is_leaf(frame)
+        show_stackloc(frame)
+        @show node
+    end
     @assert is_leaf(frame)
     local rhs
     # show_stackloc(frame)
@@ -525,19 +523,24 @@ function handle_err(@nospecialize(recurse), frame, err)
             return BreakpointRef(frame.framecode, frame.pc, err)
         end
     end
-    # Check for world age errors, which generally indicate a failure to go back to toplevel
-    if isa(err, MethodError)
-        is_arg_types = isa(err.args, DataType)
-        arg_types = is_arg_types ? err.args : Base.typesof(err.args...)
-        if (err.world != typemax(UInt) &&
-            hasmethod(err.f, arg_types) &&
-            !hasmethod(err.f, arg_types, world = err.world))
-            @warn "likely failure to return to toplevel, try JuliaInterpreter.split_expressions"
-            rethrow(err)
-        end
-    end
     data = frame.framedata
-    isempty(data.exception_frames) && rethrow(err)
+    if isempty(data.exception_frames)
+        if frame.caller !== nothing
+            frame.caller.callee = nothing
+            recycle(frame)
+        end
+        # Check for world age errors, which generally indicate a failure to go back to toplevel
+        if isa(err, MethodError)
+            is_arg_types = isa(err.args, DataType)
+            arg_types = is_arg_types ? err.args : Base.typesof(err.args...)
+            if (err.world != typemax(UInt) &&
+                hasmethod(err.f, arg_types) &&
+                !hasmethod(err.f, arg_types, world = err.world))
+                @warn "likely failure to return to toplevel, try JuliaInterpreter.split_expressions"
+            end
+        end
+        rethrow(err)
+    end
     data.last_exception[] = err
     return (frame.pc = data.exception_frames[end])
 end

@@ -60,6 +60,7 @@ function finish_stack!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=fa
         recycle(frame)
         frame = caller(frame)
         frame === nothing && return ret
+        frame.callee = nothing
         pc = frame.pc
         if isassign(frame, pc)
             lhs = getlhs(pc)
@@ -69,16 +70,16 @@ function finish_stack!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=fa
         frame.pc = pc
         shouldbreak(frame) && return BreakpointRef(frame.framecode, pc)
     end
-    return frame
 end
 finish_stack!(frame::Frame, istoplevel::Bool=false) = finish_stack!(finish_and_return!, frame, istoplevel)
 
 """
-    next_until!(predicate, recurse, frame, istoplevel=false)
-    next_until!(predicate, frame, istoplevel=false)
+    pc = next_until!(predicate, recurse, frame, istoplevel=false)
+    pc = next_until!(predicate, frame, istoplevel=false)
 
 Execute the current statement. Then step through statements of `frame` until the next
-statement satifies `predicate(stmt)`.
+statement satifies `predicate(stmt)`. `pc` will be the index of the statement at which
+evaluation terminates, `nothing` (if the frame reached a `return`), or a `BreakpointRef`.
 """
 function next_until!(@nospecialize(predicate), @nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
     pc = step_expr!(recurse, frame, istoplevel)
