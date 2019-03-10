@@ -41,7 +41,7 @@ Run `frame` until one of:
 """
 function evaluate_limited!(@nospecialize(recurse), frame::Frame, nstmts::Int, istoplevel::Bool=false)
     refnstmts = Ref(nstmts)
-    limexec!(s,f) = limited_exec!(s, f, refnstmts, istoplevel)
+    limexec!(s, f, istl) = limited_exec!(s, f, refnstmts, istl)
     # The following is like finish!, except we intercept :call expressions so that we can run them
     # with limexec! rather than the default finish_and_return!
     pc = frame.pc

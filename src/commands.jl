@@ -13,7 +13,7 @@ function finish!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
     local pc
     while true
         pc = step_expr!(recurse, frame, istoplevel)
-        (pc == nothing || isa(pc, BreakpointRef)) && return pc
+        (pc === nothing || isa(pc, BreakpointRef)) && return pc
         shouldbreak(frame, pc) && return BreakpointRef(frame.framecode, pc)
     end
 end
@@ -68,7 +68,7 @@ function finish_stack!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=fa
         end
         pc += 1
         frame.pc = pc
-        shouldbreak(frame) && return BreakpointRef(frame.framecode, pc)
+        shouldbreak(frame, pc) && return BreakpointRef(frame.framecode, pc)
     end
 end
 finish_stack!(frame::Frame, istoplevel::Bool=false) = finish_stack!(finish_and_return!, frame, istoplevel)

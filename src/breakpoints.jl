@@ -21,11 +21,10 @@ function add_breakpoint(framecode, stmtidx)
     return bp
 end
 
-function shouldbreak(frame, pc=frame.pc)
-    idx = pc
+function shouldbreak(frame::Frame, pc::Int)
     bps = frame.framecode.breakpoints
-    isassigned(bps, idx) || return false
-    bp = bps[idx]
+    isassigned(bps, pc) || return false
+    bp = bps[pc]
     bp.isactive || return false
     return Base.invokelatest(bp.condition, frame)::Bool
 end

@@ -173,7 +173,7 @@ function bypass_builtins(frame, call_expr, pc)
     return nothing
 end
 
-function evaluate_call!(::Compiled, frame::Frame, call_expr::Expr)
+function evaluate_call_compiled!(::Compiled, frame::Frame, call_expr::Expr)
     pc = frame.pc
     ret = bypass_builtins(frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
@@ -185,7 +185,7 @@ function evaluate_call!(::Compiled, frame::Frame, call_expr::Expr)
     return f(fargs...)
 end
 
-function evaluate_call!(@nospecialize(recurse::Function), frame::Frame, call_expr::Expr)
+function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr::Expr)
     pc = frame.pc
     ret = bypass_builtins(frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
@@ -206,15 +206,21 @@ function evaluate_call!(@nospecialize(recurse::Function), frame::Frame, call_exp
         end
         return framecode  # this was a Builtin
     end
-    newframe = prepare_frame(frame, framecode, fargs, lenv)
-    shouldbreak(newframe) && return BreakpointRef(newframe.framecode, newframe.pc)
-    ret = recurse(recurse, newframe)  # if this errors, handle_err will pop the stack and recycle newframe
+    newframe = prepare_frame_caller(frame, framecode, fargs, lenv)
+    npc = newframe.pc
+    shouldbreak(newframe, npc) && return BreakpointRef(newframe.framecode, npc)
+    # if the following errors, handle_err will pop the stack and recycle newframe
+    if recurse === finish_and_return!
+        # Optimize this case to avoid dynamic dispatch
+        ret = finish_and_return!(finish_and_return!, newframe, false)
+    else
+        ret = recurse(recurse, newframe, false)
+    end
     isa(ret, BreakpointRef) && return ret
     frame.callee = nothing
     recycle(newframe)
     return ret
 end
-evaluate_call!(frame::Frame, call_expr::Expr) = evaluate_call!(finish_and_return!, frame, call_expr)
 
 """
     ret = evaluate_call!(Compiled(), frame::Frame, call_expr)
@@ -225,7 +231,9 @@ The first causes it to be executed using Julia's normal dispatch (compiled code)
 whereas the second recurses in via the interpreter.
 `recurse` has a default value of [`JuliaInterpreter.finish_and_return!`](@ref).
 """
-evaluate_call!
+evaluate_call!(::Compiled, frame::Frame, call_expr::Expr) = evaluate_call_compiled!(Compiled(), frame, call_expr)
+evaluate_call!(@nospecialize(recurse), frame::Frame, call_expr::Expr) = evaluate_call_recurse!(recurse, frame, call_expr)
+evaluate_call!(frame::Frame, call_expr::Expr) = evaluate_call!(finish_and_return!, frame, call_expr)
 
 # The following come up only when evaluating toplevel code
 function evaluate_methoddef(frame, node)
@@ -317,7 +325,9 @@ function eval_rhs(@nospecialize(recurse), frame, node::Expr)
     elseif head == :isdefined
         return check_isdefined(frame, node.args[1])
     elseif head == :call
-        return evaluate_call!(recurse, frame, node)
+        # here it's crucial to avoid dynamic dispatch
+        isa(recurse, Compiled) && return evaluate_call_compiled!(recurse, frame, node)
+        return evaluate_call_recurse!(recurse, frame, node)
     elseif head == :foreigncall || head == :cfunction
         return evaluate_foreigncall(frame, node)
     elseif head == :copyast

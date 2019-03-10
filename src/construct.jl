@@ -289,12 +289,11 @@ end
 
 """
     frame = prepare_frame(framecode::FrameCode, frameargs, lenv)
-    frame = prepare_frame(caller::Frame, framecode::FrameCode, frameargs, lenv)
 
 Construct a new `Frame` for `framecode`, given lowered-code arguments `frameargs` and
 static parameters `lenv`. See [`JuliaInterpreter.prepare_call`](@ref) for information about how to prepare the inputs.
 """
-function prepare_frame(framecode, args, lenv)
+function prepare_frame(framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector)
     framedata = prepare_framedata(framecode, args)
     resize!(framedata.sparams, length(lenv))
     # Add static parameters to environment
@@ -306,7 +305,7 @@ function prepare_frame(framecode, args, lenv)
     return Frame(framecode, framedata)
 end
 
-function prepare_frame(caller::Frame, framecode, args, lenv)
+function prepare_frame_caller(caller::Frame, framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector)
     caller.callee = frame = prepare_frame(framecode, args, lenv)
     frame.caller = caller
     return frame
