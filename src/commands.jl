@@ -97,6 +97,12 @@ next_call!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false) =
     next_until!(is_call_or_return, recurse, frame, istoplevel)
 next_call!(frame::Frame, istoplevel::Bool=false) = next_call!(finish_and_return!, frame, istoplevel)
 
+"""
+    maybe_next_call!(predicate, frame, istoplevel=false)
+
+Return the current statement of `frame` if it is a `:return` or `:call` expression.
+Otherwise, step through the statements of `frame` until the next `:return` or `:call` expression.
+"""
 function maybe_next_call!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
     pc = frame.pc
     is_call_or_return(pc_expr(frame, pc)) && return pc
