@@ -188,9 +188,7 @@ mymethod (generic function with 1 method)
 julia> framecode, frameargs, lenv, argtypes = JuliaInterpreter.prepare_call(mymethod, [mymethod, [1.0,2.0]]);
 
 julia> framecode
-JuliaInterpreter.FrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(
-1 ─     return 1
-), Union{Compiled, TypeMapEntry}[#undef], JuliaInterpreter.BreakpointState[#undef], BitSet([]), false, false, true)
+  1  1  1 ─     return 1
 
 julia> frameargs
 2-element Array{Any,1}:
@@ -477,10 +475,10 @@ julia> mymethod(x) = x+1
 mymethod (generic function with 1 method)
 
 julia> JuliaInterpreter.enter_call_expr(:(\$mymethod(1)))
-Frame(JuliaInterpreter.FrameCode(mymethod(x) in Main at none:1, CodeInfo(
-1 ─ %1 = ($(QuoteNode(+)))(x, 1)
-└──      return %1
-), Union{Compiled, TypeMapEntry}[#undef, #undef], JuliaInterpreter.BreakpointState[#undef, #undef], BitSet([1]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some(1)], Any[#undef, #undef], Any[], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{JuliaInterpreter.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict(Symbol("#self#")=>1,:x=>2), Any[])
+Frame for mymethod(x) in Main at none:1
+  1* 1  1 ─ %1 = (+)(x, 1)
+  2  1  └──      return %1
+x = 1
 
 julia> mymethod(x::Vector{T}) where T = 1
 mymethod (generic function with 2 methods)
@@ -491,9 +489,10 @@ julia> a = [1.0, 2.0]
  2.0
 
 julia> JuliaInterpreter.enter_call_expr(:(\$mymethod(\$a)))
-Frame(JuliaInterpreter.FrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(
-1 ─     return 1
-), Union{Compiled, TypeMapEntry}[#undef], JuliaInterpreter.BreakpointState[#undef], BitSet([]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some([1.0, 2.0])], Any[#undef], Any[Float64], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{JuliaInterpreter.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict(Symbol("#self#")=>1,:x=>2), Any[])
+Frame for mymethod(x::Array{T,1}) where T in Main at none:1
+  1* 1  1 ─     return 1
+x = [1.0, 2.0]
+T = Float64
 ```
 
 See [`enter_call`](@ref) for a similar approach not based on expressions.
@@ -518,18 +517,19 @@ julia> mymethod(x) = x+1
 mymethod (generic function with 1 method)
 
 julia> JuliaInterpreter.enter_call(mymethod, 1)
-Frame(JuliaInterpreter.FrameCode(mymethod(x) in Main at none:1, CodeInfo(
-1 ─ %1 = ($(QuoteNode(+)))(x, 1)
-└──      return %1
-), Union{Compiled, TypeMapEntry}[#undef, #undef], JuliaInterpreter.BreakpointState[#undef, #undef], BitSet([1]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some(1)], Any[#undef, #undef], Any[], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{JuliaInterpreter.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict(Symbol("#self#")=>1,:x=>2), Any[])
+Frame for mymethod(x) in Main at none:1
+  1* 1  1 ─ %1 = (+)(x, 1)
+  2  1  └──      return %1
+x = 1
 
 julia> mymethod(x::Vector{T}) where T = 1
 mymethod (generic function with 2 methods)
 
 julia> JuliaInterpreter.enter_call(mymethod, [1.0, 2.0])
-Frame(JuliaInterpreter.FrameCode(mymethod(x::Array{T,1}) where T in Main at none:1, CodeInfo(
-1 ─     return 1
-), Union{Compiled, TypeMapEntry}[#undef], JuliaInterpreter.BreakpointState[#undef], BitSet([]), false, false, true), Union{Nothing, Some{Any}}[Some(mymethod), Some([1.0, 2.0])], Any[#undef], Any[Float64], Int64[], Base.RefValue{Any}(nothing), Base.RefValue{JuliaInterpreter.JuliaProgramCounter}(JuliaProgramCounter(1)), Dict(Symbol("#self#")=>1,:x=>2), Any[])
+Frame for mymethod(x::Array{T,1}) where T in Main at none:1
+  1* 1  1 ─     return 1
+x = [1.0, 2.0]
+T = Float64
 ```
 
 For a `@generated` function you can use `enter_call((f, true), args...; kwargs...)`

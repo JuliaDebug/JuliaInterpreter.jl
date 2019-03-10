@@ -21,6 +21,13 @@ JuliaInterpreter.get_call_framecode
 JuliaInterpreter.optimize!
 ```
 
+## Frame traversal
+
+```@docs
+root
+leaf
+```
+
 ## Frame execution
 
 ```@docs
@@ -35,6 +42,8 @@ JuliaInterpreter.through_methoddef_or_done!
 JuliaInterpreter.evaluate_call!
 JuliaInterpreter.evaluate_foreigncall
 JuliaInterpreter.maybe_evaluate_builtin
+JuliaInterpreter.maybe_next_call!
+JuliaInterpreter.handle_err
 ```
 
 ## Breakpoints
@@ -45,6 +54,7 @@ breakpoint
 enable
 disable
 remove
+JuliaInterpreter.dummy_breakpoint
 ```
 
 ## Types
@@ -53,6 +63,7 @@ remove
 JuliaInterpreter.Frame
 JuliaInterpreter.FrameCode
 JuliaInterpreter.FrameData
+JuliaInterpreter.FrameInstance
 JuliaInterpreter.BreakpointState
 JuliaInterpreter.BreakpointRef
 ```
@@ -72,8 +83,9 @@ JuliaInterpreter.@lookup
 JuliaInterpreter.is_wrapper_call
 JuliaInterpreter.is_doc_expr
 JuliaInterpreter.is_global_ref
+CodeTracking.whereis
+JuliaInterpreter.linenumber
 JuliaInterpreter.statementnumber
 JuliaInterpreter.Variable
 JuliaInterpreter.locals
-CodeTracking.whereis
 ```

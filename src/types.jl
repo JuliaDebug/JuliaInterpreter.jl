@@ -185,10 +185,8 @@ function Base.show(io::IO, frame::Frame)
     range = get(io, :limit, false) ? (max(1, pc-2):min(ns, pc+2)) : (1:ns)
     first(range) > 1 && println(io, "⋮")
     print_framecode(io, frame.framecode; pc=pc, range=range)
-    last(range) < ns && print(io, "⋮")
-    for lv in locals(frame)
-        println(IOContext(io, :limit=>true, :compact=>true), '\n', lv)
-    end
+    last(range) < ns && print(io, "\n⋮")
+    print_vars(IOContext(io, :limit=>true, :compact=>true), locals(frame))
     if caller(frame) !== nothing
         print(io, "\ncaller: ", scopeof(caller(frame)))
     end

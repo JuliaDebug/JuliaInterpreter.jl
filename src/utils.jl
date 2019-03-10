@@ -225,9 +225,12 @@ function print_framecode(io::IO, framecode::FrameCode; pc=0, range=1:nstatements
     ndline = isempty(lt) ? 0 : ndigits(lt[end].line + offset)
     nullline = " "^ndline
     code = framecode_lines(framecode)
+    isfirst = true
     for (stmtidx, stmtline) in enumerate(code)
         stmtidx ∈ range || continue
         bpc = breakpointchar(framecode, stmtidx)
+        isfirst || print(io, '\n')
+        isfirst = false
         print(io, bpc, ' ')
         if iscolor
             color = stmtidx == pc ? Base.warn_color() : :normal
@@ -236,7 +239,7 @@ function print_framecode(io::IO, framecode::FrameCode; pc=0, range=1:nstatements
             print(io, lpad(stmtidx, ndstmt), stmtidx == pc ? '*' : ' ')
         end
         line = linenumber(framecode, stmtidx)
-        println(io, ' ', line === nothing ? nullline : lpad(line, ndline), "  ", stmtline)
+        print(io, ' ', line === nothing ? nullline : lpad(line, ndline), "  ", stmtline)
     end
 end
 
@@ -259,6 +262,13 @@ function locals(frame::Frame)
         end
     end
     return vars
+end
+
+function print_vars(io::IO, vars::Vector{Variable})
+    for v in vars
+        v.name == Symbol("#self#") && (isa(v.value, Type) || sizeof(v.value) == 0) && continue
+        print(io, '\n', v)
+    end
 end
 
 function show_stackloc(io::IO, frame)
