@@ -251,10 +251,14 @@ Return the local variables as a vector of `Variable`[@ref].
 function locals(frame::Frame)
     vars = Variable[]
     data, code = frame.framedata, frame.framecode
-    for (sym, idx) in data.last_reference
+    added = Set{Symbol}()
+    for sym in code.src.slotnames
+        sym ∈ added && continue
+        idx = get(data.last_reference, sym, 0)
+        idx == 0 && continue
         push!(vars, Variable(something(data.locals[idx]), sym, false))
+        push!(added, sym)
     end
-    reverse!(vars)
     if code.scope isa Method
         syms = sparam_syms(code.scope)
         for i in 1:length(syms)
