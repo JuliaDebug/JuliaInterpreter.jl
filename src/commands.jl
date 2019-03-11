@@ -165,10 +165,10 @@ or a `BreakpointRef` if it encountered a wrapper call. In the latter case, call 
 to obtain the new execution frame.
 """
 function next_line!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
-    initial = linenumber(frame)
-    first = true
     pc = frame.pc
-    while linenumber(frame, pc) == initial
+    initialline, initialfile = linenumber(frame, pc), getfile(frame, pc)
+    first = true
+    while linenumber(frame, pc) == initialline && getfile(frame, pc) == initialfile
         # If this is a return node, interrupt execution
         expr = pc_expr(frame, pc)
         (!first && isexpr(expr, :return)) && return pc
@@ -197,14 +197,19 @@ function next_line!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false
                 expr = pc_expr(frame)
             end
             # Signal that we've switched frames
-            switched && return BreakpointRef(frame.framecode, frame.pc)
+            if switched
+                pc = next_line!(recurse, frame, false)
+                pc === nothing && error("confusing next_line!")
+                lframe = leaf(frame)
+                return isa(pc, BreakpointRef) ? pc : BreakpointRef(lframe.framecode, lframe.pc)
+            end
         else
             pc = step_expr!(recurse, frame, istoplevel)
             (pc === nothing || isa(pc, BreakpointRef)) && return pc
         end
         shouldbreak(frame, pc) && return BreakpointRef(frame.framecode, pc)
     end
-    maybe_next_call!(recurse, frame, pc)
+    maybe_next_call!(recurse, frame, istoplevel)
 end
 next_line!(frame::Frame, istoplevel::Bool=false) = next_line!(finish_and_return!, frame, istoplevel)
 
