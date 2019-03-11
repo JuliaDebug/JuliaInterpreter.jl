@@ -128,4 +128,42 @@ end
         @test get_return(frame) == 3
     end
 
+    @testset "Exceptions" begin
+        # Don't break on caught exceptions
+        err_caught = Any[nothing]
+        function f_exc_outer()
+            try 
+                f_exc_inner()
+            catch err;
+                err_caught[1] = err
+            end
+            x = 1 + 1
+            return x
+        end
+        f_exc_inner() = error()
+        fr = JuliaInterpreter.enter_call(f_exc_outer)
+        fr, pc =  debug_command(fr, "s")
+        fr, pc =  debug_command(fr, "n")
+        fr, pc =  debug_command(fr, "n")
+        debug_command(fr, "finish")
+        @test get_return(fr) == 2
+        @test first(err_caught) isa ErrorException
+
+        # Rethrow on uncaught exceptions
+        f_outer() = g_inner()
+        g_inner() = error()
+        fr = JuliaInterpreter.enter_call(f_outer)
+        @test_throws ErrorException debug_command(fr, "finish")
+
+        # Break on error
+        try
+            JuliaInterpreter.break_on_error[] = true
+            fr = JuliaInterpreter.enter_call(f_outer)
+            fr, pc = debug_command(JuliaInterpreter.finish_and_return!, fr, "finish")
+            @test fr.framecode.scope.name == :error
+        finally
+            JuliaInterpreter.break_on_error[] = false
+        end
+    end
+
 # end

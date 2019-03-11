@@ -272,6 +272,22 @@ function maybe_reset_frame!(@nospecialize(recurse), frame::Frame, @nospecialize(
     return frame, pc
 end
 
+# Unwind the stack until an exc is eventually caught, thereby
+# returning the frame that caught the exception at the pc of the catch
+# or rethrow the error
+function unwind_exception(frame::Frame, exc)
+    while frame !== nothing
+        if !isempty(frame.framedata.exception_frames)
+            # Exception caught
+            frame.pc = frame.framedata.exception_frames[end]
+            frame.framedata.last_exception[] = exc
+            return frame
+        end
+        frame = frame.caller
+    end
+    rethrow(exc)
+end
+
 """
     ret = debug_command(recurse, frame, cmd, rootistoplevel=false)
     ret = debug_command(frame, cmd, rootistoplevel=false)
@@ -294,16 +310,19 @@ or one of the 'advanced' commands
 Unlike other commands, the default setting for `recurse` is `Compiled()`.
 """
 function debug_command(@nospecialize(recurse), frame::Frame, cmd::AbstractString, rootistoplevel::Bool=false)
-    # ::Union{Val{:nc},Val{:n},Val{:se}},
-    # Need try/catch
     istoplevel = rootistoplevel && frame.caller === nothing
-    cmd == "nc" && return maybe_reset_frame!(recurse, frame, next_call!(recurse, frame, istoplevel), rootistoplevel)
-    cmd == "n" && return maybe_reset_frame!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
     if cmd == "si"
         stmt = pc_expr(frame)
         cmd = is_call(stmt) ? "s" : "se"
     end
-    cmd == "se" && return maybe_reset_frame!(recurse, frame, step_expr!(recurse, frame, istoplevel), rootistoplevel)
+    try 
+        cmd == "nc" && return maybe_reset_frame!(recurse, frame, next_call!(recurse, frame, istoplevel), rootistoplevel)
+        cmd == "n" && return maybe_reset_frame!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
+        cmd == "se" && return maybe_reset_frame!(recurse, frame, step_expr!(recurse, frame, istoplevel), rootistoplevel)
+    catch err
+        frame = unwind_exception(frame, err)
+        return debug_command(recurse, frame, "nc", istoplevel)
+    end
     enter_generated = false
     if cmd == "sg"
         enter_generated = true
