@@ -217,7 +217,7 @@ function breakpoint(filename::AbstractString, line::Integer, args...)
         offset = line1 - method.line
         src = JuliaInterpreter.get_source(method)
         lastline = src.linetable[end]
-        if lastline.line + offset >= line
+        if getline(lastline) + offset >= line
             return breakpoint(method, line, args...)
         end
     end

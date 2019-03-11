@@ -138,6 +138,9 @@ function lineoffset(framecode::FrameCode)
     return offset
 end
 
+getline(ln) = isexpr(ln, :line) ? ln.args[1] : ln.line
+getfile(ln) = String(isexpr(ln, :line) ? ln.args[2] : ln.file)
+
 """
     loc = whereis(frame, pc=frame.pc)
 
@@ -149,7 +152,7 @@ function CodeTracking.whereis(framecode::FrameCode, pc)
     codeloc == 0 && return nothing
     lineinfo = framecode.src.linetable[codeloc]
     return isa(framecode.scope, Method) ?
-        whereis(lineinfo, framecode.scope) : string(lineinfo.file), lineinfo.line
+        whereis(lineinfo, framecode.scope) : getfile(lineinfo), getline(lineinfo)
 end
 CodeTracking.whereis(frame::Frame, pc=frame.pc) = whereis(frame.framecode, pc)
 
@@ -163,9 +166,16 @@ See [`CodeTracking.whereis`](@ref) for dynamic line information.
 function linenumber(framecode::FrameCode, pc)
     codeloc = codelocation(framecode.src, pc)
     codeloc == 0 && return nothing
-    return framecode.src.linetable[codeloc].line
+    return getline(framecode.src.linetable[codeloc])
 end
 linenumber(frame::Frame, pc=frame.pc) = linenumber(frame.framecode, pc)
+
+function getfile(framecode::FrameCode, pc)
+    codeloc = codelocation(framecode.src, pc)
+    codeloc == 0 && return nothing
+    return getfile(framecode.src.linetable[codeloc])
+end
+getfile(frame::Frame, pc=frame.pc) = getfile(frame.framecode, pc)
 
 function codelocation(code::CodeInfo, idx)
     codeloc = code.codelocs[idx]
@@ -183,7 +193,7 @@ Return the index of the first statement in `frame`'s `CodeInfo` that corresponds
 static line number `line`.
 """
 function statementnumber(framecode::FrameCode, line)
-    lineidx = searchsortedfirst(framecode.src.linetable, line; by=lin->isa(lin,Integer) ? lin : lin.line)
+    lineidx = searchsortedfirst(framecode.src.linetable, line; by=lin->isa(lin,Integer) ? lin : getline(lin))
     1 <= lineidx <= length(framecode.src.linetable) || throw(ArgumentError("line $line not found in $(framecode.scope)"))
     return searchsortedfirst(framecode.src.codelocs, lineidx)
 end
@@ -222,7 +232,7 @@ function print_framecode(io::IO, framecode::FrameCode; pc=0, range=1:nstatements
     ndstmt = ndigits(nstatements(framecode))
     lt = framecode.src.linetable
     offset = lineoffset(framecode)
-    ndline = isempty(lt) ? 0 : ndigits(lt[end].line + offset)
+    ndline = isempty(lt) ? 0 : ndigits(getline(lt[end]) + offset)
     nullline = " "^ndline
     code = framecode_lines(framecode)
     isfirst = true
