@@ -1,6 +1,6 @@
 """
 `Compiled` is a trait indicating that any `:call` expressions should be evaluated
-using Julia's normal compiled-code evaluation. The alternative is to pass `stack=JuliaStackFrame[]`,
+using Julia's normal compiled-code evaluation. The alternative is to pass `stack=Frame[]`,
 which will cause all calls to be evaluated via the interpreter.
 """
 struct Compiled end
@@ -11,21 +11,6 @@ struct NewSSAValue
     id::Int
 end
 
-"""
-    JuliaProgramCounter(next_stmt::Int)
-
-A wrapper specifying the index of the next statement in the lowered code to be executed.
-"""
-struct JuliaProgramCounter
-    next_stmt::Int
-end
-+(x::JuliaProgramCounter, y::Integer) = JuliaProgramCounter(x.next_stmt+y)
--(x::JuliaProgramCounter, y::Integer) = JuliaProgramCounter(x.next_stmt-y)
-convert(::Type{Int}, pc::JuliaProgramCounter) = pc.next_stmt
-isless(x::JuliaProgramCounter, y::Integer) = isless(x.next_stmt, y)
-
-Base.show(io::IO, pc::JuliaProgramCounter) = print(io, "JuliaProgramCounter(", pc.next_stmt, ')')
-
 # Breakpoint support
 truecondition(frame) = true
 falsecondition(frame) = false
@@ -35,9 +20,9 @@ const break_on_error = Ref(false)
     BreakpointState(isactive=true, condition=JuliaInterpreter.truecondition)
 
 `BreakpointState` represents a breakpoint at a particular statement in
-a `JuliaFrameCode`. `isactive` indicates whether the breakpoint is currently
+a `FrameCode`. `isactive` indicates whether the breakpoint is currently
 [`enable`](@ref)d or [`disable`](@ref)d. `condition` is a function that accepts
-a single `JuliaStackFrame`, and `condition(frame)` must return either
+a single `Frame`, and `condition(frame)` must return either
 `true` or `false`. Execution will stop at a breakpoint only if `isactive`
 and `condition(frame)` both evaluate as `true`. The default `condition` always
 returns `true`.
@@ -51,95 +36,168 @@ end
 BreakpointState(isactive::Bool) = BreakpointState(isactive, truecondition)
 BreakpointState() = BreakpointState(true)
 
+function breakpointchar(bps::BreakpointState)
+    if bps.isactive
+        return bps.condition === truecondition ? 'b' : 'c'  # unconditional : conditional
+    end
+    return bps.condition === falsecondition ? ' ' : 'd'     # no breakpoint : disabled
+end
+
 """
-`JuliaFrameCode` holds static information about a method or toplevel code.
-One `JuliaFrameCode` can be shared by many `JuliaStackFrame` calling frames.
+`FrameCode` holds static information about a method or toplevel code.
+One `FrameCode` can be shared by many calling `Frame`s.
 
 Important fields:
 - `scope`: the `Method` or `Module` in which this frame is to be evaluated
-- `code`: the `CodeInfo` object storing (optimized) lowered code
+- `src`: the `CodeInfo` object storing (optimized) lowered source code
 - `methodtables`: a vector, each entry potentially stores a "local method table" for the corresponding
-  `:call` expression in `code` (undefined entries correspond to statements that do not
+  `:call` expression in `src` (undefined entries correspond to statements that do not
   contain `:call` expressions)
 - `used`: a `BitSet` storing the list of SSAValues that get referenced by later statements.
 """
-struct JuliaFrameCode
+struct FrameCode
     scope::Union{Method,Module}
-    code::CodeInfo
+    src::CodeInfo
     methodtables::Vector{Union{Compiled,TypeMapEntry}} # line-by-line method tables for generic-function :call Exprs
     breakpoints::Vector{BreakpointState}
     used::BitSet
-    wrapper::Bool
-    generator::Bool
-    # Display options
-    fullpath::Bool
+    generator::Bool   # true if this is for the expression-generator of a @generated function
 end
 
-function JuliaFrameCode(frame::JuliaFrameCode; wrapper = frame.wrapper, generator=frame.generator, fullpath=frame.fullpath)
-    JuliaFrameCode(frame.scope, frame.code, frame.methodtables, frame.breakpoints, frame.used,
-                   wrapper, generator, fullpath)
-end
-
-function JuliaFrameCode(scope, code::CodeInfo; wrapper=false, generator=false, fullpath=true, optimize=true)
+function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
     if optimize
-        code, methodtables = optimize!(copy_codeinfo(code), moduleof(scope))
+        src, methodtables = optimize!(copy_codeinfo(src), moduleof(scope))
     else
-        code = copy_codeinfo(code)
-        methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(code.code))
+        src = copy_codeinfo(src)
+        methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(src.code))
     end
-    breakpoints = Vector{BreakpointState}(undef, length(code.code))
-    used = find_used(code)
-    return JuliaFrameCode(scope, code, methodtables, breakpoints, used, wrapper, generator, fullpath)
+    breakpoints = Vector{BreakpointState}(undef, length(src.code))
+    used = find_used(src)
+    return FrameCode(scope, src, methodtables, breakpoints, used, generator)
 end
+
+nstatements(framecode::FrameCode) = length(framecode.src.code)
+
+Base.show(io::IO, framecode::FrameCode) = print_framecode(io, framecode)
 
 """
-`JuliaStackFrame` represents the current execution state in a particular call frame.
+`FrameInstance` represents a method specialized for particular argument types.
+
+Fields:
+- `framecode`: the [`FrameCode`](@ref) for the method
+- `sparam_vals`: the static parameter values for the method
+"""
+struct FrameInstance
+    framecode::FrameCode
+    sparam_vals::SimpleVector
+end
+
+Base.show(io::IO, instance::FrameInstance) =
+    print(io, "FrameInstance(", scopeof(instance.framecode), ", ", instance.sparam_vals, ')')
+
+"""
+`FrameData` holds the arguments, local variables, and intermediate execution state
+in a particular call frame.
 
 Important fields:
-- `code`: the [`JuliaFrameCode`](@ref) for this frame
 - `locals`: a vector containing the input arguments and named local variables for this frame.
-  The indexing corresponds to the names in `frame.code.code.slotnames`.
+  The indexing corresponds to the names in the `slotnames` of the src. Use [`locals`](@ref)
+  to extract the current value of local variables.
 - `ssavalues`: a vector containing the
   [Static Single Assignment](https://en.wikipedia.org/wiki/Static_single_assignment_form)
   values produced at the current state of execution
 - `sparams`: the static type parameters, e.g., for `f(x::Vector{T}) where T` this would store
   the value of `T` given the particular input `x`.
-- `pc`: the [`JuliaProgramCounter`](@ref) that typically represents the current position
-  during execution. However, note that some internal functions instead maintain the `pc`
-  as a local variable, and only update the frame's `pc` when pushing a frame on the stack.
+- `exception_frames`: a list of indexes to `catch` blocks for handling exceptions within
+  the current frame. The active handler is the last one on the list.
+- `last_exception`: the exception `throw`n by this frame or one of its callees.
 """
-struct JuliaStackFrame
-    code::JuliaFrameCode
+struct FrameData
     locals::Vector{Union{Nothing,Some{Any}}}
     ssavalues::Vector{Any}
     sparams::Vector{Any}
     exception_frames::Vector{Int}
     last_exception::Base.RefValue{Any}
-    pc::Base.RefValue{JuliaProgramCounter}
     # A vector from names to the slotnumber of that name
     # for which a reference was last encountered.
     last_reference::Dict{Symbol,Int}
     callargs::Vector{Any}  # a temporary for processing arguments of :call exprs
 end
 
-function JuliaStackFrame(framecode::JuliaFrameCode, frame::JuliaStackFrame, pc::JuliaProgramCounter; kwargs...)
-    pcref = frame.pc
-    pcref[] = pc
-    if !isempty(kwargs)
-        framecode = JuliaFrameCode(framecode; kwargs...)
+
+"""
+`Frame` represents the current execution state in a particular call frame.
+Fields:
+- `framecode`: the [`FrameCode`] for this frame
+- `framedata`: the [`FrameData`] for this frame
+- `pc`: the program counter (integer index of the next statment to be evaluated) for this frame
+- `caller`: the parent caller of this frame, or `nothing`
+- `callee`: the frame called by this one, or `nothing`
+"""
+mutable struct Frame
+    framecode::FrameCode
+    framedata::FrameData
+    pc::Int
+    caller::Union{Frame,Nothing}
+    callee::Union{Frame,Nothing}
+end
+Frame(framecode, framedata, pc=1, caller=nothing) = Frame(framecode, framedata, pc, caller, nothing)
+
+caller(frame) = frame.caller
+callee(frame) = frame.callee
+
+function traverse(f, frame)
+    while f(frame) !== nothing
+        frame = f(frame)
     end
-    JuliaStackFrame(framecode, frame.locals,
-                    frame.ssavalues, frame.sparams,
-                    frame.exception_frames, frame.last_exception,
-                    pcref, frame.last_reference, frame.callargs)
+    return frame
 end
 
-JuliaStackFrame(frame::JuliaStackFrame, pc::JuliaProgramCounter; kwargs...) =
-    JuliaStackFrame(frame.code, frame, pc; kwargs...)
+"""
+    rframe = root(frame)
+
+Return the initial frame in the call stack.
+"""
+root(frame) = traverse(caller, frame)
+
+"""
+    lframe = leaf(frame)
+
+Return the deepest callee in the call stack.
+"""
+leaf(frame) = traverse(callee, frame)
+
+function truncate!(frame)
+    frame0 = frame
+    frame = frame.callee
+    while frame !== nothing
+        frame.caller.callee = nothing
+        recycle(frame)
+        frame = frame.callee
+    end
+    return frame0
+end
+
+function Base.show(io::IO, frame::Frame)
+    println(io, "Frame for ", scopeof(frame))
+    pc = frame.pc
+    ns = nstatements(frame.framecode)
+    range = get(io, :limit, false) ? (max(1, pc-2):min(ns, pc+2)) : (1:ns)
+    first(range) > 1 && println(io, "⋮")
+    print_framecode(io, frame.framecode; pc=pc, range=range)
+    last(range) < ns && print(io, "\n⋮")
+    print_vars(IOContext(io, :limit=>true, :compact=>true), locals(frame))
+    if caller(frame) !== nothing
+        print(io, "\ncaller: ", scopeof(caller(frame)))
+    end
+    if callee(frame) !== nothing
+        print(io, "\ncallee: ", scopeof(callee(frame)))
+    end
+end
 
 """
 `Variable` is a struct representing a variable with an asigned value.
-By calling the function `locals`[@ref] on a `JuliaStackFrame`[@ref] a
+By calling the function `locals`[@ref] on a `Frame`[@ref] a
 `Vector` of `Variable`'s is returned.
 
 Important fields:
@@ -165,9 +223,13 @@ struct Unassigned end
 
 A reference to a breakpoint at a particular statement index `stmtidx` in `framecode`.
 If the break was due to an error, supply that as well.
+
+Commands that execute complex control-flow (e.g., `next_line!`) may also return a
+`BreakpointRef` to indicate that the execution stack switched frames, even when no
+breakpoint has been set at the corresponding statement.
 """
 struct BreakpointRef
-    framecode::JuliaFrameCode
+    framecode::FrameCode
     stmtidx::Int
     err
 end
@@ -176,7 +238,7 @@ BreakpointRef(framecode, stmtidx) = BreakpointRef(framecode, stmtidx, nothing)
 function Base.show(io::IO, bp::BreakpointRef)
     if checkbounds(Bool, bp.framecode.breakpoints, bp.stmtidx)
         lineno = linenumber(bp.framecode, bp.stmtidx)
-        print(io, "breakpoint(", bp.framecode.scope, ", ", lineno)
+        print(io, "breakpoint(", bp.framecode.scope, ", line ", lineno)
     else
         print(io, "breakpoint(", bp.framecode.scope, ", %", bp.stmtidx)
     end

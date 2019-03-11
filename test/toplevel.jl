@@ -17,7 +17,7 @@ end
     @test JuliaInterpreter.is_doc_expr(ex.args[2])
     @test !JuliaInterpreter.is_doc_expr(:(1+1))
 
-    @test isa(JuliaInterpreter.prepare_thunk(Main, :(export foo)), JuliaStackFrame)
+    @test isa(JuliaInterpreter.prepare_thunk(Main, :(export foo)), Frame)
 
     @test !isdefined(Main, :JIInvisible)
     JuliaInterpreter.split_expressions(JIVisible, :(module JIInvisible f() = 1 end))
@@ -55,12 +55,11 @@ end
 module Toplevel end
 
 @testset "toplevel" begin
-    stack = JuliaInterpreter.JuliaStackFrame[]
     modexs, _ = JuliaInterpreter.split_expressions(Toplevel, read_and_parse("toplevel_script.jl"))
     for modex in modexs
         frame = JuliaInterpreter.prepare_thunk(modex)
         while true
-            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+            JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
         end
     end
 
@@ -211,10 +210,10 @@ module Toplevel end
    for modex in modexs
        frame = JuliaInterpreter.prepare_thunk(modex)
        while true
-           JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+           JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
        end
    end
-   @test Toplevel.Testing.JuliaStackFrame === JuliaStackFrame
+   @test Toplevel.Testing.Frame === Frame
 end
 
 # incremental interpretation solves world-age problems
@@ -249,11 +248,10 @@ ex = quote
     end
 end
 modexs, _ = JuliaInterpreter.split_expressions(IncTest, ex)
-stack = JuliaStackFrame[]
 for (i, modex) in enumerate(modexs)
     frame = JuliaInterpreter.prepare_thunk(modex)
     while true
-        JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+        JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
     end
     if i == length(modexs)
         @test isa(JuliaInterpreter.get_return(frame), Test.DefaultTestSet)
@@ -267,11 +265,10 @@ end
               EnumChild1
           end))
     modexs, _ = JuliaInterpreter.split_expressions(Toplevel, ex)
-    stack = JuliaStackFrame[]
     for modex in modexs
         frame = JuliaInterpreter.prepare_thunk(modex)
         while true
-            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+            JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
         end
     end
     @test isa(Toplevel.EnumChild1, Toplevel.EnumParent)
@@ -289,12 +286,11 @@ end
     ex2 = quote
         ret[] = map(x->parse(Int16, x), AbstractString[])
     end
-    stack = JuliaStackFrame[]
     modexs, _ = JuliaInterpreter.split_expressions(LowerAnon, ex1)
     for modex in modexs
         frame = JuliaInterpreter.prepare_thunk(modex)
         while true
-            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+            JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
         end
     end
     @test isa(LowerAnon.ret[], Vector{Int16})
@@ -303,7 +299,7 @@ end
     for modex in modexs
         frame = JuliaInterpreter.prepare_thunk(modex)
         while true
-            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+            JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
         end
     end
     @test isa(LowerAnon.ret[], Vector{Int16})
@@ -316,7 +312,7 @@ end
     for modex in modexs
         frame = JuliaInterpreter.prepare_thunk(modex)
         while true
-            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+            JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
         end
     end
     @test isa(LowerAnon.BitIntegerType, Union)
@@ -330,7 +326,7 @@ end
     for modex in modexs
         frame = JuliaInterpreter.prepare_thunk(modex)
         while true
-            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+            JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
         end
     end
     @test LowerAnon.z == [4,7,12]
@@ -363,7 +359,7 @@ end
     for (mod, ex) in modexs
         frame = JuliaInterpreter.prepare_thunk(mod, ex)
         while true
-            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+            JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
         end
     end
     @test length(docexprs[Toplevel]) == 2

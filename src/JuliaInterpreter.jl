@@ -12,8 +12,8 @@ using Random.DSFMT
 using InteractiveUtils
 using CodeTracking
 
-export @interpret, Compiled, JuliaStackFrame,
-       Breakpoints, breakpoint, @breakpoint, breakpoints, enable, disable, remove
+export @interpret, Compiled, Frame, root, leaf,
+       BreakpointRef, breakpoint, @breakpoint, breakpoints, enable, disable, remove
 
 module CompiledCalls
 # This module is for handling intrinsics that must be compiled (llvmcall)
@@ -26,6 +26,7 @@ include("localmethtable.jl")
 include("interpret.jl")
 include("builtins-julia$(Int(VERSION.major)).$(Int(VERSION.minor)).jl")
 include("optimize.jl")
+include("commands.jl")
 include("breakpoints.jl")
 
 function set_compiled_methods()

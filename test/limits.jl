@@ -20,19 +20,19 @@ using Test
     frame = JuliaInterpreter.prepare_thunk(modexs[2])
     i = 0
     for k = 1:3
-        i = findnext(stmt->isexpr(stmt, :(=)), frame.code.code.code, i+1)
+        i = findnext(stmt->isexpr(stmt, :(=)), frame.framecode.src.code, i+1)
     end
     @test Aborted(frame, i).at.line == 3
     # Check interior of let block
     frame = JuliaInterpreter.prepare_thunk(modexs[3])
     i = 0
     for k = 1:2
-        i = findnext(stmt->isexpr(stmt, :(=)), frame.code.code.code, i+1)
+        i = findnext(stmt->isexpr(stmt, :(=)), frame.framecode.src.code, i+1)
     end
     @test Aborted(frame, i).at.line == 6
     # Check conditional
     frame = JuliaInterpreter.prepare_thunk(modexs[4])
-    i = findfirst(stmt->isexpr(stmt, :gotoifnot), frame.code.code.code) + 1
+    i = findfirst(stmt->isexpr(stmt, :gotoifnot), frame.framecode.src.code) + 1
     @test Aborted(frame, i).at.line == 9
     # Check macro
     frame = JuliaInterpreter.prepare_thunk(modexs[5])
@@ -42,7 +42,6 @@ end
 module EvalLimited end
 
 @testset "evaluate_limited" begin
-    stack = JuliaStackFrame[]
     aborts = Aborted[]
     ex = Base.parse_input_line("""
     s = 0
@@ -55,10 +54,10 @@ module EvalLimited end
     nstmts = 1000  # enough to ensure it finishes
     for modex in modexs
         frame = JuliaInterpreter.prepare_thunk(modex)
-        @test isa(frame, JuliaStackFrame)
+        @test isa(frame, Frame)
         nstmtsleft = nstmts
         while true
-            ret, nstmtsleft = evaluate_limited!(stack, frame, nstmtsleft)
+            ret, nstmtsleft = evaluate_limited!(frame, nstmtsleft, true)
             isa(ret, Some{Any}) && break
             isa(ret, Aborted) && push!(aborts, ret)
         end
@@ -82,10 +81,10 @@ module EvalLimited end
     nstmts = 100 # enough to ensure it gets into the loop but doesn't finish
     for modex in modexs
         frame = JuliaInterpreter.prepare_thunk(modex)
-        @test isa(frame, JuliaStackFrame)
+        @test isa(frame, Frame)
         nstmtsleft = nstmts
         while true
-            ret, nstmtsleft = evaluate_limited!(Compiled(), frame, nstmtsleft)
+            ret, nstmtsleft = evaluate_limited!(Compiled(), frame, nstmtsleft, true)
             isa(ret, Some{Any}) && break
             isa(ret, Aborted) && (push!(aborts, ret); break)
         end
@@ -99,10 +98,10 @@ module EvalLimited end
     modexs, _ = JuliaInterpreter.split_expressions(EvalLimited, ex)
     for modex in modexs
         frame = JuliaInterpreter.prepare_thunk(modex)
-        @test isa(frame, JuliaStackFrame)
+        @test isa(frame, Frame)
         nstmtsleft = nstmts
         while true
-            ret, nstmtsleft = evaluate_limited!(stack, frame, nstmtsleft)
+            ret, nstmtsleft = evaluate_limited!(frame, nstmtsleft, true)
             isa(ret, Some{Any}) && break
             isa(ret, Aborted) && (push!(aborts, ret); break)
         end

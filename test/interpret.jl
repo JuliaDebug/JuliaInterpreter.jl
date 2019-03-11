@@ -2,11 +2,6 @@ using JuliaInterpreter
 using JuliaInterpreter: enter_call_expr
 using Test, InteractiveUtils, CodeTracking
 
-pc = JuliaInterpreter.JuliaProgramCounter(2)
-@test convert(Int, pc) == 2
-@test convert(Int, pc+1) == 3
-@test convert(Int, pc-1) == 1
-
 module Isolated end
 
 function summer(A)
@@ -104,9 +99,9 @@ end
 @test @interpret(Array.body.body.name) === Array.body.body.name
 @test @interpret(Vararg.body.body.name) === Vararg.body.body.name
 frame = JuliaInterpreter.prepare_thunk(Main, :(Vararg.body.body.name))
-@test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) === Vararg.body.body.name
+@test JuliaInterpreter.finish_and_return!(frame, true) === Vararg.body.body.name
 frame = JuliaInterpreter.prepare_thunk(Base, :(Union{AbstractChar,Tuple{Vararg{<:AbstractChar}},AbstractVector{<:AbstractChar},Set{<:AbstractChar}}))
-@test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) isa Union
+@test JuliaInterpreter.finish_and_return!(frame, true) isa Union
 
 # issue #8
 ex = quote
@@ -116,7 +111,7 @@ ex = quote
     end
 end
 frame = JuliaInterpreter.prepare_thunk(Base, ex)
-JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
+JuliaInterpreter.finish_and_return!(frame, true)
 
 # ccall with two Symbols
 ex = quote
@@ -125,7 +120,7 @@ ex = quote
     end
 end
 frame = JuliaInterpreter.prepare_thunk(Main, ex)
-JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
+JuliaInterpreter.finish_and_return!(frame, true)
 
 @test @interpret Base.Math.DoubleFloat64(-0.5707963267948967, 4.9789962508669555e-17).hi ≈ -0.5707963267948967
 
@@ -136,7 +131,7 @@ ex = quote   # in lowered code, cf is a Symbol
     ccall(cf, Int, (Int, Int), 1, 2)
 end
 frame = JuliaInterpreter.prepare_thunk(Main, ex)
-@test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) == 1
+@test JuliaInterpreter.finish_and_return!(frame, true) == 1
 ex = quote
     let   # in lowered code, cf is a SlotNumber
         cf = @eval @cfunction(fcfun, Int, (Int, Int))
@@ -144,7 +139,7 @@ ex = quote
     end
 end
 frame = JuliaInterpreter.prepare_thunk(Main, ex)
-@test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) == 1
+@test JuliaInterpreter.finish_and_return!(frame, true) == 1
 function cfcfun()
     cf = @cfunction(fcfun, Int, (Int, Int))
     ccall(cf, Int, (Int, Int), 1, 2)
@@ -164,14 +159,14 @@ ex = quote
     end
 end
 frame = JuliaInterpreter.prepare_thunk(Main, ex)
-JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
+JuliaInterpreter.finish_and_return!(frame, true)
 
 # Core.Compiler
 ex = quote
     length(code_typed(fcfun, (Int, Int)))
 end
 frame = JuliaInterpreter.prepare_thunk(Main, ex)
-@test JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true) == 1
+@test JuliaInterpreter.finish_and_return!(frame, true) == 1
 
 # copyast
 ex = quote
@@ -202,7 +197,7 @@ ex = quote
     end
 end
 frame = JuliaInterpreter.prepare_thunk(Isolated, ex)
-JuliaInterpreter.finish_and_return!(JuliaStackFrame[], frame, true)
+JuliaInterpreter.finish_and_return!(frame, true)
 @test Isolated.CodegenParams(cached=false).cached === Cint(false)
 
 # cglobal
@@ -221,9 +216,9 @@ function f(x)
     return x*x
 end
 frame = JuliaInterpreter.enter_call(f, 3)
-@test whereis(frame, JuliaInterpreter.JuliaProgramCounter(1))[2] == defline + 1
-@test whereis(frame, JuliaInterpreter.JuliaProgramCounter(3))[2] == defline + 4
-@test whereis(frame, JuliaInterpreter.JuliaProgramCounter(5))[2] == defline + 6
+@test whereis(frame, 1)[2] == defline + 1
+@test whereis(frame, 3)[2] == defline + 4
+@test whereis(frame, 5)[2] == defline + 6
 m = which(iterate, Tuple{Dict}) # this method has `nothing` as its first statement and codeloc == 0
 framecode = JuliaInterpreter.get_framecode(m)
 @test JuliaInterpreter.linenumber(framecode, 1) == m.line
@@ -361,13 +356,13 @@ end
 @testset "getfield replacements" begin
     f_gf(x) = false ? some_undef_var_zzzzzzz : x
     @test @interpret f_gf(2) == 2
-  
+
     function g_gf()
         eval(:(z = 2))
         return z
     end
     @test @interpret g_gf() == 2
-    
+
     global q_gf = 0
     function h_gf()
         eval(:(q_gf = 2))

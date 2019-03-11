@@ -161,16 +161,16 @@ function optimize!(code::CodeInfo, mod::Module)
                 nargs = length(stmt.args)-4
                 argnames = [Symbol("arg", string(i)) for i = 1:nargs]
                 # Run a mini-interpreter to extract the types
-                framecode = JuliaFrameCode(CompiledCalls, code; optimize=false)
-                frame = prepare_locals(framecode, [])
+                framecode = FrameCode(CompiledCalls, code; optimize=false)
+                frame = Frame(framecode, prepare_framedata(framecode, []))
                 idxstart = idx
                 for i = 2:4
                     idxstart = smallest_ref(code.code, stmt.args[i], idxstart)
                 end
-                frame.pc[] = JuliaProgramCounter(idxstart)
+                frame.pc = idxstart
                 while true
                     pc = step_expr!(Compiled(), frame)
-                    convert(Int, pc) == idx && break
+                    pc == idx && break
                     pc === nothing && error("this should never happen")
                 end
                 str, RetType, ArgType = @lookup(frame, stmt.args[2]), @lookup(frame, stmt.args[3]), @lookup(frame, stmt.args[4])
