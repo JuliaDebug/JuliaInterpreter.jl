@@ -12,4 +12,5 @@ end
     include("toplevel.jl")
     include("limits.jl")
     include("breakpoints.jl")
+    include("debug.jl")
 end
