@@ -1,8 +1,8 @@
 """
-    ret = finish!(recurse, frame, istoplevel=false)
-    ret = finish!(frame, istoplevel=false)
+    pc = finish!(recurse, frame, istoplevel=false)
+    pc = finish!(frame, istoplevel=false)
 
-Run `frame` until execution terminates. `ret` is either `nothing` (if execution terminates
+Run `frame` until execution terminates. `pc` is either `nothing` (if execution terminates
 when it hits a `return` statement) or a reference to a breakpoint.
 In the latter case, `leaf(frame)` returns the frame in which it hit the breakpoint.
 
@@ -22,8 +22,8 @@ finish!(frame::Frame, istoplevel::Bool=false) = finish!(finish_and_return!, fram
     ret = finish_and_return!(recurse, frame, istoplevel::Bool=false)
     ret = finish_and_return!(frame, istoplevel::Bool=false)
 
-Call [`JuliaInterpreter.finish!`](@ref) and pass back the return value. If execution
-pauses at a breakpoint, the reference to the breakpoint is returned.
+Call [`JuliaInterpreter.finish!`](@ref) and pass back the return value `ret`. If execution
+pauses at a breakpoint, `ret` is the reference to the breakpoint.
 """
 function finish_and_return!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
     pc = finish!(recurse, frame, istoplevel)
@@ -33,26 +33,29 @@ end
 finish_and_return!(frame::Frame, istoplevel::Bool=false) = finish_and_return!(finish_and_return!, frame, istoplevel)
 
 """
-    bpref = dummy_breakpoint(recurse, frame::Frame)
+    bpref = dummy_breakpoint(recurse, frame::Frame, istoplevel)
 
-Return a fake breakpoint. This can be useful as the `recurse` argument to `evaluate_call!`
-(or any of the higher-order commands) to ensure that you return immediately after stepping
-into a call.
+Return a fake breakpoint. `dummy_breakpoint` can be useful as the `recurse` argument to
+`evaluate_call!` (or any of the higher-order commands) to ensure that you return immediately
+after stepping into a call.
 """
-dummy_breakpoint(@nospecialize(recurse), frame::Frame) = BreakpointRef(frame.framecode, 0)
+dummy_breakpoint(@nospecialize(recurse), frame::Frame, istoplevel) = BreakpointRef(frame.framecode, 0)
 
 """
-    ret = finish_stack!(recurse, frame, istoplevel=false)
-    ret = finish_stack!(frame, istoplevel=false)
+    ret = finish_stack!(recurse, frame, rootistoplevel=false)
+    ret = finish_stack!(frame, rootistoplevel=false)
 
 Unwind the callees of `frame`, finishing each before returning to the caller.
-`frame` itself is also finished
-If execution hits a breakpoint, `ret` will be a reference to the breakpoint.
+`frame` itself is also finished. `rootistoplevel` should be true if the root frame is top-level.
+
+`ret` is typically the returned value. If execution hits a breakpoint, `ret` will be a
+reference to the breakpoint.
 """
-function finish_stack!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
+function finish_stack!(@nospecialize(recurse), frame::Frame, rootistoplevel::Bool=false)
     frame0 = frame
     frame = leaf(frame)
     while true
+        istoplevel = rootistoplevel && frame.caller === nothing
         ret = finish_and_return!(recurse, frame, istoplevel)
         isa(ret, BreakpointRef) && return ret
         frame === frame0 && return ret
@@ -93,14 +96,22 @@ end
 next_until!(predicate, frame::Frame, istoplevel::Bool=false) =
     next_until!(predicate, finish_and_return!, frame, istoplevel)
 
+"""
+    pc = next_call!(recurse, frame, istoplevel=false)
+    pc = next_call!(frame, istoplevel=false)
+
+Execute the current statement. Continue stepping through `frame` until the next
+`:return` or `:call` expression.
+"""
 next_call!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false) =
     next_until!(is_call_or_return, recurse, frame, istoplevel)
 next_call!(frame::Frame, istoplevel::Bool=false) = next_call!(finish_and_return!, frame, istoplevel)
 
 """
-    maybe_next_call!(predicate, frame, istoplevel=false)
+    pc = maybe_next_call!(recurse, frame, istoplevel=false)
+    pc = maybe_next_call!(frame, istoplevel=false)
 
-Return the current statement of `frame` if it is a `:return` or `:call` expression.
+Return the current program counter of `frame` if it is a `:return` or `:call` expression.
 Otherwise, step through the statements of `frame` until the next `:return` or `:call` expression.
 """
 function maybe_next_call!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
@@ -112,8 +123,8 @@ maybe_next_call!(frame::Frame, istoplevel::Bool=false) =
     maybe_next_call!(finish_and_return!, frame, istoplevel)
 
 """
-    through_methoddef_or_done!(recurse, frame)
-    through_methoddef_or_done!(frame)
+    pc = through_methoddef_or_done!(recurse, frame)
+    pc = through_methoddef_or_done!(frame)
 
 Runs `frame` at top level until it either finishes (e.g., hits a `return` statement)
 or defines a new method.
@@ -144,6 +155,15 @@ function changed_line!(expr, line, fls)
     end
 end
 
+"""
+    pc = next_line!(recurse, frame, istoplevel=false)
+    pc = next_line!(frame, istoplevel=false)
+
+Execute until reaching the first call of the next line of the source code.
+Upon return, `pc` is either the new program counter, `nothing` if a `return` is reached,
+or a `BreakpointRef` if it encountered a wrapper call. In the latter case, call `leaf(frame)`
+to obtain the new execution frame.
+"""
 function next_line!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
     initial = linenumber(frame)
     first = true

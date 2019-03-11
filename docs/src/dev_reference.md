@@ -43,6 +43,8 @@ JuliaInterpreter.evaluate_call!
 JuliaInterpreter.evaluate_foreigncall
 JuliaInterpreter.maybe_evaluate_builtin
 JuliaInterpreter.maybe_next_call!
+JuliaInterpreter.next_line!
+JuliaInterpreter.maybe_step_through_wrapper!
 JuliaInterpreter.handle_err
 ```
 
