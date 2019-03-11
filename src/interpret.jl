@@ -520,6 +520,8 @@ function handle_err(@nospecialize(recurse), frame, err)
         # See if the current frame or a frame in the stack will catch this exception,
         # otherwise this exception would have been thrown to the user and we should
         # return a breakpoint
+        # Note: this is potentially O(N^2) in the stack depth. Consider storing `exception_caught`
+        # in the caller frames.
         exception_caught = false
         fr = frame
         while fr !== nothing

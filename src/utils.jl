@@ -2,14 +2,14 @@
 
 # Note: to avoid dynamic dispatch, many of these are coded as a single method using isa statements
 
-function scopeof(x)::Union{Method,Module}
+function scopeof(@nospecialize(x))::Union{Method,Module}
     (isa(x, Method) || isa(x, Module)) && return x
     isa(x, FrameCode) && return x.scope
     isa(x, Frame) && return x.framecode.scope
     error("unknown scope for ", x)
 end
 
-function moduleof(x)
+function moduleof(@nospecialize(x))
     s = scopeof(x)
     return isa(s, Module) ? s : s.module
 end
@@ -21,11 +21,11 @@ end
 
 _Typeof(x) = isa(x,Type) ? Type{x} : typeof(x)
 
-function to_function(x)
+function to_function(@nospecialize(x))
     isa(x, GlobalRef) ? getfield(x.mod, x.name) : x
 end
 
-function whichtt(tt)
+function whichtt(@nospecialize(tt))
     m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), tt, typemax(UInt))
     m === nothing && return nothing
     return m.func::Method
@@ -48,8 +48,8 @@ separate_kwargs(args...; kwargs...) = (args, kwargs.data)
 
 pc_expr(src::CodeInfo, pc) = src.code[pc]
 pc_expr(framecode::FrameCode, pc) = pc_expr(framecode.src, pc)
-pc_expr(frame, pc) = pc_expr(frame.framecode, pc)
-pc_expr(frame) = pc_expr(frame, frame.pc)
+pc_expr(frame::Frame, pc) = pc_expr(frame.framecode, pc)
+pc_expr(frame::Frame) = pc_expr(frame, frame.pc)
 
 function find_used(code::CodeInfo)
     used = BitSet()
@@ -67,28 +67,28 @@ end
 
 ## Predicates
 
-is_goto_node(node) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
+is_goto_node(@nospecialize(node)) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
 
-is_loc_meta(expr, kind) = isexpr(expr, :meta) && length(expr.args) >= 1 && expr.args[1] === kind
+is_loc_meta(@nospecialize(expr), @nospecialize(kind)) = isexpr(expr, :meta) && length(expr.args) >= 1 && expr.args[1] === kind
 
 """
     is_global_ref(g, mod, name)
 
 Tests whether `g` is equal to `GlobalRef(mod, name)`.
 """
-is_global_ref(g, mod, name) = isa(g, GlobalRef) && g.mod === mod && g.name == name
+is_global_ref(@nospecialize(g), mod::Module, name::Symbol) = isa(g, GlobalRef) && g.mod === mod && g.name == name
 
-function is_function_def(ex)
+function is_function_def(@nospecialize(ex))
     (isexpr(ex, :(=)) && isexpr(ex.args[1], :call)) ||
     isexpr(ex,:function)
 end
 
-function is_call(node)
+function is_call(@nospecialize(node))
     isexpr(node, :call) ||
     (isexpr(node, :(=)) && (isexpr(node.args[2], :call)))
 end
 
-is_call_or_return(node) = is_call(node) || isexpr(node, :return)
+is_call_or_return(@nospecialize(node)) = is_call(node) || isexpr(node, :return)
 
 is_dummy(bpref::BreakpointRef) = bpref.stmtidx == 0 && bpref.err === nothing
 
@@ -96,12 +96,12 @@ is_dummy(bpref::BreakpointRef) = bpref.stmtidx == 0 && bpref.err === nothing
 Determine whether we are calling a function for which the current function
 is a wrapper (either because of optional arguments or because of keyword arguments).
 """
-function is_wrapper_call(expr)
+function is_wrapper_call(@nospecialize(expr))
     isexpr(expr, :(=)) && (expr = expr.args[2])
     isexpr(expr, :call) && any(x->x==SlotNumber(1), expr.args)
 end
 
-function is_generated(meth)
+function is_generated(meth::Method)
     isdefined(meth, :generator)
 end
 
@@ -110,7 +110,7 @@ end
 
 Test whether expression `ex` is a `@doc` expression.
 """
-function is_doc_expr(ex)
+function is_doc_expr(@nospecialize(ex))
     docsym = Symbol("@doc")
     if isexpr(ex, :macrocall)
         a = ex.args[1]
@@ -124,7 +124,7 @@ function is_doc_expr(ex)
     return false
 end
 
-is_leaf(frame) = frame.callee === nothing
+is_leaf(frame::Frame) = frame.callee === nothing
 
 ## Location info
 

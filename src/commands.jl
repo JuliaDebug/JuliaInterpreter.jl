@@ -10,7 +10,6 @@ In the latter case, `leaf(frame)` returns the frame in which it hit the breakpoi
 by normal dispatch, whereas the default `recurse = finish_and_return!` uses recursive interpretation.
 """
 function finish!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
-    local pc
     while true
         pc = step_expr!(recurse, frame, istoplevel)
         (pc === nothing || isa(pc, BreakpointRef)) && return pc
