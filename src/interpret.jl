@@ -310,6 +310,20 @@ function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
     end
 end
 
+function maybe_assign!(frame, @nospecialize(stmt), @nospecialize(val))
+    pc = frame.pc
+    if isexpr(stmt, :(=))
+        lhs = stmt.args[1]
+        do_assignment!(frame, lhs, val)
+    elseif isassign(frame, pc)
+        lhs = getlhs(pc)
+        do_assignment!(frame, lhs, val)
+    end
+    return nothing
+end
+maybe_assign!(frame, @nospecialize(val)) = maybe_assign!(frame, pc_expr(frame), val)
+
+
 function eval_rhs(@nospecialize(recurse), frame, node::Expr)
     head = node.head
     if head == :new

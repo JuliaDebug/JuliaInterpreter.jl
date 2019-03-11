@@ -207,3 +207,123 @@ function next_line!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false
     maybe_next_call!(recurse, frame, pc)
 end
 next_line!(frame::Frame, istoplevel::Bool=false) = next_line!(finish_and_return!, frame, istoplevel)
+
+"""
+    cframe = maybe_step_through_wrapper!(recurse, frame)
+    cframe = maybe_step_through_wrapper!(frame)
+
+Return the new frame of execution, potentially stepping through "wrapper" methods like those
+that supply default positional arguments or handle keywords. `cframe` is the leaf frame from
+which execution should start.
+"""
+function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
+    code = frame.framecode
+    stmts, scope = code.src.code, code.scope::Method
+    length(stmts) < 2 && return frame
+    last = stmts[end-1]
+    isexpr(last, :(=)) && (last = last.args[2])
+    is_kw = isa(scope, Method) && startswith(String(Base.unwrap_unionall(scope.sig).parameters[1].name.name), "#kw")
+    if is_kw || isexpr(last, :call) && any(x->x==Core.SlotNumber(1), last.args)
+        # If the last expr calls #self# or passes it to an implementation method,
+        # this is a wrapper function that we might want to step through
+        while frame.pc != length(stmts)-1
+            pc = next_call!(recurse, frame, false)  # since we're in a Method we're not at toplevel
+        end
+        ret = evaluate_call!(dummy_breakpoint, frame, last)
+        @assert isa(ret, BreakpointRef)
+        return maybe_step_through_wrapper!(recurse, callee(frame))
+    end
+    return frame
+end
+maybe_step_through_wrapper!(frame::Frame) = maybe_step_through_wrapper!(finish_and_return!, frame)
+
+"""
+    ret = maybe_reset_frame!(recurse, frame, pc, rootistoplevel)
+
+Perform a return to the caller, or descend to the level of a breakpoint.
+`pc` is the return state from the previous command (e.g., `next_call!` or similar).
+`rootistoplevel` should be true if the root frame is top-level.
+
+`ret` will be `nothing` if we have just completed a top-level frame. Otherwise,
+
+    cframe, cpc = ret
+
+where `cframe` is the frame from which execution should continue and `cpc` is the state
+of `cframe` (the program counter, a `BreakpointRef`, or `nothing`).
+"""
+function maybe_reset_frame!(@nospecialize(recurse), frame::Frame, @nospecialize(pc), rootistoplevel::Bool)
+    isa(pc, BreakpointRef) && return leaf(frame), pc
+    if pc === nothing
+        val = get_return(frame)
+        recycle(frame)
+        frame = caller(frame)
+        frame === nothing && return nothing
+        frame.callee = nothing
+        maybe_assign!(frame, val)
+        frame.pc += 1
+        pc = maybe_next_call!(recurse, frame, rootistoplevel && frame.caller===nothing)
+        return maybe_reset_frame!(recurse, frame, pc, rootistoplevel)
+    end
+    return frame, pc
+end
+
+"""
+    ret = debug_command(recurse, frame, cmd, rootistoplevel=false)
+    ret = debug_command(frame, cmd, rootistoplevel=false)
+
+Perform one "debugger" command. `cmd` should be one of:
+
+- "n": advance to the next line
+- "s": step into the next call
+- "c": continue execution until termination or reaching a breakpoint
+- "finish": finish the current frame and return to the parent
+
+or one of the 'advanced' commands
+
+- "nc": step forward to the next call
+- "se": execute a single statement
+- "si": execute a single statement, stepping in if it's a call
+- "sg": step into the generator of a generated function
+
+`rootistoplevel` and `ret` are as described for [`JuliaInterpreter.maybe_reset_frame!`](@ref).
+Unlike other commands, the default setting for `recurse` is `Compiled()`.
+"""
+function debug_command(@nospecialize(recurse), frame::Frame, cmd::AbstractString, rootistoplevel::Bool=false)
+    # ::Union{Val{:nc},Val{:n},Val{:se}},
+    # Need try/catch
+    istoplevel = rootistoplevel && frame.caller === nothing
+    cmd == "nc" && return maybe_reset_frame!(recurse, frame, next_call!(recurse, frame, istoplevel), rootistoplevel)
+    cmd == "n" && return maybe_reset_frame!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
+    if cmd == "si"
+        stmt = pc_expr(frame)
+        cmd = is_call(stmt) ? "s" : "se"
+    end
+    cmd == "se" && return maybe_reset_frame!(recurse, frame, step_expr!(recurse, frame, istoplevel), rootistoplevel)
+    enter_generated = false
+    if cmd == "sg"
+        enter_generated = true
+        cmd = "s"
+    end
+    if cmd == "s"
+        pc = maybe_next_call!(recurse, frame, istoplevel)
+        (isa(pc, BreakpointRef) || pc === nothing) && return maybe_reset_frame!(recurse, frame, pc, rootistoplevel)
+        stmt0 = stmt = pc_expr(frame, pc)
+        if isexpr(stmt, :(=))
+            stmt = stmt.args[2]
+        end
+        ret = evaluate_call!(dummy_breakpoint, frame, stmt; enter_generated=enter_generated)
+        isa(ret, BreakpointRef) && return maybe_reset_frame!(recurse, frame, ret, rootistoplevel)
+        maybe_assign!(frame, stmt0, ret)
+        frame.pc = ret + 1
+        return frame, frame.pc
+    end
+    if cmd == "c"
+        r = root(frame)
+        ret = finish_stack!(recurse, r, rootistoplevel)
+        return isa(ret, BreakpointRef) ? (leaf(r), ret) : nothing
+    end
+    cmd == "finish" && return maybe_reset_frame!(recurse, frame, finish!(recurse, frame, istoplevel), rootistoplevel)
+    throw(ArgumentError("command $cmd not recognized"))
+end
+debug_command(frame::Frame, cmd::AbstractString, rootistoplevel::Bool=false) =
+    debug_command(Compiled(), frame, cmd, rootistoplevel)
