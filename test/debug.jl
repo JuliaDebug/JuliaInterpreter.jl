@@ -221,4 +221,20 @@ struct B{T} end
         end
     end
 
+    @testset "stepping through" begin
+        f_simple(x) = x + x
+        f22() = string(:(a+b))
+        function step_through(f, args...; kwargs...)
+            fr = JuliaInterpreter.enter_call(f, args...; kwargs...)
+            while true
+                ret = JuliaInterpreter.debug_command(fr, "s")
+                ret === nothing && break
+                fr, pc = ret
+            end
+            return JuliaInterpreter.get_return(fr)
+        end
+        @test step_through(f_simple, 2) == 2 + 2
+        @test step_through(f22) == string(:(a+b))
+    end
+
 # end
