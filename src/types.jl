@@ -90,10 +90,11 @@ Fields:
 struct FrameInstance
     framecode::FrameCode
     sparam_vals::SimpleVector
+    enter_generated::Bool
 end
 
 Base.show(io::IO, instance::FrameInstance) =
-    print(io, "FrameInstance(", scopeof(instance.framecode), ", ", instance.sparam_vals, ')')
+    print(io, "FrameInstance(", scopeof(instance.framecode), ", ", instance.sparam_vals, ", ", instance.enter_generated, ')')
 
 """
 `FrameData` holds the arguments, local variables, and intermediate execution state

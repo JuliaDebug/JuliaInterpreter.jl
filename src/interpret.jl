@@ -173,11 +173,12 @@ function bypass_builtins(frame, call_expr, pc)
     return nothing
 end
 
-function evaluate_call_compiled!(::Compiled, frame::Frame, call_expr::Expr)
+function evaluate_call_compiled!(::Compiled, frame::Frame, call_expr::Expr; enter_generated::Bool=false)
+    # @assert !enter_generated
     pc = frame.pc
     ret = bypass_builtins(frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
-    ret = maybe_evaluate_builtin(frame, call_expr)
+    ret = maybe_evaluate_builtin(frame, call_expr, false)
     isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(frame, call_expr)
     f = fargs[1]
@@ -185,12 +186,13 @@ function evaluate_call_compiled!(::Compiled, frame::Frame, call_expr::Expr)
     return f(fargs...)
 end
 
-function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr::Expr)
+function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr::Expr; enter_generated::Bool=false)
     pc = frame.pc
     ret = bypass_builtins(frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
-    ret = maybe_evaluate_builtin(frame, call_expr)
+    ret = maybe_evaluate_builtin(frame, call_expr, true)
     isa(ret, Some{Any}) && return ret.value
+    call_expr = ret
     fargs = collect_args(frame, call_expr)
     if (f = fargs[1]) === Core.eval
         return Core.eval(fargs[2], fargs[3])  # not a builtin, but worth treating specially
@@ -198,7 +200,7 @@ function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr:
         err = length(fargs) > 1 ? fargs[2] : frame.framedata.last_exception[]
         throw(err)
     end
-    framecode, lenv = get_call_framecode(fargs, frame.framecode, frame.pc)
+    framecode, lenv = get_call_framecode(fargs, frame.framecode, frame.pc; enter_generated=enter_generated)
     if lenv === nothing
         if isa(framecode, Compiled)
             popfirst!(fargs)  # now it's really just `args`
@@ -231,9 +233,9 @@ The first causes it to be executed using Julia's normal dispatch (compiled code)
 whereas the second recurses in via the interpreter.
 `recurse` has a default value of [`JuliaInterpreter.finish_and_return!`](@ref).
 """
-evaluate_call!(::Compiled, frame::Frame, call_expr::Expr) = evaluate_call_compiled!(Compiled(), frame, call_expr)
-evaluate_call!(@nospecialize(recurse), frame::Frame, call_expr::Expr) = evaluate_call_recurse!(recurse, frame, call_expr)
-evaluate_call!(frame::Frame, call_expr::Expr) = evaluate_call!(finish_and_return!, frame, call_expr)
+evaluate_call!(::Compiled, frame::Frame, call_expr::Expr; kwargs...) = evaluate_call_compiled!(Compiled(), frame, call_expr; kwargs...)
+evaluate_call!(@nospecialize(recurse), frame::Frame, call_expr::Expr; kwargs...) = evaluate_call_recurse!(recurse, frame, call_expr; kwargs...)
+evaluate_call!(frame::Frame, call_expr::Expr; kwargs...) = evaluate_call!(finish_and_return!, frame, call_expr; kwargs...)
 
 # The following come up only when evaluating toplevel code
 function evaluate_methoddef(frame, node)
@@ -308,6 +310,20 @@ function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
         Core.eval(moduleof(code), :($lhs = $(QuoteNode(rhs))))
     end
 end
+
+function maybe_assign!(frame, @nospecialize(stmt), @nospecialize(val))
+    pc = frame.pc
+    if isexpr(stmt, :(=))
+        lhs = stmt.args[1]
+        do_assignment!(frame, lhs, val)
+    elseif isassign(frame, pc)
+        lhs = getlhs(pc)
+        do_assignment!(frame, lhs, val)
+    end
+    return nothing
+end
+maybe_assign!(frame, @nospecialize(val)) = maybe_assign!(frame, pc_expr(frame), val)
+
 
 function eval_rhs(@nospecialize(recurse), frame, node::Expr)
     head = node.head

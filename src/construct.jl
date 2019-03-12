@@ -20,8 +20,8 @@ rather than recursed into via the interpreter.
 """
 const compiled_methods = Set{Method}()
 
-const junk = FrameData[]      # to allow re-use of allocated memory (this is otherwise a bottleneck)
-recycle(frame) = push!(junk, frame.framedata)
+const junk = Base.IdSet{FrameData}()      # to allow re-use of allocated memory (this is otherwise a bottleneck)
+recycle(frame) = push!(junk, frame.framedata)  # using an IdSet ensures that a frame can't be added twice
 
 const empty_svec = Core.svec()
 
@@ -238,7 +238,8 @@ function prepare_framedata(framecode, argvals::Vector{Any})
         ng = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any})
         nargs = length(argvals)
         if !isempty(junk)
-            olddata = pop!(junk)
+            olddata = first(junk)
+            delete!(junk, olddata)
             locals, ssavalues, sparams = olddata.locals, olddata.ssavalues, olddata.sparams
             exception_frames, last_reference = olddata.exception_frames, olddata.last_reference
             last_exception = olddata.last_exception

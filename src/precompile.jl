@@ -1,6 +1,6 @@
 function _precompile_()
     ccall(:jl_generating_output, Cint, ()) == 1 || return nothing
-    precompile(Tuple{typeof(maybe_evaluate_builtin), Frame, Expr})
+    precompile(Tuple{typeof(maybe_evaluate_builtin), Frame, Expr, Bool})
     precompile(Tuple{typeof(getargs), Vector{Any}, Frame})
     precompile(Tuple{typeof(get_call_framecode), Vector{Any}, FrameCode, Int})
     for f in (evaluate_call!,

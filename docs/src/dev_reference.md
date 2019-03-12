@@ -43,7 +43,12 @@ JuliaInterpreter.evaluate_call!
 JuliaInterpreter.evaluate_foreigncall
 JuliaInterpreter.maybe_evaluate_builtin
 JuliaInterpreter.maybe_next_call!
+JuliaInterpreter.next_line!
+JuliaInterpreter.next_call!
+JuliaInterpreter.maybe_reset_frame!
+JuliaInterpreter.maybe_step_through_wrapper!
 JuliaInterpreter.handle_err
+JuliaInterpreter.debug_command
 ```
 
 ## Breakpoints

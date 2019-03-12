@@ -6,6 +6,16 @@ using JuliaInterpreter: finish_and_return!, evaluate_call!, step_expr!, shouldbr
 using Base.Meta: isexpr
 using Test, Random, SHA
 
+function stacklength(frame)
+    n = 1
+    frame = frame.callee
+    while frame !== nothing
+        n += 1
+        frame = frame.callee
+    end
+    return n
+end
+
 # Execute a frame using Julia's regular compiled-code dispatch for any :call expressions
 runframe(frame) = Some{Any}(finish_and_return!(Compiled(), frame))
 
