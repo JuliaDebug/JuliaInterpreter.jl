@@ -283,7 +283,9 @@ function unwind_exception(frame::Frame, exc)
             frame.framedata.last_exception[] = exc
             return frame
         end
-        frame = frame.caller
+        # recycle(frame)
+        frame = caller(frame)
+        frame === nothing || (frame.callee = nothing)
     end
     rethrow(exc)
 end
@@ -319,34 +321,39 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::AbstractString
         cmd == "nc" && return maybe_reset_frame!(recurse, frame, next_call!(recurse, frame, istoplevel), rootistoplevel)
         cmd == "n" && return maybe_reset_frame!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
         cmd == "se" && return maybe_reset_frame!(recurse, frame, step_expr!(recurse, frame, istoplevel), rootistoplevel)
+   
+        enter_generated = false
+        if cmd == "sg"
+            enter_generated = true
+            cmd = "s"
+        end
+        if cmd == "s"
+            pc = maybe_next_call!(recurse, frame, istoplevel)
+            (isa(pc, BreakpointRef) || pc === nothing) && return maybe_reset_frame!(recurse, frame, pc, rootistoplevel)
+            stmt0 = stmt = pc_expr(frame, pc)
+            if isexpr(stmt, :(=))
+                stmt = stmt.args[2]
+            end
+            ret = evaluate_call!(dummy_breakpoint, frame, stmt; enter_generated=enter_generated)
+            isa(ret, BreakpointRef) && return maybe_reset_frame!(recurse, frame, ret, rootistoplevel)
+            maybe_assign!(frame, stmt0, ret)
+            frame.pc = ret + 1
+            return frame, frame.pc
+        end
+        if cmd == "c"
+            r = root(frame)
+            ret = finish_stack!(recurse, r, rootistoplevel)
+            return isa(ret, BreakpointRef) ? (leaf(r), ret) : nothing
+        end
+        cmd == "finish" && return maybe_reset_frame!(recurse, frame, finish!(recurse, frame, istoplevel), rootistoplevel)
     catch err
         frame = unwind_exception(frame, err)
-        return debug_command(recurse, frame, "nc", istoplevel)
-    end
-    enter_generated = false
-    if cmd == "sg"
-        enter_generated = true
-        cmd = "s"
-    end
-    if cmd == "s"
-        pc = maybe_next_call!(recurse, frame, istoplevel)
-        (isa(pc, BreakpointRef) || pc === nothing) && return maybe_reset_frame!(recurse, frame, pc, rootistoplevel)
-        stmt0 = stmt = pc_expr(frame, pc)
-        if isexpr(stmt, :(=))
-            stmt = stmt.args[2]
+        if cmd == "c"
+            return debug_command(recurse, frame, "c", istoplevel)
+        else
+            return debug_command(recurse, frame, "nc", istoplevel)
         end
-        ret = evaluate_call!(dummy_breakpoint, frame, stmt; enter_generated=enter_generated)
-        isa(ret, BreakpointRef) && return maybe_reset_frame!(recurse, frame, ret, rootistoplevel)
-        maybe_assign!(frame, stmt0, ret)
-        frame.pc = ret + 1
-        return frame, frame.pc
     end
-    if cmd == "c"
-        r = root(frame)
-        ret = finish_stack!(recurse, r, rootistoplevel)
-        return isa(ret, BreakpointRef) ? (leaf(r), ret) : nothing
-    end
-    cmd == "finish" && return maybe_reset_frame!(recurse, frame, finish!(recurse, frame, istoplevel), rootistoplevel)
     throw(ArgumentError("command $cmd not recognized"))
 end
 debug_command(frame::Frame, cmd::AbstractString, rootistoplevel::Bool=false) =
