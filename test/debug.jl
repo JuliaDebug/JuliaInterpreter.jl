@@ -1,5 +1,6 @@
 using JuliaInterpreter, Test
-using JuliaInterpreter: enter_call, enter_call_expr, get_return
+using JuliaInterpreter: enter_call, enter_call_expr, get_return, @lookup
+using Base.Meta: isexpr
 
 function step_through(frame)
     r = root(frame)
@@ -20,6 +21,8 @@ macro insert_some_calls()
         z = sin(y)
     end)
 end
+
+struct B{T} end
 
 # @testset "Debug" begin
     @testset "Basics" begin
@@ -68,7 +71,7 @@ end
         @test isa(pc, BreakpointRef)
         @test JuliaInterpreter.scopeof(f).name == :generatedfoo
         stmt = JuliaInterpreter.pc_expr(f)
-        @test stmt.head == :return && JuliaInterpreter.@lookup(f, stmt.args[1]) === 1
+        @test stmt.head == :return && @lookup(f, stmt.args[1]) === 1
         f2, pc = debug_command(f, "finish")
         @test JuliaInterpreter.scopeof(f2).name == :callgenerated
         # Now finish the regular function
@@ -126,6 +129,22 @@ end
         @test debug_command(fr, "finish") === nothing
         @test frame.callee === nothing
         @test get_return(frame) == 3
+
+        frame = JuliaInterpreter.enter_call(f, 2; b = 4)
+        fr = JuliaInterpreter.maybe_step_through_wrapper!(frame)
+        fr, pc = debug_command(fr, "nc")
+        fr, pc = debug_command(fr, "nc")
+        @test get_return(frame) == 6
+    end
+
+    @testset "Quoting" begin
+        # Test that symbols don't get an extra QuoteNode
+        f_symbol() = :limit => true
+        frame = JuliaInterpreter.enter_call(f_symbol)
+        fr, pc = debug_command(frame, "s")
+        fr, pc = debug_command(fr, "finish")
+        @test debug_command(fr, "finish") === nothing
+        @test get_return(frame) == f_symbol()
     end
 
     @testset "Varargs" begin
@@ -143,6 +162,15 @@ end
         fr, pc = debug_command(fr, "finish")
         @test debug_command(fr, "finish") === nothing
         @test get_return(frame) === 2
+    end
+
+    @testset "ASTI#17" begin
+        function (::B)(y)
+            x = 42*y
+            return x + y
+        end
+        B_inst = B{Int}()
+        step_through(JuliaInterpreter.enter_call(B_inst, 10)) == B_inst(10)
     end
 
     @testset "Exceptions" begin
