@@ -309,7 +309,6 @@ or one of the 'advanced' commands
 - "sg": step into the generator of a generated function
 
 `rootistoplevel` and `ret` are as described for [`JuliaInterpreter.maybe_reset_frame!`](@ref).
-Unlike other commands, the default setting for `recurse` is `Compiled()`.
 """
 function debug_command(@nospecialize(recurse), frame::Frame, cmd::AbstractString, rootistoplevel::Bool=false)
     istoplevel = rootistoplevel && frame.caller === nothing
@@ -317,11 +316,11 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::AbstractString
         stmt = pc_expr(frame)
         cmd = is_call(stmt) ? "s" : "se"
     end
-    try 
+    try
         cmd == "nc" && return maybe_reset_frame!(recurse, frame, next_call!(recurse, frame, istoplevel), rootistoplevel)
         cmd == "n" && return maybe_reset_frame!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
         cmd == "se" && return maybe_reset_frame!(recurse, frame, step_expr!(recurse, frame, istoplevel), rootistoplevel)
-   
+
         enter_generated = false
         if cmd == "sg"
             enter_generated = true
@@ -337,7 +336,7 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::AbstractString
             ret = evaluate_call!(dummy_breakpoint, frame, stmt; enter_generated=enter_generated)
             isa(ret, BreakpointRef) && return maybe_reset_frame!(recurse, frame, ret, rootistoplevel)
             maybe_assign!(frame, stmt0, ret)
-            frame.pc = ret + 1
+            frame.pc += 1
             return frame, frame.pc
         end
         if cmd == "c"
@@ -357,4 +356,4 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::AbstractString
     throw(ArgumentError("command $cmd not recognized"))
 end
 debug_command(frame::Frame, cmd::AbstractString, rootistoplevel::Bool=false) =
-    debug_command(Compiled(), frame, cmd, rootistoplevel)
+    debug_command(finish_and_return!, frame, cmd, rootistoplevel)
