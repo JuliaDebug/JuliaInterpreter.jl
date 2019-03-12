@@ -283,7 +283,7 @@ function unwind_exception(frame::Frame, exc)
             frame.framedata.last_exception[] = exc
             return frame
         end
-        # recycle(frame)
+        recycle(frame)
         frame = caller(frame)
         frame === nothing || (frame.callee = nothing)
     end
