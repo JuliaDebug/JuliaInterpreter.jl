@@ -334,7 +334,13 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::AbstractString
             if isexpr(stmt, :(=))
                 stmt = stmt.args[2]
             end
-            ret = evaluate_call!(dummy_breakpoint, frame, stmt; enter_generated=enter_generated)
+            local ret
+            try
+                ret = evaluate_call!(dummy_breakpoint, frame, stmt; enter_generated=enter_generated)
+            catch err
+                ret = handle_err(recurse, frame, err)
+                return isa(ret, BreakpointRef) ? (leaf(frame), ret) : ret
+            end
             isa(ret, BreakpointRef) && return maybe_reset_frame!(recurse, frame, ret, rootistoplevel)
             maybe_assign!(frame, stmt0, ret)
             frame.pc += 1

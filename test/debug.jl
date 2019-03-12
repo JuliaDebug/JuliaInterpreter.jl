@@ -223,6 +223,11 @@ struct B{T} end
             fr = JuliaInterpreter.enter_call(f_outer)
             fr, pc = debug_command(JuliaInterpreter.finish_and_return!, fr, "finish")
             @test fr.framecode.scope.name == :error
+
+            fundef() = undef_func()
+            frame = JuliaInterpreter.enter_call(fundef)
+            fr, pc = debug_command(frame, "s")
+            @test isa(pc, BreakpointRef)
         finally
             JuliaInterpreter.break_on_error[] = false
         end
