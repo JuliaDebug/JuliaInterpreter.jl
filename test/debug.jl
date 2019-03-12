@@ -22,6 +22,8 @@ macro insert_some_calls()
     end)
 end
 
+trivial(x) = x
+
 struct B{T} end
 
 # @testset "Debug" begin
@@ -50,6 +52,11 @@ struct B{T} end
         f22() = string(QuoteNode(:a))
         @test step_through(enter_call(f22)) == ":a"
 
+        frame = enter_call(trivial, 2)
+        @test debug_command(frame, "s") === nothing
+        @test get_return(frame) == 2
+
+        @test step_through(enter_call(trivial, 2)) == 2
         @test step_through(enter_call_expr(:($(+)(1,2.5)))) == 3.5
         @test step_through(enter_call_expr(:($(sin)(1)))) == sin(1)
         @test step_through(enter_call_expr(:($(gcd)(10,20)))) == gcd(10, 20)

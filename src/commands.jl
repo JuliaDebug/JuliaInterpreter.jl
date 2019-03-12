@@ -330,6 +330,7 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::AbstractString
             pc = maybe_next_call!(recurse, frame, istoplevel)
             (isa(pc, BreakpointRef) || pc === nothing) && return maybe_reset_frame!(recurse, frame, pc, rootistoplevel)
             stmt0 = stmt = pc_expr(frame, pc)
+            isexpr(stmt0, :return) && return maybe_reset_frame!(recurse, frame, nothing, rootistoplevel)
             if isexpr(stmt, :(=))
                 stmt = stmt.args[2]
             end
