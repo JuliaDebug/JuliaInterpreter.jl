@@ -228,6 +228,7 @@ struct B{T} end
             frame = JuliaInterpreter.enter_call(fundef)
             fr, pc = debug_command(frame, "s")
             @test isa(pc, BreakpointRef)
+            @test pc.err isa UndefVarError
         finally
             JuliaInterpreter.break_on_error[] = false
         end
