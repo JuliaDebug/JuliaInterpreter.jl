@@ -49,6 +49,8 @@ function set_compiled_methods()
     push!(compiled_methods, which(flush, Tuple{IOStream}))
     push!(compiled_methods, which(disable_sigint, Tuple{Function}))
     push!(compiled_methods, which(reenable_sigint, Tuple{Function}))
+    # Signal-handling in the `print` dispatch hierarchy
+    push!(compiled_methods, which(Base.unsafe_write, Tuple{Base.LibuvStream, Ptr{UInt8}, UInt}))
 end
 
 function __init__()

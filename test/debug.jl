@@ -128,6 +128,23 @@ end
         @test get_return(frame) == 3
     end
 
+    @testset "Varargs" begin
+        f_va_inner(x) = x + 1
+        f_va_outer(args...) = f_va_inner(args...)
+        frame = fr = JuliaInterpreter.enter_call(f_va_outer, 1)
+        # depending on whether this is in or out of a @testset, the first statement may differ
+        stmt1 = fr.framecode.src.code[1]
+        if isexpr(stmt1, :call) && @lookup(frame, stmt1.args[1]) === getfield
+            fr, pc = debug_command(fr, "se")
+        end
+        fr, pc = debug_command(fr, "s")
+        fr, pc = debug_command(fr, "n")
+        @test root(fr) !== fr
+        fr, pc = debug_command(fr, "finish")
+        @test debug_command(fr, "finish") === nothing
+        @test get_return(frame) === 2
+    end
+
     @testset "Exceptions" begin
         # Don't break on caught exceptions
         err_caught = Any[nothing]

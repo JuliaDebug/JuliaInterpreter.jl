@@ -82,15 +82,16 @@ function getargs(args, frame)
 end
 
 \"\"\"
-    ret = maybe_evaluate_builtin(frame, call_expr)
+    ret = maybe_evaluate_builtin(frame, call_expr, expand::Bool)
 
 If `call_expr` is to a builtin function, evaluate it, returning the result inside a `Some` wrapper.
 Otherwise, return `call_expr`.
+
+If `expand` is true, `Core._apply` calls will be resolved as a call to the applied function.
 \"\"\"
-function maybe_evaluate_builtin(frame, call_expr)
+function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     # By having each call appearing statically in the "switch" block below,
     # each gets call-site optimized.
-
     args = call_expr.args
     nargs = length(args) - 1
     fex = args[1]
@@ -124,7 +125,22 @@ function maybe_evaluate_builtin(frame, call_expr)
         return Some{Any}(ntuple(i->@lookup(frame, args[i+1]), length(args)-1))
 """)
             continue
+        elseif f === Core._apply
+            # Resolve varargs calls
+            print(io,
+"""
+    $head f === Core._apply
+        argswrapped = getargs(args, frame)
+        if !expand
+            return Some{Any}(Core._apply(getargs(args, frame)...))
         end
+        argsflat = Base.append_any((argswrapped[1],), argswrapped[2:end]...)
+        new_expr = Expr(:call, map(x->isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode) ? QuoteNode(x) : x, argsflat)...)
+        return new_expr
+""")
+            continue
+        end
+
         id = findfirst(isequal(f), Core.Compiler.T_FFUNC_KEY)
         fcall = generate_fcall(f, Core.Compiler.T_FFUNC_VAL, id)
         print(io,

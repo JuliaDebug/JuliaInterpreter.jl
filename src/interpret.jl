@@ -178,7 +178,7 @@ function evaluate_call_compiled!(::Compiled, frame::Frame, call_expr::Expr; ente
     pc = frame.pc
     ret = bypass_builtins(frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
-    ret = maybe_evaluate_builtin(frame, call_expr)
+    ret = maybe_evaluate_builtin(frame, call_expr, false)
     isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(frame, call_expr)
     f = fargs[1]
@@ -190,8 +190,9 @@ function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr:
     pc = frame.pc
     ret = bypass_builtins(frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
-    ret = maybe_evaluate_builtin(frame, call_expr)
+    ret = maybe_evaluate_builtin(frame, call_expr, true)
     isa(ret, Some{Any}) && return ret.value
+    call_expr = ret
     fargs = collect_args(frame, call_expr)
     if (f = fargs[1]) === Core.eval
         return Core.eval(fargs[2], fargs[3])  # not a builtin, but worth treating specially
