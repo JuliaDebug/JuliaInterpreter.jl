@@ -173,6 +173,8 @@ end
     function g_inner_bp(x)
         sin(x)
         @bp
+        @bp
+        @bp
         x = 3
         return 2
     end

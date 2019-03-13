@@ -71,13 +71,34 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
         src = copy_codeinfo(src)
         methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(src.code))
     end
-    breakpoints = Vector{BreakpointState}(undef, length(src.code))
+    breakpoint_pcs = Int[]
     for (i, pc_expr) in enumerate(src.code)
         if pc_expr == :($(QuoteNode(getproperty))($JuliaInterpreter, :__BREAKPOINT_MARKER__))
-            breakpoints[i] = BreakpointState()
+            push!(breakpoint_pcs, i)
+        end
+    end
+    breakpoints = Vector{BreakpointState}(undef, length(src.code))
+    if !isempty(breakpoint_pcs)
+        ssalookup = collect(1:length(src.codelocs))
+        # Renumber SSA values in preparation for deleting breakpoint markers
+        cnt = 1
+        for i in 1:length(breakpoint_pcs)
+            start = breakpoint_pcs[i] + 1
+            stop = i == length(breakpoint_pcs) ? length(src.codelocs) : breakpoint_pcs[i+1]
+            ssalookup[start:stop] .-= cnt
+            cnt += 1
+        end
+        renumber_ssa!(src.code, ssalookup)
+        deleteat!(src.codelocs, breakpoint_pcs)
+        deleteat!(src.code, breakpoint_pcs)
+        src.ssavaluetypes = length(src.code)
+        resize!(breakpoints, length(src.code))
+        for pc in breakpoint_pcs
+            breakpoints[ssalookup[pc]] = BreakpointState()
         end
     end
     used = find_used(src)
+    @assert length(src.code) == length(breakpoints) == src.ssavaluetypes == length(src.codelocs)
     return FrameCode(scope, src, methodtables, breakpoints, used, generator)
 end
 
