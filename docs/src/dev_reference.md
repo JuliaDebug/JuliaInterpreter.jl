@@ -55,6 +55,7 @@ JuliaInterpreter.debug_command
 
 ```@docs
 @breakpoint
+@bp
 breakpoint
 enable
 disable

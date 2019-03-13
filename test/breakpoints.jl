@@ -166,6 +166,20 @@ end
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 1, ArgumentError("whoops"))
     show(io, bp)
     @test String(take!(io)) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, line 3, ArgumentError(\"whoops\"))"
+
+    # In source breakpointing
+    f_outer_bp(x) = g_inner_bp(x)
+
+    function g_inner_bp(x)
+        sin(x)
+        @bp
+        x = 3
+        return 2
+    end
+
+    fr, bp = @interpret f_outer_bp(3)
+    @test leaf(fr).framecode.scope.name == :g_inner_bp
+    @test bp.stmtidx == 3
 end
 
 if tmppath != ""

@@ -72,6 +72,11 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
         methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(src.code))
     end
     breakpoints = Vector{BreakpointState}(undef, length(src.code))
+    for (i, pc_expr) in enumerate(src.code)
+        if pc_expr == :($(QuoteNode(getproperty))($JuliaInterpreter, :__BREAKPOINT_MARKER__))
+            breakpoints[i] = BreakpointState()
+        end
+    end
     used = find_used(src)
     return FrameCode(scope, src, methodtables, breakpoints, used, generator)
 end
