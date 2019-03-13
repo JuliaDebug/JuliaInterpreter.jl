@@ -334,6 +334,8 @@ f113(;x) = x
         return x
     end
     frame = JuliaInterpreter.enter_call(f_multi, 1)
+    nlocals = length(frame.framedata.locals)
+    @test_throws ErrorException("slot _4 with name x not assigned") JuliaInterpreter.lookup_var(frame, Core.SlotNumber(nlocals))
     stack = [frame]
     locals = JuliaInterpreter.locals(frame)
     @test length(locals) == 2
