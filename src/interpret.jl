@@ -353,7 +353,8 @@ function eval_rhs(@nospecialize(recurse), frame, node::Expr)
         return length(frame.framedata.exception_frames)
     elseif head == :boundscheck
         return true
-    elseif head == :meta || head == :inbounds || head == :simdloop || head == :gc_preserve_begin || head == :gc_preserve_end
+    elseif head == :meta || head == :inbounds || head == (@static VERSION >= v"1.2.0-DEV.462" ? :loopinfo : :simdloop) ||
+           head == :gc_preserve_begin || head == :gc_preserve_end
         return nothing
     elseif head == :method && length(node.args) == 1
         return evaluate_methoddef(frame, node)
