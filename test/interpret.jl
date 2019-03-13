@@ -370,3 +370,11 @@ end
     end
     @test @interpret h_gf() == 2
 end
+
+# https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/130
+@testset "vararg handling" begin
+    method_c1(x::Float64, s::AbstractString...) = true
+    buf = IOBuffer()
+    me = Base.MethodError(method_c1,(1, 1, ""))
+    @test (@interpret Base.show_method_candidates(buf, me)) == nothing
+end
