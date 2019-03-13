@@ -97,9 +97,9 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
-    "location": "dev_reference/#Top-level-1",
+    "location": "dev_reference/#Running-the-interpreter-1",
     "page": "Function reference",
-    "title": "Top-level",
+    "title": "Running the interpreter",
     "category": "section",
     "text": "@interpret"
 },
@@ -585,11 +585,19 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
+    "location": "dev_reference/#JuliaInterpreter.whichtt",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.whichtt",
+    "category": "function",
+    "text": "method = whichtt(tt)\n\nLike which except it operates on the complete tuple-type tt.\n\n\n\n\n\n"
+},
+
+{
     "location": "dev_reference/#Utilities-1",
     "page": "Function reference",
     "title": "Utilities",
     "category": "section",
-    "text": "JuliaInterpreter.@lookup\nJuliaInterpreter.is_wrapper_call\nJuliaInterpreter.is_doc_expr\nJuliaInterpreter.is_global_ref\nCodeTracking.whereis\nJuliaInterpreter.linenumber\nJuliaInterpreter.statementnumber\nJuliaInterpreter.Variable\nJuliaInterpreter.locals"
+    "text": "JuliaInterpreter.@lookup\nJuliaInterpreter.is_wrapper_call\nJuliaInterpreter.is_doc_expr\nJuliaInterpreter.is_global_ref\nCodeTracking.whereis\nJuliaInterpreter.linenumber\nJuliaInterpreter.statementnumber\nJuliaInterpreter.Variable\nJuliaInterpreter.locals\nJuliaInterpreter.whichtt"
 },
 
 ]}
