@@ -110,6 +110,13 @@ end
         var = JuliaInterpreter.locals(leaf(frame))
         @test !any(v->v.name == :b, var)
         @test filter(v->v.name == :a, var)[1].value == 2
+    else
+        try
+            breakpoint(pathof(JuliaInterpreter.CodeTracking), 5)
+        catch err
+            @test isa(err, ErrorException)
+            @test occursin("Revise", err.msg)
+        end
     end
 
     # Direct return
