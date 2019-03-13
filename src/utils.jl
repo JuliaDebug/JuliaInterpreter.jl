@@ -25,6 +25,11 @@ function to_function(@nospecialize(x))
     isa(x, GlobalRef) ? getfield(x.mod, x.name) : x
 end
 
+"""
+    method = whichtt(tt)
+
+Like `which` except it operates on the complete tuple-type `tt`.
+"""
 function whichtt(@nospecialize(tt))
     m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), tt, typemax(UInt))
     m === nothing && return nothing

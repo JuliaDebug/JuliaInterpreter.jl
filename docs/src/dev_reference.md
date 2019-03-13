@@ -1,6 +1,6 @@
 # Function reference
 
-## Top-level
+## Running the interpreter
 
 ```@docs
 @interpret
@@ -93,4 +93,5 @@ JuliaInterpreter.linenumber
 JuliaInterpreter.statementnumber
 JuliaInterpreter.Variable
 JuliaInterpreter.locals
+JuliaInterpreter.whichtt
 ```
