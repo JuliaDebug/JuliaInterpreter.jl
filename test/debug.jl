@@ -250,18 +250,18 @@ struct B{T} end
             @test JuliaInterpreter.linenumber(fr) == method_start + 1
             fr, pc =  JuliaInterpreter.debug_command(fr, "c")
             # Hit the breakpoint x1
-            @test JuliaInterpreter.linenumber(fr) == method_start + 4
+            @test JuliaInterpreter.linenumber(fr) == method_start + 3
             @test pc isa BreakpointRef
             fr, pc =  JuliaInterpreter.debug_command(fr, "n")
-            @test JuliaInterpreter.linenumber(fr) == method_start + 5
+            @test JuliaInterpreter.linenumber(fr) == method_start + 4
             fr, pc =  JuliaInterpreter.debug_command(fr, "c")
             # Hit the breakpoint again x2
             @test pc isa BreakpointRef
-            @test JuliaInterpreter.linenumber(fr) == method_start + 4
+            @test JuliaInterpreter.linenumber(fr) == method_start + 3
             fr, pc =  JuliaInterpreter.debug_command(fr, "c")
             # Hit the breakpoint for the last time x3
             @test pc isa BreakpointRef
-            @test JuliaInterpreter.linenumber(fr) == method_start + 4
+            @test JuliaInterpreter.linenumber(fr) == method_start + 3
             JuliaInterpreter.debug_command(fr, "c")
             @test get_return(fr) == 2
         end
