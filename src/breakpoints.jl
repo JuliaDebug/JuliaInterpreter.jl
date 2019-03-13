@@ -203,10 +203,15 @@ end
 Set a breakpoint at the specified file and line number.
 """
 function breakpoint(filename::AbstractString, line::Integer, args...)
-    sigs = signatures_at(filename, line)
+    local sigs
+    try
+        sigs = signatures_at(filename, line)
+    catch
+        sigs = nothing
+    end
     if sigs === nothing
         # TODO: build a Revise-free fallback. Note this won't work well for methods with keywords.
-        error("no signatures found at $filename, $line. Restarting and `using Revise` may fix this problem.")
+        error("no signatures found at $filename, $line.\nRestarting and `using Revise` and the relevant package may fix this problem.")
     end
     for sig in sigs
         method = JuliaInterpreter.whichtt(sig)
