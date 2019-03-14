@@ -130,7 +130,9 @@ end
 
     # break on error
     try
-        JuliaInterpreter.break_on_error[] = true
+        @test_throws ArgumentError("unsupported state :missing") break_on(:missing)
+        @test_throws ArgumentError("inputs must be Symbols, got String") break_on("missing")
+        break_on(:error)
 
         inner(x) = error("oops")
         outer() = inner(1)
@@ -158,7 +160,7 @@ end
         @test v isa ErrorException
         @test stacklength(frame) == 1
     finally
-        JuliaInterpreter.break_on_error[] = false
+        break_off(:error)
     end
 
     # Breakpoint display
