@@ -14,7 +14,7 @@ using CodeTracking
 
 export @interpret, Compiled, Frame, root, leaf,
        BreakpointRef, breakpoint, @breakpoint, breakpoints, enable, disable, remove,
-       debug_command
+       debug_command, @bp
 
 module CompiledCalls
 # This module is for handling intrinsics that must be compiled (llvmcall)

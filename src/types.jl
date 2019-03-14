@@ -64,6 +64,7 @@ struct FrameCode
     generator::Bool   # true if this is for the expression-generator of a @generated function
 end
 
+const BREAKPOINT_EXPR = :($(QuoteNode(getproperty))($JuliaInterpreter, :__BREAKPOINT_MARKER__))
 function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
     if optimize
         src, methodtables = optimize!(copy_codeinfo(src), moduleof(scope))
@@ -72,6 +73,12 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
         methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(src.code))
     end
     breakpoints = Vector{BreakpointState}(undef, length(src.code))
+    for (i, pc_expr) in enumerate(src.code)
+        if pc_expr == BREAKPOINT_EXPR
+            breakpoints[i] = BreakpointState()
+            src.code[i] = nothing
+        end
+    end
     used = find_used(src)
     return FrameCode(scope, src, methodtables, breakpoints, used, generator)
 end

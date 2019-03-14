@@ -286,3 +286,14 @@ macro breakpoint(call_expr, args...)
         end
     end
 end
+
+const __BREAKPOINT_MARKER__ = nothing
+
+"""
+    @bp
+
+Insert a breakpoint at a location in the source code.
+"""
+macro bp()
+    return esc(:($(JuliaInterpreter).__BREAKPOINT_MARKER__))
+end

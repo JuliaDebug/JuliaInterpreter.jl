@@ -232,6 +232,38 @@ struct B{T} end
         finally
             JuliaInterpreter.break_on_error[] = false
         end
-    end
 
+        @testset "breakpoints" begin
+            # In source breakpoints
+            function f_bp(x)
+                #=1=#    i = 1
+                #=2=#    @label foo
+                #=3=#    @bp
+                #=4=#    repr("foo")
+                #=5=#    i += 1
+                #=6=#    i > 3 && return x
+                #=7=#    @goto foo
+            end
+            ln = @__LINE__
+            method_start = ln - 9
+            fr = enter_call(f_bp, 2)
+            @test JuliaInterpreter.linenumber(fr) == method_start + 1
+            fr, pc =  JuliaInterpreter.debug_command(fr, "c")
+            # Hit the breakpoint x1
+            @test JuliaInterpreter.linenumber(fr) == method_start + 3
+            @test pc isa BreakpointRef
+            fr, pc =  JuliaInterpreter.debug_command(fr, "n")
+            @test JuliaInterpreter.linenumber(fr) == method_start + 4
+            fr, pc =  JuliaInterpreter.debug_command(fr, "c")
+            # Hit the breakpoint again x2
+            @test pc isa BreakpointRef
+            @test JuliaInterpreter.linenumber(fr) == method_start + 3
+            fr, pc =  JuliaInterpreter.debug_command(fr, "c")
+            # Hit the breakpoint for the last time x3
+            @test pc isa BreakpointRef
+            @test JuliaInterpreter.linenumber(fr) == method_start + 3
+            JuliaInterpreter.debug_command(fr, "c")
+            @test get_return(fr) == 2
+        end
+    end
 # end
