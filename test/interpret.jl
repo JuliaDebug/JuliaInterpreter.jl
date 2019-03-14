@@ -379,4 +379,8 @@ end
     buf = IOBuffer()
     me = Base.MethodError(method_c1,(1, 1, ""))
     @test (@interpret Base.show_method_candidates(buf, me)) == nothing
+
+    varargidentity(x) = x
+    x = Union{Array{UInt8,N},Array{Int8,N}} where N
+    @test isa(JuliaInterpreter.prepare_call(varargidentity, [varargidentity, x])[1], JuliaInterpreter.FrameCode)
 end

@@ -206,8 +206,7 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     # Can happen for thunks created by generated functions
     if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
         return nothing
-    elseif any(x -> isa(x, Type) &&
-                    (x <: Vararg || (typeof(x) in (UnionAll, DataType) && nameof(x) == :Vararg)), allargs)
+    elseif any(is_vararg_type, allargs)
         return nothing  # https://github.com/JuliaLang/julia/issues/30995
     end
     argtypes = Tuple{map(_Typeof,allargs)...}
