@@ -1,4 +1,5 @@
 # This file generates builtins.jl.
+using InteractiveUtils
 
 function scopedname(f)
     io = IOBuffer()
@@ -66,6 +67,11 @@ end
 
 # `io` is for the generated source file
 # `intrinsicsfile` is the path to Julia's `src/intrinsics.h` file
+function generate_builtins(file::String)
+    open(file, "w") do io
+        generate_builtins(io::IO)
+    end
+end
 function generate_builtins(io::IO)
     pat = r"(ADD_I|ALIAS)\((\w*),"
     print(io,
@@ -209,3 +215,5 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
 end
 """)
 end
+
+generate_builtins(joinpath(@__DIR__, "builtins-julia$(Int(VERSION.major)).$(Int(VERSION.minor)).jl"))

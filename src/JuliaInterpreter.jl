@@ -22,12 +22,11 @@ end
 
 const BUILTIN_FILE = joinpath(@__DIR__, "builtins-julia$(Int(VERSION.major)).$(Int(VERSION.minor)).jl")
 
-if !isfile(BUILTIN_FILE)
+if ccall(:jl_generating_output, Cint, ()) == 1
     @info "Generating builtins for this julia version..."
-    include("generate_builtins.jl")
-    open(BUILTIN_FILE, "w") do io
-        generate_builtins(io)
-    end
+    gen_builtins_file = joinpath(@__DIR__, "generate_builtins.jl")
+    run(`$(Base.julia_cmd()) $gen_builtins_file`)
+    include_dependency(gen_builtins_file)
 end
 
 include("types.jl")
