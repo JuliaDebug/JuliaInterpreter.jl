@@ -55,7 +55,7 @@ end
 module Toplevel end
 
 @testset "toplevel" begin
-    modexs, _ = JuliaInterpreter.split_expressions(Toplevel, read_and_parse("toplevel_script.jl"))
+    modexs, _ = JuliaInterpreter.split_expressions(Toplevel, read_and_parse(joinpath(@__DIR__, "toplevel_script.jl")))
     for modex in modexs
         frame = JuliaInterpreter.prepare_thunk(modex)
         while true
