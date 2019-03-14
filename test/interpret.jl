@@ -384,3 +384,10 @@ end
     x = Union{Array{UInt8,N},Array{Int8,N}} where N
     @test isa(JuliaInterpreter.prepare_call(varargidentity, [varargidentity, x])[1], JuliaInterpreter.FrameCode)
 end
+
+# Test return value of whereis
+f() = nothing
+fr = JuliaInterpreter.enter_call(f)
+file, line = JuliaInterpreter.whereis(fr)
+@test file == @__FILE__
+@test line == (@__LINE__() - 4)
