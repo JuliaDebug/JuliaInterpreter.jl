@@ -168,7 +168,7 @@ function CodeTracking.whereis(framecode::FrameCode, pc)
     codeloc == 0 && return nothing
     lineinfo = framecode.src.linetable[codeloc]
     return isa(framecode.scope, Method) ?
-        whereis(lineinfo, framecode.scope) : getfile(lineinfo), getline(lineinfo)
+        whereis(lineinfo, framecode.scope) : (getfile(lineinfo), getline(lineinfo))
 end
 CodeTracking.whereis(frame::Frame, pc=frame.pc) = whereis(frame.framecode, pc)
 
