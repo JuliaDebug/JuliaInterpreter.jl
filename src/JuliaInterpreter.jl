@@ -22,12 +22,11 @@ end
 
 const BUILTIN_FILE = joinpath(@__DIR__, "builtins-julia$(Int(VERSION.major)).$(Int(VERSION.minor)).jl")
 
-if ccall(:jl_generating_output, Cint, ()) == 1
-    @info "Generating builtins for this julia version..."
-    gen_builtins_file = joinpath(@__DIR__, "generate_builtins.jl")
-    run(`$(Base.julia_cmd()) $gen_builtins_file`)
-    include_dependency(gen_builtins_file)
-end
+@info "Generating builtins for this julia version..."
+gen_builtins_file = joinpath(@__DIR__, "generate_builtins.jl")
+# Run as separate command to prevent including the generate_builtins into the precompile cache
+run(`$(Base.julia_cmd()) $gen_builtins_file`)
+include_dependency(gen_builtins_file)
 
 include("types.jl")
 include("utils.jl")
