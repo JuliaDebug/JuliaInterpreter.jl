@@ -187,10 +187,10 @@ function run_test_by_eval(test, fullpath, nstmts)
             # @show mod ex
             frame = JuliaInterpreter.prepare_thunk(modex)
             yield()  # allow communication between processes
-            ret, nstmtsleft = evaluate_limited!(frame, nstmtsleft)
+            ret, nstmtsleft = evaluate_limited!(frame, nstmtsleft, true)
             if isa(ret, Aborted)
                 push!(aborts, ret)
-                finish_stack!(Compiled(), frame, true)
+                JuliaInterpreter.finish_stack!(Compiled(), frame, true)
             end
         end
         println("Finished ", $test)
