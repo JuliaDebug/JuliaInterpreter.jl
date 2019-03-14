@@ -20,12 +20,22 @@ module CompiledCalls
 # This module is for handling intrinsics that must be compiled (llvmcall)
 end
 
+const BUILTIN_FILE = joinpath(@__DIR__, "builtins-julia$(Int(VERSION.major)).$(Int(VERSION.minor)).jl")
+
+if !isfile(BUILTIN_FILE)
+    @info "Generating builtins for this julia version..."
+    include("generate_builtins.jl")
+    open(BUILTIN_FILE, "w") do io
+        generate_builtins(io)
+    end
+end
+
 include("types.jl")
 include("utils.jl")
 include("construct.jl")
 include("localmethtable.jl")
 include("interpret.jl")
-include("builtins-julia$(Int(VERSION.major)).$(Int(VERSION.minor)).jl")
+include(BUILTIN_FILE)
 include("optimize.jl")
 include("commands.jl")
 include("breakpoints.jl")
