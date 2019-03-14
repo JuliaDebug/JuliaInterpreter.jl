@@ -99,7 +99,7 @@ function evaluate_limited!(@nospecialize(recurse), frame::Frame, nstmts::Int, is
                         isa(ret, Aborted) && return ret, refnstmts[]
                         frame.callee = nothing
                     end
-                    recyle(newframe)
+                    JuliaInterpreter.recycle(newframe)
                     # Because thunks may define new methods, return to toplevel
                     frame.pc = pc + 1
                     return nothing, refnstmts[]
