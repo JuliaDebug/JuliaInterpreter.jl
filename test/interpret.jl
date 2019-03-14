@@ -394,3 +394,8 @@ fr = JuliaInterpreter.enter_call(f)
 file, line = JuliaInterpreter.whereis(fr)
 @test file == @__FILE__
 @test line == (@__LINE__() - 4)
+
+fr = JuliaInterpreter.enter_call(Test.eval, 1)
+file, line = JuliaInterpreter.whereis(fr)
+@test isfile(file)
+@test isfile(JuliaInterpreter.getfile(fr.framecode.src.linetable[1]))

@@ -154,8 +154,19 @@ function lineoffset(framecode::FrameCode)
     return offset
 end
 
+# Just some way to get the path to the buildbot
+const BUILDBOT_STDLIB_PATH = dirname(abspath(joinpath(String((@which clipboard()).file), "..", "..", "..")))
+
+function maybe_find_stdlib_file(filepath)
+    if !isfile(filepath)
+        maybe_stdlib_filepath = replace(filepath, BUILDBOT_STDLIB_PATH => Sys.STDLIB)
+        isfile(maybe_stdlib_filepath) && return maybe_stdlib_filepath
+    end
+    return filepath
+end
+
 getline(ln) = isexpr(ln, :line) ? ln.args[1] : ln.line
-getfile(ln) = String(isexpr(ln, :line) ? ln.args[2] : ln.file)
+getfile(ln) = maybe_find_stdlib_file(String(isexpr(ln, :line) ? ln.args[2] : ln.file))
 
 """
     loc = whereis(frame, pc=frame.pc)
@@ -167,8 +178,9 @@ function CodeTracking.whereis(framecode::FrameCode, pc)
     codeloc = codelocation(framecode.src, pc)
     codeloc == 0 && return nothing
     lineinfo = framecode.src.linetable[codeloc]
-    return isa(framecode.scope, Method) ?
+    filepath, line = isa(framecode.scope, Method) ?
         whereis(lineinfo, framecode.scope) : (getfile(lineinfo), getline(lineinfo))
+    return maybe_find_stdlib_file(filepath), line
 end
 CodeTracking.whereis(frame::Frame, pc=frame.pc) = whereis(frame.framecode, pc)
 
