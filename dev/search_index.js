@@ -377,6 +377,14 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
+    "location": "dev_reference/#JuliaInterpreter.@bp",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.@bp",
+    "category": "macro",
+    "text": "@bp\n\nInsert a breakpoint at a location in the source code.\n\n\n\n\n\n"
+},
+
+{
     "location": "dev_reference/#JuliaInterpreter.breakpoint",
     "page": "Function reference",
     "title": "JuliaInterpreter.breakpoint",
@@ -421,7 +429,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "Breakpoints",
     "category": "section",
-    "text": "@breakpoint\nbreakpoint\nenable\ndisable\nremove\nJuliaInterpreter.dummy_breakpoint"
+    "text": "@breakpoint\n@bp\nbreakpoint\nenable\ndisable\nremove\nJuliaInterpreter.dummy_breakpoint"
 },
 
 {
