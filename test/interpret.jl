@@ -384,3 +384,6 @@ end
     x = Union{Array{UInt8,N},Array{Int8,N}} where N
     @test isa(JuliaInterpreter.prepare_call(varargidentity, [varargidentity, x])[1], JuliaInterpreter.FrameCode)
 end
+
+# https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/141
+@test @interpret get(ENV, "THIS_IS_NOT_DEFINED_1234", "24") == "24"
