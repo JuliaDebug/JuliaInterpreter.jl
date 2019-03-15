@@ -104,26 +104,6 @@ struct B{T} end
         @test debug_command(frame, "n") === nothing
     end
 
-    @testset "Macros" begin
-        # Work around the fact that we can't detect macro expansions if the macro
-        # is defined in the same file
-        include_string(Main, """
-        function test_macro()
-            a = sin(5)
-            b = asin(a)
-            @insert_some_calls
-            z
-        end
-        ""","file.jl")
-        frame = JuliaInterpreter.enter_call_expr(:($(test_macro)()))
-        f, pc = debug_command(frame, "n")        # a is set
-        f, pc = debug_command(f, "n")            # b is set
-        f, pc = debug_command(f, "n")            # x is set
-        f, pc = debug_command(f, "n")            # y is set
-        f, pc = debug_command(f, "n")            # z is set
-        @test debug_command(f, "n") === nothing  # return
-    end
-
     @testset "Keyword arguments" begin
         f(x; b = 1) = x+b
         g() = f(1; b = 2)
@@ -142,6 +122,55 @@ struct B{T} end
         fr, pc = debug_command(fr, "nc")
         fr, pc = debug_command(fr, "nc")
         @test get_return(frame) == 6
+    end
+
+    @testset "Optional + keyword wrappers" begin
+        opkw(a, b=1; c=2, d=3) = 1
+        callopkw1() = opkw(0)
+        callopkw2() = opkw(0, -1)
+        callopkw3() = opkw(0; c=-2)
+        callopkw4() = opkw(0, -1; c=-2)
+        callopkw5() = opkw(0; c=-2, d=-3)
+        callopkw6() = opkw(0, -1; c=-2, d=-3)
+        scopes = Method[]
+        for f in (callopkw1, callopkw2, callopkw3, callopkw4, callopkw5, callopkw6)
+            frame = fr = JuliaInterpreter.enter_call(f)
+            pc = fr.pc
+            while pc <= JuliaInterpreter.nstatements(fr.framecode) - 2
+                fr, pc = debug_command(fr, "se")
+            end
+            fr, pc = debug_command(frame, "si")
+            @test stacklength(frame) == 2
+            frame = fr = JuliaInterpreter.enter_call(f)
+            pc = fr.pc
+            while pc <= JuliaInterpreter.nstatements(fr.framecode) - 2
+                fr, pc = debug_command(fr, "se")
+            end
+            fr, pc = debug_command(frame, "s")
+            @test stacklength(frame) > 2
+            push!(scopes, JuliaInterpreter.scopeof(fr))
+        end
+        @test length(unique(scopes)) == 1  # all get to the body method
+    end
+
+    @testset "Macros" begin
+        # Work around the fact that we can't detect macro expansions if the macro
+        # is defined in the same file
+        include_string(Main, """
+        function test_macro()
+            a = sin(5)
+            b = asin(a)
+            @insert_some_calls
+            z
+        end
+        ""","file.jl")
+        frame = JuliaInterpreter.enter_call_expr(:($(test_macro)()))
+        f, pc = debug_command(frame, "n")        # a is set
+        f, pc = debug_command(f, "n")            # b is set
+        f, pc = debug_command(f, "n")            # x is set
+        f, pc = debug_command(f, "n")            # y is set
+        f, pc = debug_command(f, "n")            # z is set
+        @test debug_command(f, "n") === nothing  # return
     end
 
     @testset "Quoting" begin
