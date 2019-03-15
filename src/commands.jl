@@ -213,6 +213,49 @@ function next_line!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false
 end
 next_line!(frame::Frame, istoplevel::Bool=false) = next_line!(finish_and_return!, frame, istoplevel)
 
+is_macro_expansion(lin::LineInfoNode) = lin.method == Symbol("macro expansion")
+is_macro_expansion(::Any) = false
+function is_macro_expansion(frame)
+    src = frame.framecode.src
+    codeloc = src.codelocs[frame.pc]
+    codeloc == 0 && return false
+    linfo = src.linetable[codeloc]
+    return is_macro_expansion(linfo)
+end
+
+"""
+    pc = maybe_step_through_macro_expansion!(recurse, frame)
+    pc = maybe_step_through_macro_expansion!(frame)
+
+Execute the current statement. Then step through the statements of `frame` until the next
+statmenet is not inside a macro expansion.
+"""
+function next_non_macro_expansion!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
+    pc = step_expr!(recurse, frame, istoplevel)
+    while pc !== nothing && !isa(pc, BreakpointRef)
+        shouldbreak(frame, pc) && return pc
+        pc = step_expr!(recurse, frame, istoplevel)
+        is_macro_expansion(frame) || return pc
+    end
+end
+next_non_macro_expansion!(frame::Frame, istoplevel::Bool=false) = next_non_macro_expansion!(finish_and_return!, frame, istoplevel)
+
+"""
+    pc = maybe_step_through_macro_expansion!(recurse, frame)
+    pc = maybe_step_through_macro_expansion!(frame)
+
+Return the current program counter of `frame` if it is not inside a macro expresion
+Otherwise, step through the statements of `frame` until the next statement is not inside
+a macro expansion.
+"""
+function maybe_step_through_macro_expansion!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
+    pc = frame.pc
+    is_macro_expansion(frame) || return pc
+    next_non_macro_expansion!(recurse, frame, istoplevel)
+    return pc
+end
+maybe_step_through_macro_expansion!(frame::Frame, istoplevel::Bool=false) = maybe_step_through_macro_expansion!(finish_and_return!, frame, istoplevel)
+
 """
     cframe = maybe_step_through_wrapper!(recurse, frame)
     cframe = maybe_step_through_wrapper!(frame)
@@ -304,6 +347,7 @@ Perform one "debugger" command. `cmd` should be one of:
 or one of the 'advanced' commands
 
 - "nc": step forward to the next call
+- "sm": step out from a macro expansion
 - "se": execute a single statement
 - "si": execute a single statement, stepping in if it's a call
 - "sg": step into the generator of a generated function
@@ -318,9 +362,9 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::AbstractString
     end
     try
         cmd == "nc" && return maybe_reset_frame!(recurse, frame, next_call!(recurse, frame, istoplevel), rootistoplevel)
-        cmd == "n" && return maybe_reset_frame!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
+        cmd == "n"  && return maybe_reset_frame!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
         cmd == "se" && return maybe_reset_frame!(recurse, frame, step_expr!(recurse, frame, istoplevel), rootistoplevel)
-
+        cmd == "sm" && return maybe_reset_frame!(recurse, frame, next_non_macro_expansion!(recurse, frame, istoplevel), rootistoplevel)
         enter_generated = false
         if cmd == "sg"
             enter_generated = true

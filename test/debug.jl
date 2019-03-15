@@ -265,5 +265,22 @@ struct B{T} end
             JuliaInterpreter.debug_command(fr, "c")
             @test get_return(fr) == 2
         end
+
+        @testset "step through macro" begin
+            function f()
+                x = 1 + 1
+                @debug "hello"
+                z = sin(2.0)
+                return z
+            end
+            l = @__LINE__
+            fr = JuliaInterpreter.enter_call(f)
+            fr, pc =  JuliaInterpreter.debug_command(fr, "n")
+            fr, pc = JuliaInterpreter.debug_command(fr, "sm")
+            @test JuliaInterpreter.whereis(fr)[2] == l - 3 # at sin call
+            JuliaInterpreter.debug_command(fr, "n") # at return
+            JuliaInterpreter.debug_command(fr, "n") # done
+            @test get_return(fr) == sin(2.0)
+        end
     end
 # end
