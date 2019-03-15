@@ -319,9 +319,9 @@ f113(;x) = x
 
 @testset "locals" begin
     f_locals(x::Int64, y::T, z::Vararg{Symbol}) where {T} = x
-    frame = JuliaInterpreter.enter_call(f_locals, 1, 2.0, :a, :b)
+    frame = JuliaInterpreter.enter_call(f_locals, Int64(1), 2.0, :a, :b)
     locals = JuliaInterpreter.locals(frame)
-    @test JuliaInterpreter.Variable(1, :x, false) in locals
+    @test JuliaInterpreter.Variable(Int64(1), :x, false) in locals
     @test JuliaInterpreter.Variable(2.0, :y, false) in locals
     @test JuliaInterpreter.Variable((:a, :b), :z, false) in locals
     @test JuliaInterpreter.Variable(Float64, :T, true) in locals
@@ -387,3 +387,10 @@ end
 
 # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/141
 @test @interpret get(ENV, "THIS_IS_NOT_DEFINED_1234", "24") == "24"
+
+# Test return value of whereis
+f() = nothing
+fr = JuliaInterpreter.enter_call(f)
+file, line = JuliaInterpreter.whereis(fr)
+@test file == @__FILE__
+@test line == (@__LINE__() - 4)
