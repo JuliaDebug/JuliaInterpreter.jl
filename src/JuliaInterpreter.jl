@@ -59,6 +59,11 @@ function set_compiled_methods()
     push!(compiled_methods, which(reenable_sigint, Tuple{Function}))
     # Signal-handling in the `print` dispatch hierarchy
     push!(compiled_methods, which(Base.unsafe_write, Tuple{Base.LibuvStream, Ptr{UInt8}, UInt}))
+    # Libc.GetLastError()
+    @static if Sys.iswindows()
+        push!(compiled_methods, which(Base.access_env, Tuple{Function, AbstractString}))
+        push!(compiled_methods, which(Base._hasenv, Tuple{Vector{UInt16}}))
+    end
 end
 
 function __init__()

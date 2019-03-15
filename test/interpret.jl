@@ -385,6 +385,9 @@ end
     @test isa(JuliaInterpreter.prepare_call(varargidentity, [varargidentity, x])[1], JuliaInterpreter.FrameCode)
 end
 
+# https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/141
+@test @interpret get(ENV, "THIS_IS_NOT_DEFINED_1234", "24") == "24"
+
 # Test return value of whereis
 f() = nothing
 fr = JuliaInterpreter.enter_call(f)
