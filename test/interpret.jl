@@ -395,7 +395,9 @@ file, line = JuliaInterpreter.whereis(fr)
 @test file == @__FILE__
 @test line == (@__LINE__() - 4)
 
+# Test path to files in stdlib
 fr = JuliaInterpreter.enter_call(Test.eval, 1)
 file, line = JuliaInterpreter.whereis(fr)
 @test isfile(file)
 @test isfile(JuliaInterpreter.getfile(fr.framecode.src.linetable[1]))
+@test occursin(Sys.STDLIB, repr(fr))

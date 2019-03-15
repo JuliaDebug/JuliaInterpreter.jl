@@ -20,6 +20,9 @@ module CompiledCalls
 # This module is for handling intrinsics that must be compiled (llvmcall)
 end
 
+# Just some way to get the path to the buildbot, which is used to workaround https://github.com/JuliaLang/julia/issues/26314
+const BUILDBOT_STDLIB_PATH = dirname(abspath(joinpath(String((@which clipboard()).file), "..", "..", "..")))
+
 const BUILTIN_FILE = joinpath(@__DIR__, "builtins-julia$(Int(VERSION.major)).$(Int(VERSION.minor)).jl")
 
 @info "Generating builtins for this julia version..."

@@ -187,7 +187,8 @@ function truncate!(frame)
 end
 
 function Base.show(io::IO, frame::Frame)
-    println(io, "Frame for ", scopeof(frame))
+    frame_loc = replace(repr(scopeof(frame)), BUILDBOT_STDLIB_PATH => Sys.STDLIB)
+    println(io, "Frame for ", frame_loc)
     pc = frame.pc
     ns = nstatements(frame.framecode)
     range = get(io, :limit, false) ? (max(1, pc-2):min(ns, pc+2)) : (1:ns)

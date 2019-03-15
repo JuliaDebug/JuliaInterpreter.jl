@@ -154,9 +154,6 @@ function lineoffset(framecode::FrameCode)
     return offset
 end
 
-# Just some way to get the path to the buildbot
-const BUILDBOT_STDLIB_PATH = dirname(abspath(joinpath(String((@which clipboard()).file), "..", "..", "..")))
-
 function maybe_find_stdlib_file(filepath)
     if !isfile(filepath)
         maybe_stdlib_filepath = replace(filepath, BUILDBOT_STDLIB_PATH => Sys.STDLIB)
