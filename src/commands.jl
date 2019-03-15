@@ -214,8 +214,8 @@ end
 next_line!(frame::Frame, istoplevel::Bool=false) = next_line!(finish_and_return!, frame, istoplevel)
 
 is_macro_expansion(lin::LineInfoNode) = lin.method == Symbol("macro expansion")
-is_macro_expansion(::Any) = false
-function is_macro_expansion(frame)
+is_macro_expansion(::LineNumberNode) = false
+function is_macro_expansion(frame::Frame)
     src = frame.framecode.src
     codeloc = src.codelocs[frame.pc]
     codeloc == 0 && return false
