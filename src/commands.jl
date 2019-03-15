@@ -227,7 +227,7 @@ function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
     length(stmts) < 2 && return frame
     last = stmts[end-1]
     isexpr(last, :(=)) && (last = last.args[2])
-    is_kw = isa(scope, Method) && startswith(String(Base.unwrap_unionall(scope.sig).parameters[1].name.name), "#kw")
+    is_kw = isa(scope, Method) && startswith(String(Base.unwrap_unionall(Base.unwrap_unionall(scope.sig).parameters[1]).name.name), "#kw")
     if is_kw || isexpr(last, :call) && any(x->x==Core.SlotNumber(1), last.args)
         # If the last expr calls #self# or passes it to an implementation method,
         # this is a wrapper function that we might want to step through
@@ -312,6 +312,7 @@ or one of the 'advanced' commands
 """
 function debug_command(@nospecialize(recurse), frame::Frame, cmd::AbstractString, rootistoplevel::Bool=false)
     istoplevel = rootistoplevel && frame.caller === nothing
+    cmd0 = cmd
     if cmd == "si"
         stmt = pc_expr(frame)
         cmd = is_call(stmt) ? "s" : "se"
@@ -341,7 +342,13 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::AbstractString
                 ret = handle_err(recurse, frame, err)
                 return isa(ret, BreakpointRef) ? (leaf(frame), ret) : ret
             end
-            isa(ret, BreakpointRef) && return maybe_reset_frame!(recurse, frame, ret, rootistoplevel)
+            if isa(ret, BreakpointRef)
+                newframe = leaf(frame)
+                cmd0 == "si" && return newframe, ret
+                newframe = maybe_step_through_wrapper!(recurse, newframe)
+                return newframe, BreakpointRef(newframe.framecode, 0)
+            end
+            # if we got here, the call returned a value
             maybe_assign!(frame, stmt0, ret)
             frame.pc += 1
             return frame, frame.pc
