@@ -4,10 +4,10 @@
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 
 [[CodeTracking]]
-deps = ["Test", "UUIDs"]
-git-tree-sha1 = "591b73b37c92ed7d55d3a14e266829c21aa3a7eb"
+deps = ["InteractiveUtils", "Test", "UUIDs"]
+git-tree-sha1 = "983f5f7a57c604322917ab8bc5b86ba914d3c345"
 uuid = "da1fd8a2-8d9e-5ec2-8556-3022fb5608a2"
-version = "0.3.0"
+version = "0.3.2"
 
 [[Dates]]
 deps = ["Printf"]
@@ -19,9 +19,9 @@ uuid = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 
 [[DocStringExtensions]]
 deps = ["LibGit2", "Markdown", "Pkg", "Test"]
-git-tree-sha1 = "1df01539a1c952cef21f2d2d1c092c2bcf0177d7"
+git-tree-sha1 = "4d30e889c9f106a51ffa4791a88ffd4765bf20c3"
 uuid = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
-version = "0.6.0"
+version = "0.7.0"
 
 [[Documenter]]
 deps = ["Base64", "DocStringExtensions", "InteractiveUtils", "LibGit2", "Logging", "Markdown", "Pkg", "REPL", "Random", "Test", "Unicode"]

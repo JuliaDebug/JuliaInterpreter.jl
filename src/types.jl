@@ -187,7 +187,7 @@ function truncate!(frame)
 end
 
 function Base.show(io::IO, frame::Frame)
-    frame_loc = replace(repr(scopeof(frame)), BUILDBOT_STDLIB_PATH => Sys.STDLIB)
+    frame_loc = CodeTracking.replace_buildbot_stdlibpath(repr(scopeof(frame)))
     println(io, "Frame for ", frame_loc)
     pc = frame.pc
     ns = nstatements(frame.framecode)
