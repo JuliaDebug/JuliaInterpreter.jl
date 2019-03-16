@@ -16,7 +16,15 @@ end
 function lookup_expr(frame, e::Expr)
     head = e.head
     head == :the_exception && return frame.framedata.last_exception[]
-    head == :static_parameter && return frame.framedata.sparams[e.args[1]::Int]
+    if head == :static_parameter
+        arg = e.args[1]::Int
+        if isassigned(frame.framedata.sparams, arg)
+            return frame.framedata.sparams[arg]
+        else
+            syms = sparam_syms(frame.framecode.scope)
+            throw(UndefVarError(syms[arg]))
+        end
+    end
     head == :boundscheck && length(e.args) == 0 && return true
     error("invalid lookup expr ", e)
 end
