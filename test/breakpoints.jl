@@ -131,7 +131,6 @@ end
     # break on error
     try
         @test_throws ArgumentError("unsupported state :missing") break_on(:missing)
-        @test_throws ArgumentError("inputs must be Symbols, got String") break_on("missing")
         break_on(:error)
 
         inner(x) = error("oops")
