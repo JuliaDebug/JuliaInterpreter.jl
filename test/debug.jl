@@ -247,7 +247,7 @@ struct B{T} end
         # Don't break on caught exceptions
         err_caught = Any[nothing]
         function f_exc_outer()
-            try 
+            try
                 f_exc_inner()
             catch err;
                 err_caught[1] = err
@@ -282,7 +282,7 @@ struct B{T} end
 
         # Break on error
         try
-            JuliaInterpreter.break_on_error[] = true
+            break_on(:error)
             fr = JuliaInterpreter.enter_call(f_outer)
             fr, pc = debug_command(JuliaInterpreter.finish_and_return!, fr, :finish)
             @test fr.framecode.scope.name == :error
@@ -293,7 +293,7 @@ struct B{T} end
             @test isa(pc, BreakpointRef)
             @test pc.err isa UndefVarError
         finally
-            JuliaInterpreter.break_on_error[] = false
+            break_off(:error)
         end
 
         @testset "breakpoints" begin

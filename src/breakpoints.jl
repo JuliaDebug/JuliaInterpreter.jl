@@ -130,6 +130,40 @@ function remove()
 end
 
 """
+    break_on(states...)
+
+Turn on automatic breakpoints when any of the conditions described in `states` occurs.
+The supported states are:
+
+- `:error`: trigger a breakpoint any time an uncaught exception is thrown
+"""
+function break_on(states::Vararg{Symbol})
+    for state in states
+        if state == :error
+            break_on_error[] = true
+        else
+            throw(ArgumentError(string("unsupported state :", state)))
+        end
+    end
+end
+
+"""
+    break_off(states...)
+
+Turn off automatic breakpoints when any of the conditions described in `states` occurs.
+See [`break_on`](@ref) for a description of valid states.
+"""
+function break_off(states::Vararg{Symbol})
+    for state in states
+        if state == :error
+            break_on_error[] = false
+        else
+            throw(ArgumentError(string("unsupported state :", state)))
+        end
+    end
+end
+
+"""
     breakpoint(f, sig)
     breakpoint(f, sig, line)
     breakpoint(f, sig, condition)
