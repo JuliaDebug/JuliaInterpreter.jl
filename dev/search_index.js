@@ -357,7 +357,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.debug_command",
     "category": "function",
-    "text": "ret = debug_command(recurse, frame, cmd, rootistoplevel=false)\nret = debug_command(frame, cmd, rootistoplevel=false)\n\nPerform one \"debugger\" command. cmd should be one of:\n\n\"n\": advance to the next line\n\"s\": step into the next call\n\"c\": continue execution until termination or reaching a breakpoint\n\"finish\": finish the current frame and return to the parent\n\nor one of the \'advanced\' commands\n\n\"nc\": step forward to the next call\n\"se\": execute a single statement\n\"si\": execute a single statement, stepping in if it\'s a call\n\"sg\": step into the generator of a generated function\n\nrootistoplevel and ret are as described for JuliaInterpreter.maybe_reset_frame!.\n\n\n\n\n\n"
+    "text": "ret = debug_command(recurse, frame, cmd, rootistoplevel=false)\nret = debug_command(frame, cmd, rootistoplevel=false)\n\nPerform one \"debugger\" command. cmd should be one of:\n\n:n: advance to the next line\n:s: step into the next call\n:c: continue execution until termination or reaching a breakpoint\n:finish: finish the current frame and return to the parent\n\nor one of the \'advanced\' commands\n\n:nc: step forward to the next call\n:se: execute a single statement\n:si: execute a single statement, stepping in if it\'s a call\n:sg: step into the generator of a generated function\n\nrootistoplevel and ret are as described for JuliaInterpreter.maybe_reset_frame!.\n\n\n\n\n\n"
 },
 
 {
