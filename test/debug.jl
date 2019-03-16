@@ -2,7 +2,7 @@ using JuliaInterpreter, Test
 using JuliaInterpreter: enter_call, enter_call_expr, get_return, @lookup
 using Base.Meta: isexpr
 
-const ALL_COMMANDS = ("n", "s", "c", "finish", "nc", "se", "si", "sg")
+const ALL_COMMANDS = ("n", "s", "c", "finish", "nc", "se", "si")
 
 function step_through_command(fr::Frame, cmd::String)
     while true
