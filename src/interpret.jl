@@ -208,7 +208,7 @@ function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr:
         end
         return framecode  # this was a Builtin
     end
-    newframe = prepare_frame_caller(frame, framecode, fargs, lenv)
+    newframe = prepare_frame_caller(frame, framecode, fargs, lenv; enter_generated=enter_generated)
     npc = newframe.pc
     shouldbreak(newframe, npc) && return BreakpointRef(newframe.framecode, npc)
     # if the following errors, handle_err will pop the stack and recycle newframe
