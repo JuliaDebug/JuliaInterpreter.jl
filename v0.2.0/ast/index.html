@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Lowered representation · JuliaInterpreter.jl</title><link href="https://cdnjs.cloudflare.com/ajax/libs/normalize/4.2.0/normalize.min.css" rel="stylesheet" type="text/css"/><link href="https://fonts.googleapis.com/css?family=Lato|Roboto+Mono" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/default.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.2.0/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link href="../assets/documenter.css" rel="stylesheet" type="text/css"/></head><body><nav class="toc"><h1>JuliaInterpreter.jl</h1><select id="version-selector" onChange="window.location.href=this.value" style="visibility: hidden"></select><form class="search" id="search-form" action="../search/"><input id="search-query" name="q" type="text" placeholder="Search docs"/></form><ul><li><a class="toctext" href="../">Home</a></li><li class="current"><a class="toctext" href>Lowered representation</a><ul class="internal"></ul></li><li><a class="toctext" href="../internals/">Internals</a></li><li><a class="toctext" href="../dev_reference/">Function reference</a></li></ul></nav><article id="docs"><header><nav><ul><li><a href>Lowered representation</a></li></ul><a class="edit-page" href="https://github.com/JuliaDebug/JuliaInterpreter.jl/blob/master/docs/src/ast.md"><span class="fa"></span> Edit on GitHub</a></nav><hr/><div id="topbar"><span>Lowered representation</span><a class="fa fa-bars" href="#"></a></div></header><h1><a class="nav-anchor" id="Lowered-representation-1" href="#Lowered-representation-1">Lowered representation</a></h1><p>Let&#39;s start with a demonstration on simple function:</p><pre><code class="language-julia">function summer(A::AbstractArray{T}) where T
+    s = zero(T)
+    for a in A
+        s += a
+    end
+    return s
+end
+
+A = [1, 2, 5]</code></pre><p>JuliaInterpreter uses the lowered representation of code:</p><pre><code class="language-julia">julia&gt; code = @code_lowered summer(A)
+CodeInfo(
+1 ─       s = (Main.zero)($(Expr(:static_parameter, 1)))
+│   %2  = A
+│         #temp# = (Base.iterate)(%2)
+│   %4  = #temp# === nothing
+│   %5  = (Base.not_int)(%4)
+└──       goto #4 if not %5
+2 ┄ %7  = #temp#
+│         a = (Core.getfield)(%7, 1)
+│   %9  = (Core.getfield)(%7, 2)
+│         s = s + a
+│         #temp# = (Base.iterate)(%2, %9)
+│   %12 = #temp# === nothing
+│   %13 = (Base.not_int)(%12)
+└──       goto #4 if not %13
+3 ─       goto #2
+4 ┄       return s
+)</code></pre><p>To understand this package&#39;s internals, you need to familiarize yourself with these <code>CodeInfo</code> objects. The numbers on the left correspond to <a href="https://en.wikipedia.org/wiki/Basic_block">basic blocks</a>; when used in statements these are printed with a hash, e.g., in <code>goto #4 if not %6</code>, the <code>#4</code> refers to basic block 4. The numbers in the next column–e.g., <code>%1</code>, refer to <a href="https://en.wikipedia.org/wiki/Static_single_assignment_form">single static assignment (SSA) values</a>. Each statement (each line of this printout) corresponds to a single SSA value, but only those used later in the code are printed using assignment syntax. Wherever a previous SSA value is used, it&#39;s referenced by an <code>SSAValue</code> and printed as <code>%6</code>; for example, in <code>goto #4 if not %6</code>, the <code>%6</code> is the result of evaluating the 6th statement, which is <code>(Base.not_int)(%5)</code>, which in turn refers to the result of statement 5. Together lines 5 and 6 correspond to <code>!(#temp# === nothing)</code>. (The <code>#temp#</code> means that this was a generated variable name not present explicitly in the original source code.)</p><p>Before diving into the details, let&#39;s first look at the statements themselves:</p><pre><code class="language-julia">julia&gt; code.code
+16-element Array{Any,1}:
+ :(_3 = (Main.zero)($(Expr(:static_parameter, 1))))
+ :(_2)
+ :(_4 = (Base.iterate)(%2))
+ :(_4 === nothing)
+ :((Base.not_int)(%4))
+ :(unless %5 goto %16)
+ :(_4)
+ :(_5 = (Core.getfield)(%7, 1))
+ :((Core.getfield)(%7, 2))
+ :(_3 = _3 + _5)
+ :(_4 = (Base.iterate)(%2, %9))
+ :(_4 === nothing)
+ :((Base.not_int)(%12))
+ :(unless %13 goto %16)
+ :(goto %7)
+ :(return _3)</code></pre><p>You can see directly that the SSA assignments are implicit; they are not directly present in the statement list. The most noteworthy change here is the appearance of objects like <code>_3</code>, which are references that index into local variable slots:</p><pre><code class="language-julia">julia&gt; code.slotnames
+5-element Array{Any,1}:
+ Symbol(&quot;#self#&quot;)
+ :A
+ :s
+ Symbol(&quot;#temp#&quot;)
+ :a</code></pre><p>When printing the whole <code>CodeInfo</code> object, these <code>slotnames</code> are substituted in. The types of objects that can be in <code>code.code</code> is well-described in the <a href="https://docs.julialang.org/en/latest/devdocs/ast/">Julia AST</a> documentation.</p><footer><hr/><a class="previous" href="../"><span class="direction">Previous</span><span class="title">Home</span></a><a class="next" href="../internals/"><span class="direction">Next</span><span class="title">Internals</span></a></footer></article></body></html>
