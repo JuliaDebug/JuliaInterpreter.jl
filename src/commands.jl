@@ -297,38 +297,38 @@ end
 
 Perform one "debugger" command. `cmd` should be one of:
 
-- "n": advance to the next line
-- "s": step into the next call
-- "c": continue execution until termination or reaching a breakpoint
-- "finish": finish the current frame and return to the parent
+- `:n`: advance to the next line
+- `:s`: step into the next call
+- `:c`: continue execution until termination or reaching a breakpoint
+- `:finish`: finish the current frame and return to the parent
 
 or one of the 'advanced' commands
 
-- "nc": step forward to the next call
-- "se": execute a single statement
-- "si": execute a single statement, stepping in if it's a call
-- "sg": step into the generator of a generated function
+- `:nc`: step forward to the next call
+- `:se`: execute a single statement
+- `:si`: execute a single statement, stepping in if it's a call
+- `:sg`: step into the generator of a generated function
 
 `rootistoplevel` and `ret` are as described for [`JuliaInterpreter.maybe_reset_frame!`](@ref).
 """
-function debug_command(@nospecialize(recurse), frame::Frame, cmd::AbstractString, rootistoplevel::Bool=false)
+function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootistoplevel::Bool=false)
     istoplevel = rootistoplevel && frame.caller === nothing
     cmd0 = cmd
-    if cmd == "si"
+    if cmd == :si
         stmt = pc_expr(frame)
-        cmd = is_call(stmt) ? "s" : "se"
+        cmd = is_call(stmt) ? :s : :se
     end
     try
-        cmd == "nc" && return maybe_reset_frame!(recurse, frame, next_call!(recurse, frame, istoplevel), rootistoplevel)
-        cmd == "n" && return maybe_reset_frame!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
-        cmd == "se" && return maybe_reset_frame!(recurse, frame, step_expr!(recurse, frame, istoplevel), rootistoplevel)
+        cmd == :nc && return maybe_reset_frame!(recurse, frame, next_call!(recurse, frame, istoplevel), rootistoplevel)
+        cmd == :n && return maybe_reset_frame!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
+        cmd == :se && return maybe_reset_frame!(recurse, frame, step_expr!(recurse, frame, istoplevel), rootistoplevel)
 
         enter_generated = false
-        if cmd == "sg"
+        if cmd == :sg
             enter_generated = true
-            cmd = "s"
+            cmd = :s
         end
-        if cmd == "s"
+        if cmd == :s
             pc = maybe_next_call!(recurse, frame, istoplevel)
             (isa(pc, BreakpointRef) || pc === nothing) && return maybe_reset_frame!(recurse, frame, pc, rootistoplevel)
             stmt0 = stmt = pc_expr(frame, pc)
@@ -345,7 +345,7 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::AbstractString
             end
             if isa(ret, BreakpointRef)
                 newframe = leaf(frame)
-                cmd0 == "si" && return newframe, ret
+                cmd0 == :si && return newframe, ret
                 newframe = maybe_step_through_wrapper!(recurse, newframe)
                 return newframe, BreakpointRef(newframe.framecode, 0)
             end
@@ -354,21 +354,21 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::AbstractString
             frame.pc += 1
             return frame, frame.pc
         end
-        if cmd == "c"
+        if cmd == :c
             r = root(frame)
             ret = finish_stack!(recurse, r, rootistoplevel)
             return isa(ret, BreakpointRef) ? (leaf(r), ret) : nothing
         end
-        cmd == "finish" && return maybe_reset_frame!(recurse, frame, finish!(recurse, frame, istoplevel), rootistoplevel)
+        cmd == :finish && return maybe_reset_frame!(recurse, frame, finish!(recurse, frame, istoplevel), rootistoplevel)
     catch err
         frame = unwind_exception(frame, err)
-        if cmd == "c"
-            return debug_command(recurse, frame, "c", istoplevel)
+        if cmd == :c
+            return debug_command(recurse, frame, :c, istoplevel)
         else
-            return debug_command(recurse, frame, "nc", istoplevel)
+            return debug_command(recurse, frame, :nc, istoplevel)
         end
     end
     throw(ArgumentError("command $cmd not recognized"))
 end
-debug_command(frame::Frame, cmd::AbstractString, rootistoplevel::Bool=false) =
+debug_command(frame::Frame, cmd::Symbol, rootistoplevel::Bool=false) =
     debug_command(finish_and_return!, frame, cmd, rootistoplevel)

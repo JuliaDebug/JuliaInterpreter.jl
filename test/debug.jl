@@ -2,9 +2,9 @@ using JuliaInterpreter, Test
 using JuliaInterpreter: enter_call, enter_call_expr, get_return, @lookup
 using Base.Meta: isexpr
 
-const ALL_COMMANDS = ("n", "s", "c", "finish", "nc", "se", "si")
+const ALL_COMMANDS = (:n, :s, :c, :finish, :nc, :se, :si)
 
-function step_through_command(fr::Frame, cmd::String)
+function step_through_command(fr::Frame, cmd::Symbol)
     while true
         ret = JuliaInterpreter.debug_command(JuliaInterpreter.finish_and_return!, fr, cmd)
         ret == nothing && break
@@ -52,7 +52,7 @@ struct B{T} end
 # @testset "Debug" begin
     @testset "Basics" begin
         frame = enter_call(map, x->2x, 1:10)
-        @test debug_command(frame, "finish") === nothing
+        @test debug_command(frame, :finish) === nothing
         @test frame.caller === frame.callee === nothing
         @test get_return(frame) == map(x->2x, 1:10)
 
@@ -62,10 +62,10 @@ struct B{T} end
         end
         for (args, kwargs) in (((1,), ()), ((1, 2), (x=7, y=33)))
             frame = enter_call(complicated_keyword_stuff, args...; kwargs...)
-            f, pc = debug_command(frame, "n")
+            f, pc = debug_command(frame, :n)
             @test f === frame
             @test isa(pc, Int)
-            @test debug_command(frame, "finish") === nothing
+            @test debug_command(frame, :finish) === nothing
             @test frame.caller === frame.callee === nothing
             @test get_return(frame) == complicated_keyword_stuff(args...; kwargs...)
         end
@@ -76,7 +76,7 @@ struct B{T} end
         @test step_through(f22) == ":a"
 
         frame = enter_call(trivial, 2)
-        @test debug_command(frame, "s") === nothing
+        @test debug_command(frame, :s) === nothing
         @test get_return(frame) == 2
 
         @test step_through(trivial, 2) == 2
@@ -87,37 +87,37 @@ struct B{T} end
 
     @testset "generated" begin
         frame = enter_call_expr(:($(callgenerated)()))
-        f, pc = debug_command(frame, "s")
+        f, pc = debug_command(frame, :s)
         @test isa(pc, BreakpointRef)
         @test JuliaInterpreter.scopeof(f).name == :generatedfoo
         stmt = JuliaInterpreter.pc_expr(f)
         @test stmt.head == :return && stmt.args[1] === Int
-        @test debug_command(frame, "c") === nothing
+        @test debug_command(frame, :c) === nothing
         @test frame.callee === nothing
         @test get_return(frame) === Int
         # This time, step into the generated function itself
         frame = enter_call_expr(:($(callgenerated)()))
-        f, pc = debug_command(frame, "sg")
+        f, pc = debug_command(frame, :sg)
         @test isa(pc, BreakpointRef)
         @test JuliaInterpreter.scopeof(f).name == :generatedfoo
         stmt = JuliaInterpreter.pc_expr(f)
         @test stmt.head == :return && @lookup(f, stmt.args[1]) === 1
-        f2, pc = debug_command(f, "finish")
+        f2, pc = debug_command(f, :finish)
         @test JuliaInterpreter.scopeof(f2).name == :callgenerated
         # Now finish the regular function
-        @test debug_command(frame, "finish") === nothing
+        @test debug_command(frame, :finish) === nothing
         @test frame.callee === nothing
         @test get_return(frame) === 1
 
         # Parametric generated function (see #157)
         frame = fr = JuliaInterpreter.enter_call(callgeneratedparams)
         while fr.pc < JuliaInterpreter.nstatements(fr.framecode) - 1
-            fr, pc = debug_command(fr, "se")
+            fr, pc = debug_command(fr, :se)
         end
-        fr, pc = debug_command(fr, "sg")
+        fr, pc = debug_command(fr, :sg)
         @test JuliaInterpreter.scopeof(fr).name == :generatedparams
-        fr, pc = debug_command(fr, "finish")
-        @test debug_command(fr, "finish") === nothing
+        fr, pc = debug_command(fr, :finish)
+        @test debug_command(fr, :finish) === nothing
         @test JuliaInterpreter.get_return(fr) == (Int, 2)
     end
 
@@ -128,33 +128,33 @@ struct B{T} end
         end
         frame = JuliaInterpreter.enter_call_expr(:($(optional)()))
         # First call steps in and executes the first statement
-        f, pc = debug_command(frame, "n")
+        f, pc = debug_command(frame, :n)
         @test frame !== f
         # cos(1.0)
-        debug_command(f, "n")
+        debug_command(f, :n)
         # return
-        f2, pc = debug_command(f, "n")
+        f2, pc = debug_command(f, :n)
         @test f2 === frame
-        @test debug_command(frame, "n") === nothing
+        @test debug_command(frame, :n) === nothing
     end
 
     @testset "Keyword arguments" begin
         f(x; b = 1) = x+b
         g() = f(1; b = 2)
         frame = JuliaInterpreter.enter_call_expr(:($(g)()));
-        fr, pc = debug_command(frame, "nc")
-        fr, pc = debug_command(fr, "nc")
-        fr, pc = debug_command(fr, "nc")
-        fr, pc = debug_command(fr, "s")
-        fr, pc = debug_command(fr, "finish")
-        @test debug_command(fr, "finish") === nothing
+        fr, pc = debug_command(frame, :nc)
+        fr, pc = debug_command(fr, :nc)
+        fr, pc = debug_command(fr, :nc)
+        fr, pc = debug_command(fr, :s)
+        fr, pc = debug_command(fr, :finish)
+        @test debug_command(fr, :finish) === nothing
         @test frame.callee === nothing
         @test get_return(frame) == 3
 
         frame = JuliaInterpreter.enter_call(f, 2; b = 4)
         fr = JuliaInterpreter.maybe_step_through_wrapper!(frame)
-        fr, pc = debug_command(fr, "nc")
-        fr, pc = debug_command(fr, "nc")
+        fr, pc = debug_command(fr, :nc)
+        fr, pc = debug_command(fr, :nc)
         @test get_return(frame) == 6
     end
 
@@ -171,16 +171,16 @@ struct B{T} end
             frame = fr = JuliaInterpreter.enter_call(f)
             pc = fr.pc
             while pc <= JuliaInterpreter.nstatements(fr.framecode) - 2
-                fr, pc = debug_command(fr, "se")
+                fr, pc = debug_command(fr, :se)
             end
-            fr, pc = debug_command(frame, "si")
+            fr, pc = debug_command(frame, :si)
             @test stacklength(frame) == 2
             frame = fr = JuliaInterpreter.enter_call(f)
             pc = fr.pc
             while pc <= JuliaInterpreter.nstatements(fr.framecode) - 2
-                fr, pc = debug_command(fr, "se")
+                fr, pc = debug_command(fr, :se)
             end
-            fr, pc = debug_command(frame, "s")
+            fr, pc = debug_command(frame, :s)
             @test stacklength(frame) > 2
             push!(scopes, JuliaInterpreter.scopeof(fr))
         end
@@ -199,21 +199,21 @@ struct B{T} end
         end
         ""","file.jl")
         frame = JuliaInterpreter.enter_call_expr(:($(test_macro)()))
-        f, pc = debug_command(frame, "n")        # a is set
-        f, pc = debug_command(f, "n")            # b is set
-        f, pc = debug_command(f, "n")            # x is set
-        f, pc = debug_command(f, "n")            # y is set
-        f, pc = debug_command(f, "n")            # z is set
-        @test debug_command(f, "n") === nothing  # return
+        f, pc = debug_command(frame, :n)        # a is set
+        f, pc = debug_command(f, :n)            # b is set
+        f, pc = debug_command(f, :n)            # x is set
+        f, pc = debug_command(f, :n)            # y is set
+        f, pc = debug_command(f, :n)            # z is set
+        @test debug_command(f, :n) === nothing  # return
     end
 
     @testset "Quoting" begin
         # Test that symbols don't get an extra QuoteNode
         f_symbol() = :limit => true
         frame = JuliaInterpreter.enter_call(f_symbol)
-        fr, pc = debug_command(frame, "s")
-        fr, pc = debug_command(fr, "finish")
-        @test debug_command(fr, "finish") === nothing
+        fr, pc = debug_command(frame, :s)
+        fr, pc = debug_command(fr, :finish)
+        @test debug_command(fr, :finish) === nothing
         @test get_return(frame) == f_symbol()
     end
 
@@ -224,13 +224,13 @@ struct B{T} end
         # depending on whether this is in or out of a @testset, the first statement may differ
         stmt1 = fr.framecode.src.code[1]
         if isexpr(stmt1, :call) && @lookup(frame, stmt1.args[1]) === getfield
-            fr, pc = debug_command(fr, "se")
+            fr, pc = debug_command(fr, :se)
         end
-        fr, pc = debug_command(fr, "s")
-        fr, pc = debug_command(fr, "n")
+        fr, pc = debug_command(fr, :s)
+        fr, pc = debug_command(fr, :n)
         @test root(fr) !== fr
-        fr, pc = debug_command(fr, "finish")
-        @test debug_command(fr, "finish") === nothing
+        fr, pc = debug_command(fr, :finish)
+        @test debug_command(fr, :finish) === nothing
         @test get_return(frame) === 2
     end
 
@@ -257,18 +257,18 @@ struct B{T} end
         end
         f_exc_inner() = error()
         fr = JuliaInterpreter.enter_call(f_exc_outer)
-        fr, pc = debug_command(fr, "s")
-        fr, pc = debug_command(fr, "n")
-        fr, pc = debug_command(fr, "n")
-        debug_command(fr, "finish")
+        fr, pc = debug_command(fr, :s)
+        fr, pc = debug_command(fr, :n)
+        fr, pc = debug_command(fr, :n)
+        debug_command(fr, :finish)
         @test get_return(fr) == 2
         @test first(err_caught) isa ErrorException
         @test stacklength(fr) == 1
 
         err_caught = Any[nothing]
         fr = JuliaInterpreter.enter_call(f_exc_outer)
-        fr, pc = debug_command(fr, "s")
-        debug_command(fr, "c")
+        fr, pc = debug_command(fr, :s)
+        debug_command(fr, :c)
         @test get_return(root(fr)) == 2
         @test first(err_caught) isa ErrorException
         @test stacklength(root(fr)) == 1
@@ -277,19 +277,19 @@ struct B{T} end
         f_outer() = g_inner()
         g_inner() = error()
         fr = JuliaInterpreter.enter_call(f_outer)
-        @test_throws ErrorException debug_command(fr, "finish")
+        @test_throws ErrorException debug_command(fr, :finish)
         @test stacklength(fr) == 1
 
         # Break on error
         try
             JuliaInterpreter.break_on_error[] = true
             fr = JuliaInterpreter.enter_call(f_outer)
-            fr, pc = debug_command(JuliaInterpreter.finish_and_return!, fr, "finish")
+            fr, pc = debug_command(JuliaInterpreter.finish_and_return!, fr, :finish)
             @test fr.framecode.scope.name == :error
 
             fundef() = undef_func()
             frame = JuliaInterpreter.enter_call(fundef)
-            fr, pc = debug_command(frame, "s")
+            fr, pc = debug_command(frame, :s)
             @test isa(pc, BreakpointRef)
             @test pc.err isa UndefVarError
         finally
@@ -311,21 +311,21 @@ struct B{T} end
             method_start = ln - 9
             fr = enter_call(f_bp, 2)
             @test JuliaInterpreter.linenumber(fr) == method_start + 1
-            fr, pc =  JuliaInterpreter.debug_command(fr, "c")
+            fr, pc =  JuliaInterpreter.debug_command(fr, :c)
             # Hit the breakpoint x1
             @test JuliaInterpreter.linenumber(fr) == method_start + 3
             @test pc isa BreakpointRef
-            fr, pc =  JuliaInterpreter.debug_command(fr, "n")
+            fr, pc =  JuliaInterpreter.debug_command(fr, :n)
             @test JuliaInterpreter.linenumber(fr) == method_start + 4
-            fr, pc =  JuliaInterpreter.debug_command(fr, "c")
+            fr, pc =  JuliaInterpreter.debug_command(fr, :c)
             # Hit the breakpoint again x2
             @test pc isa BreakpointRef
             @test JuliaInterpreter.linenumber(fr) == method_start + 3
-            fr, pc =  JuliaInterpreter.debug_command(fr, "c")
+            fr, pc =  JuliaInterpreter.debug_command(fr, :c)
             # Hit the breakpoint for the last time x3
             @test pc isa BreakpointRef
             @test JuliaInterpreter.linenumber(fr) == method_start + 3
-            JuliaInterpreter.debug_command(fr, "c")
+            JuliaInterpreter.debug_command(fr, :c)
             @test get_return(fr) == 2
         end
     end
