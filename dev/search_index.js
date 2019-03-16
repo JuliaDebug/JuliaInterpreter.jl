@@ -417,6 +417,22 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
+    "location": "dev_reference/#JuliaInterpreter.break_on",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.break_on",
+    "category": "function",
+    "text": "break_on(states...)\n\nTurn on automatic breakpoints when any of the conditions described in states occurs. The supported states are:\n\n:error: trigger a breakpoint any time an uncaught exception is thrown\n\n\n\n\n\n"
+},
+
+{
+    "location": "dev_reference/#JuliaInterpreter.break_off",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.break_off",
+    "category": "function",
+    "text": "break_off(states...)\n\nTurn off automatic breakpoints when any of the conditions described in states occurs. See break_on for a description of valid states.\n\n\n\n\n\n"
+},
+
+{
     "location": "dev_reference/#JuliaInterpreter.dummy_breakpoint",
     "page": "Function reference",
     "title": "JuliaInterpreter.dummy_breakpoint",
@@ -429,7 +445,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "Breakpoints",
     "category": "section",
-    "text": "@breakpoint\n@bp\nbreakpoint\nenable\ndisable\nremove\nJuliaInterpreter.dummy_breakpoint"
+    "text": "@breakpoint\n@bp\nbreakpoint\nenable\ndisable\nremove\nbreak_on\nbreak_off\nJuliaInterpreter.dummy_breakpoint"
 },
 
 {
