@@ -101,7 +101,7 @@ end
         breakpoint(String(method.file), method.line+1)
         frame = JuliaInterpreter.enter_call(loop_radius2, 2)
         ret = @interpret JuliaInterpreter.locals(frame)
-        @test isa(ret, JuliaInterpreter.BreakpointRef)
+        @test isa(ret, Tuple{Frame,JuliaInterpreter.BreakpointRef})
         # Test kwarg method
         remove()
         bp = breakpoint(tmppath, 3)

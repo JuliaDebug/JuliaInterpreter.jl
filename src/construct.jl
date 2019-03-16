@@ -45,10 +45,10 @@ function namedtuple(kwargs)
     return NamedTuple{(names...,), Tuple{types...}}(vals)
 end
 
-get_source(meth) = Base.uncompressed_ast(meth)
+get_source(meth::Method) = Base.uncompressed_ast(meth)
 
-function get_source(g::GeneratedFunctionStub)
-    b = g(g.argnames...)
+function get_source(g::GeneratedFunctionStub, env)
+    b = g(env..., g.argnames...)
     b isa CodeInfo && return b
     return eval(b)
 end
@@ -138,7 +138,7 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
             generator = false
         else
             if is_generated(method)
-                code = get_source(method.generator)
+                code = get_source(method.generator, lenv)
                 generator = true
             else
                 code = get_source(method)

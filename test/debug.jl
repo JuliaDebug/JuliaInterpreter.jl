@@ -25,6 +25,10 @@ end
     :(return $T)
 end
 callgenerated() = generatedfoo(1)
+@generated function generatedparams(a::Array{T,N}) where {T,N}
+    :(return ($T,$N))
+end
+callgeneratedparams() = generatedparams([1 2; 3 4])
 
 macro insert_some_calls()
     esc(quote
@@ -100,6 +104,17 @@ struct B{T} end
         @test debug_command(frame, "finish") === nothing
         @test frame.callee === nothing
         @test get_return(frame) === 1
+
+        # Parametric generated function (see #157)
+        frame = fr = JuliaInterpreter.enter_call(callgeneratedparams)
+        while fr.pc < JuliaInterpreter.nstatements(fr.framecode) - 1
+            fr, pc = debug_command(fr, "se")
+        end
+        fr, pc = debug_command(fr, "sg")
+        @test JuliaInterpreter.scopeof(fr).name == :generatedparams
+        fr, pc = debug_command(fr, "finish")
+        @test debug_command(fr, "finish") === nothing
+        @test JuliaInterpreter.get_return(fr) == (Int, 2)
     end
 
     @testset "Optional arguments" begin
