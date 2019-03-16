@@ -233,6 +233,7 @@ function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
         # this is a wrapper function that we might want to step through
         while frame.pc != length(stmts)-1
             pc = next_call!(recurse, frame, false)  # since we're in a Method we're not at toplevel
+            pc === nothing && return frame
         end
         ret = evaluate_call!(dummy_breakpoint, frame, last)
         @assert isa(ret, BreakpointRef)

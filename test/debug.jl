@@ -9,6 +9,18 @@ function step_through(frame)
     return get_return(r)
 end
 
+function step_through_function(f, args...)
+    frame = JuliaInterpreter.enter_call(f, args...)
+    while true
+        ret = JuliaInterpreter.debug_command(JuliaInterpreter.finish_and_return!, frame, "s")
+        ret == nothing && break
+        frame, pc = ret
+    end
+    @test frame.callee === nothing
+    @test frame.caller === nothing
+    return JuliaInterpreter.get_return(frame)
+end
+
 @generated function generatedfoo(T)
     :(return $T)
 end
@@ -49,14 +61,17 @@ struct B{T} end
 
         f22() = string(:(a+b))
         @test step_through(enter_call(f22)) == "a + b"
+        @test step_through_function(f22) == "a + b"
         f22() = string(QuoteNode(:a))
         @test step_through(enter_call(f22)) == ":a"
+        @test step_through_function(f22) == ":a"
 
         frame = enter_call(trivial, 2)
         @test debug_command(frame, "s") === nothing
         @test get_return(frame) == 2
 
         @test step_through(enter_call(trivial, 2)) == 2
+        @test step_through_function(trivial, 2) == 2
         @test step_through(enter_call_expr(:($(+)(1,2.5)))) == 3.5
         @test step_through(enter_call_expr(:($(sin)(1)))) == sin(1)
         @test step_through(enter_call_expr(:($(gcd)(10,20)))) == gcd(10, 20)
@@ -207,6 +222,7 @@ struct B{T} end
         end
         B_inst = B{Int}()
         step_through(JuliaInterpreter.enter_call(B_inst, 10)) == B_inst(10)
+        step_through_function(B_inst, 10) == B_inst(10)
     end
 
     @testset "Exceptions" begin
