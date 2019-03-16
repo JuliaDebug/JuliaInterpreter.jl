@@ -2,24 +2,31 @@ using JuliaInterpreter, Test
 using JuliaInterpreter: enter_call, enter_call_expr, get_return, @lookup
 using Base.Meta: isexpr
 
-function step_through(frame)
-    r = root(frame)
-    @test debug_command(JuliaInterpreter.finish_and_return!, frame, "c") === nothing
-    @test r.callee === nothing
-    return get_return(r)
+const ALL_COMMANDS = ("n", "s", "c", "finish", "nc", "se", "si") # ,"sg") sg current broken
+
+function step_through_command(fr::Frame, cmd::String)
+    while true
+        ret = JuliaInterpreter.debug_command(JuliaInterpreter.finish_and_return!, fr, cmd)
+        ret == nothing && break
+        fr, pc = ret
+    end
+    @test fr.callee === nothing
+    @test fr.caller === nothing
+    return get_return(fr)
 end
 
-function step_through_function(f, args...)
-    frame = JuliaInterpreter.enter_call(f, args...)
-    while true
-        ret = JuliaInterpreter.debug_command(JuliaInterpreter.finish_and_return!, frame, "s")
-        ret == nothing && break
-        frame, pc = ret
+function step_through_frame(frame_creator)
+    rets = []
+    for cmd in ALL_COMMANDS
+        frame = frame_creator() 
+        ret = step_through_command(frame, cmd)
+        push!(rets, ret)
     end
-    @test frame.callee === nothing
-    @test frame.caller === nothing
-    return JuliaInterpreter.get_return(frame)
+    @test all(ret -> ret == rets[1], rets)
+    return rets[1]
 end
+step_through(f, args...; kwargs...) = step_through_frame(() -> enter_call(f, args...; kwargs...))
+step_through(expr::Expr) = step_through_frame(() -> enter_call_expr(expr))
 
 @generated function generatedfoo(T)
     :(return $T)
@@ -60,21 +67,18 @@ struct B{T} end
         end
 
         f22() = string(:(a+b))
-        @test step_through(enter_call(f22)) == "a + b"
-        @test step_through_function(f22) == "a + b"
+        @test step_through(f22) == "a + b"
         f22() = string(QuoteNode(:a))
-        @test step_through(enter_call(f22)) == ":a"
-        @test step_through_function(f22) == ":a"
+        @test step_through(f22) == ":a"
 
         frame = enter_call(trivial, 2)
         @test debug_command(frame, "s") === nothing
         @test get_return(frame) == 2
 
-        @test step_through(enter_call(trivial, 2)) == 2
-        @test step_through_function(trivial, 2) == 2
-        @test step_through(enter_call_expr(:($(+)(1,2.5)))) == 3.5
-        @test step_through(enter_call_expr(:($(sin)(1)))) == sin(1)
-        @test step_through(enter_call_expr(:($(gcd)(10,20)))) == gcd(10, 20)
+        @test step_through(trivial, 2) == 2
+        @test step_through(:($(+)(1,2.5))) == 3.5
+        @test step_through(:($(sin)(1))) == sin(1)
+        @test step_through(:($(gcd)(10,20))) == gcd(10, 20)
     end
 
     @testset "generated" begin
@@ -221,8 +225,7 @@ struct B{T} end
             return x + y
         end
         B_inst = B{Int}()
-        step_through(JuliaInterpreter.enter_call(B_inst, 10)) == B_inst(10)
-        step_through_function(B_inst, 10) == B_inst(10)
+        step_through(B_inst, 10) == B_inst(10)
     end
 
     @testset "Exceptions" begin
