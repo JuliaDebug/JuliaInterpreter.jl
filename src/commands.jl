@@ -231,7 +231,7 @@ function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
     if is_kw || isexpr(last, :call) && any(x->x==Core.SlotNumber(1), last.args)
         # If the last expr calls #self# or passes it to an implementation method,
         # this is a wrapper function that we might want to step through
-        while frame.pc < length(stmts)-1
+        while frame.pc != length(stmts)-1
             pc = next_call!(recurse, frame, false)  # since we're in a Method we're not at toplevel
             pc === nothing && return frame
         end
