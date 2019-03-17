@@ -1,5 +1,7 @@
 using Documenter, JuliaInterpreter, Test, CodeTracking
 
+remove()   # ensure there are no activate breakpoints
+
 makedocs(
     modules = [JuliaInterpreter],
     clean = false,
