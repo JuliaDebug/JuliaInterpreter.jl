@@ -81,6 +81,13 @@ end
     disable(bp)
     @test JuliaInterpreter.finish_stack!(frame) == loop_radius2(10)
 
+    # Return value with breakpoints
+    @breakpoint sum([1,2]) any(x->x>4, a)
+    val = @interpret sum([1,2,3])
+    @test val == 6
+    frame, bp = @interpret sum([1,2,5])
+    @test isa(frame, Frame) && isa(bp, JuliaInterpreter.BreakpointRef)
+
     # Next line with breakpoints
     function outer(x)
         inner(x)

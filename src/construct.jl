@@ -630,15 +630,15 @@ macro interpret(arg)
         return :(throw($e))
     end
     quote
-        theargs = $(esc(args))
-        frame = JuliaInterpreter.enter_call_expr(Expr(:call, theargs...))
+        local theargs = $(esc(args))
+        local frame = JuliaInterpreter.enter_call_expr(Expr(:call, theargs...))
         if frame === nothing
-            return eval(Expr(:call, map(QuoteNode, theargs)...))
+            eval(Expr(:call, map(QuoteNode, theargs)...))
+        elseif shouldbreak(frame, 1)
+            frame, BreakpointRef(frame.framecode, 1)
+        else
+            local ret = finish_and_return!(frame)
+            isa(ret, BreakpointRef) ? (frame, ret) : ret
         end
-        if shouldbreak(frame, 1)
-            return frame, BreakpointRef(frame.framecode, 1)
-        end
-        ret = finish_and_return!(frame)
-        isa(ret, BreakpointRef) ? (frame, ret) : ret
     end
 end
