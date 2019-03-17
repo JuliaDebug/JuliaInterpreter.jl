@@ -12,9 +12,6 @@
 ]add JuliaInterpreter
 ```
 
-[docs-dev-img]: https://img.shields.io/badge/docs-dev-blue.svg
-[docs-dev-url]: https://JuliaDebug.github.io/JuliaInterpreter.jl/latest
-
 [docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
 [docs-stable-url]: https://JuliaDebug.github.io/JuliaInterpreter.jl/stable
 
