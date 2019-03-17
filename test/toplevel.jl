@@ -17,7 +17,8 @@ end
     @test JuliaInterpreter.is_doc_expr(ex.args[2])
     @test !JuliaInterpreter.is_doc_expr(:(1+1))
 
-    @test isa(JuliaInterpreter.prepare_thunk(Main, :(export foo)), Frame)
+    @test JuliaInterpreter.prepare_thunk(Main, :(export foo)) === nothing
+    @test JuliaInterpreter.prepare_thunk(Base.Threads, :(global Condition)) === nothing
 
     @test !isdefined(Main, :JIInvisible)
     JuliaInterpreter.split_expressions(JIVisible, :(module JIInvisible f() = 1 end))

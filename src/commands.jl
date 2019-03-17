@@ -138,6 +138,7 @@ end
 through_methoddef_or_done!(@nospecialize(recurse), t::Tuple{Module,Expr,Frame}) =
     through_methoddef_or_done!(recurse, t[end])
 through_methoddef_or_done!(@nospecialize(recurse), modex::Tuple{Module,Expr,Expr}) = Core.eval(modex[1], modex[3])
+through_methoddef_or_done!(@nospecialize(recurse), ::Nothing) = nothing
 through_methoddef_or_done!(arg) = through_methoddef_or_done!(finish_and_return!, arg)
 
 function changed_line!(expr, line, fls)
