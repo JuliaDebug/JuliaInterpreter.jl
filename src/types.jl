@@ -175,17 +175,6 @@ Return the deepest callee in the call stack.
 """
 leaf(frame) = traverse(callee, frame)
 
-function truncate!(frame)
-    frame0 = frame
-    frame = frame.callee
-    while frame !== nothing
-        frame.caller.callee = nothing
-        recycle(frame)
-        frame = frame.callee
-    end
-    return frame0
-end
-
 function Base.show(io::IO, frame::Frame)
     frame_loc = CodeTracking.replace_buildbot_stdlibpath(repr(scopeof(frame)))
     println(io, "Frame for ", frame_loc)
