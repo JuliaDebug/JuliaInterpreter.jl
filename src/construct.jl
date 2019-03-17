@@ -322,7 +322,12 @@ function prepare_thunk(mod::Module, thunk::Expr, recursive::Bool=false)
     elseif isexpr(thunk, :error) || isexpr(thunk, :incomplete)
         error("lowering returned an error, ", thunk)
     elseif recursive
-        thunk = Meta.lower(mod, Expr(:block, nothing, thunk))
+        thunk = Meta.lower(mod, thunk)
+        if isa(thunk, Expr)
+            # If on 2nd attempt to lower it's still an Expr, just evaluate it
+            Core.eval(mod, thunk)
+            return nothing
+        end
         framecode = FrameCode(mod, thunk.args[1])
     else
         lwr = Meta.lower(mod, thunk)
