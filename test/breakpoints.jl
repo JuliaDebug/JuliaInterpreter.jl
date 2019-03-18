@@ -173,13 +173,13 @@ end
     io = IOBuffer()
     frame = JuliaInterpreter.enter_call(loop_radius2, 2)
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 1)
-    show(io, bp)
+    show(io, "text/plain", bp)
     @test String(take!(io)) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, line 3)"
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 0)  # fictive breakpoint
-    show(io, bp)
+    show(io,  "text/plain",bp)
     @test String(take!(io)) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, %0)"
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 1, ArgumentError("whoops"))
-    show(io, bp)
+    show(io,  "text/plain",bp)
     @test String(take!(io)) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, line 3, ArgumentError(\"whoops\"))"
 
     # In source breakpointing

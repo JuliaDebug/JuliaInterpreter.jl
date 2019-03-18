@@ -85,7 +85,7 @@ end
 
 nstatements(framecode::FrameCode) = length(framecode.src.code)
 
-Base.show(io::IO, framecode::FrameCode) = print_framecode(io, framecode)
+Base.show(io::IO, ::MIME"text/plain", framecode::FrameCode) = print_framecode(io, framecode)
 
 """
 `FrameInstance` represents a method specialized for particular argument types.
@@ -175,7 +175,7 @@ Return the deepest callee in the call stack.
 """
 leaf(frame) = traverse(callee, frame)
 
-function Base.show(io::IO, frame::Frame)
+function Base.show(io::IO, ::MIME"text/plain", frame::Frame)
     frame_loc = CodeTracking.replace_buildbot_stdlibpath(repr(scopeof(frame)))
     println(io, "Frame for ", frame_loc)
     pc = frame.pc
@@ -208,7 +208,10 @@ struct Variable
     name::Symbol
     isparam::Bool
 end
-Base.show(io::IO, var::Variable) = (print(io, var.name, " = "); show(io,var.value))
+function Base.show(io::IO, m::MIME"text/plain", var::Variable)
+    print(io, var.name, " = ")
+    show(io, m, var.value)
+end
 Base.isequal(var1::Variable, var2::Variable) =
     var1.value == var2.value && var1.name == var2.name && var1.isparam == var2.isparam
 
@@ -233,7 +236,7 @@ struct BreakpointRef
 end
 BreakpointRef(framecode, stmtidx) = BreakpointRef(framecode, stmtidx, nothing)
 
-function Base.show(io::IO, bp::BreakpointRef)
+function Base.show(io::IO, ::MIME"text/plain", bp::BreakpointRef)
     if checkbounds(Bool, bp.framecode.breakpoints, bp.stmtidx)
         lineno = linenumber(bp.framecode, bp.stmtidx)
         print(io, "breakpoint(", bp.framecode.scope, ", line ", lineno)
