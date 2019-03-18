@@ -295,39 +295,51 @@ struct B{T} end
         finally
             break_off(:error)
         end
+    end
 
-        @testset "breakpoints" begin
-            # In source breakpoints
-            function f_bp(x)
-                #=1=#    i = 1
-                #=2=#    @label foo
-                #=3=#    @bp
-                #=4=#    repr("foo")
-                #=5=#    i += 1
-                #=6=#    i > 3 && return x
-                #=7=#    @goto foo
-            end
-            ln = @__LINE__
-            method_start = ln - 9
-            fr = enter_call(f_bp, 2)
-            @test JuliaInterpreter.linenumber(fr) == method_start + 1
-            fr, pc =  JuliaInterpreter.debug_command(fr, :c)
-            # Hit the breakpoint x1
-            @test JuliaInterpreter.linenumber(fr) == method_start + 3
-            @test pc isa BreakpointRef
-            fr, pc =  JuliaInterpreter.debug_command(fr, :n)
-            @test JuliaInterpreter.linenumber(fr) == method_start + 4
-            fr, pc =  JuliaInterpreter.debug_command(fr, :c)
-            # Hit the breakpoint again x2
-            @test pc isa BreakpointRef
-            @test JuliaInterpreter.linenumber(fr) == method_start + 3
-            fr, pc =  JuliaInterpreter.debug_command(fr, :c)
-            # Hit the breakpoint for the last time x3
-            @test pc isa BreakpointRef
-            @test JuliaInterpreter.linenumber(fr) == method_start + 3
-            JuliaInterpreter.debug_command(fr, :c)
-            @test get_return(fr) == 2
+    @testset "breakpoints" begin
+        # In source breakpoints
+        function f_bp(x)
+            #=1=#    i = 1
+            #=2=#    @label foo
+            #=3=#    @bp
+            #=4=#    repr("foo")
+            #=5=#    i += 1
+            #=6=#    i > 3 && return x
+            #=7=#    @goto foo
         end
+        ln = @__LINE__
+        method_start = ln - 9
+        fr = enter_call(f_bp, 2)
+        @test JuliaInterpreter.linenumber(fr) == method_start + 1
+        fr, pc =  JuliaInterpreter.debug_command(fr, :c)
+        # Hit the breakpoint x1
+        @test JuliaInterpreter.linenumber(fr) == method_start + 3
+        @test pc isa BreakpointRef
+        fr, pc =  JuliaInterpreter.debug_command(fr, :n)
+        @test JuliaInterpreter.linenumber(fr) == method_start + 4
+        fr, pc =  JuliaInterpreter.debug_command(fr, :c)
+        # Hit the breakpoint again x2
+        @test pc isa BreakpointRef
+        @test JuliaInterpreter.linenumber(fr) == method_start + 3
+        fr, pc =  JuliaInterpreter.debug_command(fr, :c)
+        # Hit the breakpoint for the last time x3
+        @test pc isa BreakpointRef
+        @test JuliaInterpreter.linenumber(fr) == method_start + 3
+        JuliaInterpreter.debug_command(fr, :c)
+        @test get_return(fr) == 2
+    end
+
+    f_inv(x::Real) = x^2;
+    f_inv(x::Integer) = 1 + invoke(f_inv, Tuple{Real}, x)
+    @testset "invoke" begin
+        fr = JuliaInterpreter.enter_call(f_inv, 2)
+        fr, pc = JuliaInterpreter.debug_command(fr, :s) # apply_type
+        frame, pc = JuliaInterpreter.debug_command(fr, :s) # step into invoke
+        @test frame.framecode.scope.sig == Tuple{typeof(f_inv),Real}
+        JuliaInterpreter.debug_command(frame, :c)
+        frame = root(frame)
+        @test get_return(frame) == f_inv(2)
     end
 
     @testset "Issue #178" begin

@@ -208,13 +208,23 @@ function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr:
         err = length(fargs) > 1 ? fargs[2] : frame.framedata.last_exception[]
         throw(err)
     end
-    framecode, lenv = get_call_framecode(fargs, frame.framecode, frame.pc; enter_generated=enter_generated)
-    if lenv === nothing
-        if isa(framecode, Compiled)
-            popfirst!(fargs)  # now it's really just `args`
-            return f(fargs...)
+    if fargs[1] === Core.invoke # invoke needs special handling
+        f_invoked = which(fargs[2], fargs[3])
+        sig = Tuple{_Typeof.(fargs)...}
+        ret = prepare_framecode(f_invoked, sig; enter_generated=enter_generated)
+        isa(ret, Compiled) && invoke(fargs[2:end]...)
+        framecode, lenv = ret
+        fargs = [fargs[2]; fargs[4:end]]
+        lenv === nothing && return framecode  # this was a Builtin
+    else
+        framecode, lenv = get_call_framecode(fargs, frame.framecode, frame.pc; enter_generated=enter_generated)
+        if lenv === nothing
+            if isa(framecode, Compiled)
+                popfirst!(fargs)  # now it's really just `args`
+                return f(fargs...)
+            end
+            return framecode  # this was a Builtin
         end
-        return framecode  # this was a Builtin
     end
     newframe = prepare_frame_caller(frame, framecode, fargs, lenv)
     npc = newframe.pc
