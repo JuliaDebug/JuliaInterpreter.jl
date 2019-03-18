@@ -329,4 +329,13 @@ struct B{T} end
             @test get_return(fr) == 2
         end
     end
+
+    @testset "Issue #178" begin
+        remove()
+        a = [1, 2, 3, 4]
+        @breakpoint length(LinearIndices(a))
+        frame, bp = @interpret sum(a)
+        @test debug_command(frame, :c) === nothing
+        @test get_return(frame) == sum(a)
+    end
 # end

@@ -643,6 +643,9 @@ macro interpret(arg)
             frame, BreakpointRef(frame.framecode, 1)
         else
             local ret = finish_and_return!(frame)
+            # We deliberately return the top frame here; future debugging commands
+            # via debug_command may alter the leaves, we want the top frame so we can
+            # ultimately do `get_return`.
             isa(ret, BreakpointRef) ? (frame, ret) : ret
         end
     end
