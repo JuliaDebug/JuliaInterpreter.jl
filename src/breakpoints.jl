@@ -233,6 +233,7 @@ end
 
 """
     breakpoint(filename, line)
+    breakpoint(filename, line, condition)
 
 Set a breakpoint at the specified file and line number.
 """
