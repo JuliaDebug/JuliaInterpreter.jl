@@ -67,6 +67,12 @@ function finish_stack!(@nospecialize(recurse), frame::Frame, rootistoplevel::Boo
         if isassign(frame, pc)
             lhs = getlhs(pc)
             do_assignment!(frame, lhs, ret)
+        else
+            stmt = pc_expr(frame, pc)
+            if isexpr(stmt, :(=))
+                lhs = stmt.args[1]
+                do_assignment!(frame, lhs, ret)
+            end
         end
         pc += 1
         frame.pc = pc
