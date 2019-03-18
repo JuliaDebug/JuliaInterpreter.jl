@@ -153,9 +153,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             if !expand
                 return Some{Any}(invoke(argswrapped...))
             end
-            new_f = which(argswrapped[1], argswrapped[2])
-            new_expr = Expr(:call, new_f, argswrapped[3:end]...)
-            return new_expr
+            return Expr(:call, invoke, argswrapped...)
 """)
             continue
         end
