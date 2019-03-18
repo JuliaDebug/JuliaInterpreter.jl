@@ -208,7 +208,16 @@ function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr:
         err = length(fargs) > 1 ? fargs[2] : frame.framedata.last_exception[]
         throw(err)
     end
-    framecode, lenv = get_call_framecode(fargs, frame.framecode, frame.pc; enter_generated=enter_generated)
+    if fargs[1] isa Method # happens on invoke, fargs[1] is the method to call
+        f, sig = fargs[1], Tuple{typeof.(fargs[2:end])...}
+        ret = prepare_framecode(f, sig; enter_generated=enter_generated)
+        if ret === nothing
+            error("help...")
+        end
+        framecode, lenv = ret
+    else
+        framecode, lenv = get_call_framecode(fargs, frame.framecode, frame.pc; enter_generated=enter_generated)
+    end
     if lenv === nothing
         if isa(framecode, Compiled)
             popfirst!(fargs)  # now it's really just `args`

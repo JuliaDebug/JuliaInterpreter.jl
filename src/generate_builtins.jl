@@ -138,11 +138,24 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     $head f === Core._apply
         argswrapped = getargs(args, frame)
         if !expand
-            return Some{Any}(Core._apply(getargs(args, frame)...))
+            return Some{Any}(Core._apply(argswrapped...))
         end
         argsflat = Base.append_any((argswrapped[1],), argswrapped[2:end]...)
         new_expr = Expr(:call, map(x->isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode) ? QuoteNode(x) : x, argsflat)...)
         return new_expr
+""")
+            continue
+        elseif f === Core.invoke
+            print(io, 
+"""
+    $head f === invoke
+            argswrapped = getargs(args, frame)
+            if !expand
+                return Some{Any}(invoke(argswrapped...))
+            end
+            new_f = which(argswrapped[1], argswrapped[2])
+            new_expr = Expr(:call, new_f, argswrapped[3:end]...)
+            return new_expr
 """)
             continue
         end
