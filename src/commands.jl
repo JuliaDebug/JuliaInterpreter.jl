@@ -292,6 +292,19 @@ function unwind_exception(frame::Frame, exc)
     rethrow(exc)
 end
 
+const always_run_recursive_interpret = Ref(false)
+function any_active_breakpoint()
+    for bp in _breakpoints
+        if bp.isactive && bp.condition !== always_false
+            return true
+        end
+    end
+    return break_on_error[]
+end
+function run_in_compiled()
+    return !any_active_breakpoint() && !always_run_recursive_interpret[]
+end
+
 """
     ret = debug_command(recurse, frame, cmd, rootistoplevel=false)
     ret = debug_command(frame, cmd, rootistoplevel=false)
@@ -313,6 +326,7 @@ or one of the 'advanced' commands
 `rootistoplevel` and `ret` are as described for [`JuliaInterpreter.maybe_reset_frame!`](@ref).
 """
 function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootistoplevel::Bool=false)
+    recurse = run_in_compiled() ? Compiled() : recurse
     istoplevel = rootistoplevel && frame.caller === nothing
     cmd0 = cmd
     if cmd == :si
