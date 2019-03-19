@@ -94,6 +94,52 @@ combinations or that you want to break on entry to *any* method of a particular 
 At present, note that some of this functionality requires that you be running
 [Revise.jl](https://github.com/timholy/Revise.jl).
 
+It is, in addition, possible to halt execution when otherwise an error would be thrown.
+This functionality is enabled using [`break_on`](@ref) and disabled with [`break_off`](@ref):
+
+```jldoctest demo1
+julia> function f_outer()
+           println("before error")
+           f_inner()
+           println("after error")
+       end;
+
+julia> f_inner() = error("inner error");
+
+julia> break_on(:error)
+
+julia> fr, pc = @interpret f_outer()
+before error
+(Frame for f_outer() in Main at none:2
+  1  2  1 ─      (println)("before error")
+  2* 3  │        (f_inner)()
+  3  4  │   %3 = (println)("after error")
+  4  4  └──      return %3
+callee: f_inner() in Main at none:1, breakpoint(error(s::AbstractString) in Base at error.jl:33, line 33, ErrorException("inner error")))
+
+julia> leaf(fr)
+Frame for error(s::AbstractString) in Base at error.jl:33
+  1  33  1 ─ %1 = (ErrorException)(s)
+  2* 33  │   %2 = (throw)(%1)
+  3  33  └──      return %2
+s = "inner error"
+caller: f_inner() in Main at none:1
+
+julia> typeof(pc)
+BreakpointRef
+
+julia> pc.err
+ErrorException("inner error")
+
+julia> break_off(:error)
+
+julia> @interpret f_outer()
+before error
+ERROR: inner error
+Stacktrace:
+[...]
+```
+
 Finally, you can set breakpoints using [`@bp`](@ref):
 
 ```jldoctest demo1
