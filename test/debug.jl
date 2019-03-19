@@ -18,7 +18,7 @@ end
 function step_through_frame(frame_creator)
     rets = []
     for cmd in ALL_COMMANDS
-        frame = frame_creator() 
+        frame = frame_creator()
         ret = step_through_command(frame, cmd)
         push!(rets, ret)
     end
@@ -360,5 +360,30 @@ struct B{T} end
         frame, bp = @interpret sum(a)
         @test debug_command(frame, :c) === nothing
         @test get_return(frame) == sum(a)
+    end
+
+    @testset "Stepping over kwfunc preparation" begin
+        stepkw! = JuliaInterpreter.maybe_step_through_kwprep! # for brevity
+        a = [4, 1, 3, 2]
+        reversesort(x) = sort(x; rev=true)
+        frame = JuliaInterpreter.enter_call(reversesort, a)
+        frame = stepkw!(frame)
+        @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1
+
+        frame = JuliaInterpreter.enter_call(sort, a)
+        frame = stepkw!(frame)
+        @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1
+
+        frame, pc = debug_command(frame, :s)
+        frame, pc = debug_command(frame, :se)  # get past copymutable
+        frame = stepkw!(frame)
+        @test frame.pc > 4
+
+        frame = JuliaInterpreter.enter_call(sort, a; rev=true)
+        frame, pc = debug_command(frame, :se)
+        frame, pc = debug_command(frame, :s)
+        frame, pc = debug_command(frame, :se)  # get past copymutable
+        frame = stepkw!(frame)
+        @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1
     end
 # end
