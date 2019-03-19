@@ -34,7 +34,46 @@ julia&gt; @interpret sum([1,2,5])
 c 1* 648  1 ─      nothing
   2  648  │   %2 = (Base.#sum#550)(Colon(), #self#, a)
   3  648  └──      return %2
-a = [1, 2, 5], breakpoint(sum(a::AbstractArray) in Base at reducedim.jl:648, line 648))</code></pre><p><a href="dev_reference/#JuliaInterpreter.disable"><code>disable</code></a> and <a href="dev_reference/#JuliaInterpreter.enable"><code>enable</code></a> allow you to turn breakpoints off and on without losing any conditional statements you may have provided; <a href="dev_reference/#JuliaInterpreter.remove"><code>remove</code></a> allows a permanent removal of the breakpoint. You can use <code>remove()</code> to remove all breakpoints in all methods.</p><p><a href="dev_reference/#JuliaInterpreter.@breakpoint"><code>@breakpoint</code></a> allows you to optionally specify a line number at which the breakpoint is to be set. You can also use a functional form, <a href="dev_reference/#JuliaInterpreter.breakpoint"><code>breakpoint</code></a>, to specify file/line combinations or that you want to break on entry to <em>any</em> method of a particular function. At present, note that some of this functionality requires that you be running <a href="https://github.com/timholy/Revise.jl">Revise.jl</a>.</p><p>Finally, you can set breakpoints using <a href="dev_reference/#JuliaInterpreter.@bp"><code>@bp</code></a>:</p><pre><code class="language-julia-repl">julia&gt; function myfunction(x, y)
+a = [1, 2, 5], breakpoint(sum(a::AbstractArray) in Base at reducedim.jl:648, line 648))</code></pre><p><a href="dev_reference/#JuliaInterpreter.disable"><code>disable</code></a> and <a href="dev_reference/#JuliaInterpreter.enable"><code>enable</code></a> allow you to turn breakpoints off and on without losing any conditional statements you may have provided; <a href="dev_reference/#JuliaInterpreter.remove"><code>remove</code></a> allows a permanent removal of the breakpoint. You can use <code>remove()</code> to remove all breakpoints in all methods.</p><p><a href="dev_reference/#JuliaInterpreter.@breakpoint"><code>@breakpoint</code></a> allows you to optionally specify a line number at which the breakpoint is to be set. You can also use a functional form, <a href="dev_reference/#JuliaInterpreter.breakpoint"><code>breakpoint</code></a>, to specify file/line combinations or that you want to break on entry to <em>any</em> method of a particular function. At present, note that some of this functionality requires that you be running <a href="https://github.com/timholy/Revise.jl">Revise.jl</a>.</p><p>It is, in addition, possible to halt execution when otherwise an error would be thrown. This functionality is enabled using <a href="dev_reference/#JuliaInterpreter.break_on"><code>break_on</code></a> and disabled with <a href="dev_reference/#JuliaInterpreter.break_off"><code>break_off</code></a>:</p><pre><code class="language-julia-repl">julia&gt; function f_outer()
+           println(&quot;before error&quot;)
+           f_inner()
+           println(&quot;after error&quot;)
+       end;
+
+julia&gt; f_inner() = error(&quot;inner error&quot;);
+
+julia&gt; break_on(:error)
+
+julia&gt; fr, pc = @interpret f_outer()
+before error
+(Frame for f_outer() in Main at none:2
+  1  2  1 ─      (println)(&quot;before error&quot;)
+  2* 3  │        (f_inner)()
+  3  4  │   %3 = (println)(&quot;after error&quot;)
+  4  4  └──      return %3
+callee: f_inner() in Main at none:1, breakpoint(error(s::AbstractString) in Base at error.jl:33, line 33, ErrorException(&quot;inner error&quot;)))
+
+julia&gt; leaf(fr)
+Frame for error(s::AbstractString) in Base at error.jl:33
+  1  33  1 ─ %1 = (ErrorException)(s)
+  2* 33  │   %2 = (throw)(%1)
+  3  33  └──      return %2
+s = &quot;inner error&quot;
+caller: f_inner() in Main at none:1
+
+julia&gt; typeof(pc)
+BreakpointRef
+
+julia&gt; pc.err
+ErrorException(&quot;inner error&quot;)
+
+julia&gt; break_off(:error)
+
+julia&gt; @interpret f_outer()
+before error
+ERROR: inner error
+Stacktrace:
+[...]</code></pre><p>Finally, you can set breakpoints using <a href="dev_reference/#JuliaInterpreter.@bp"><code>@bp</code></a>:</p><pre><code class="language-julia-repl">julia&gt; function myfunction(x, y)
            a = 1
            b = 2
            x &gt; 3 &amp;&amp; @bp
