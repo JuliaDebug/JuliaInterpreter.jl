@@ -369,6 +369,14 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
+    "location": "dev_reference/#JuliaInterpreter.maybe_step_through_kwprep!",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.maybe_step_through_kwprep!",
+    "category": "function",
+    "text": "frame = maybe_step_through_kwprep!(recurse, frame)\nframe = maybe_step_through_kwprep!(frame)\n\nIf frame.pc points to the beginning of preparatory work for calling a keyword-argument function, advance forward until the actual call.\n\n\n\n\n\n"
+},
+
+{
     "location": "dev_reference/#JuliaInterpreter.handle_err",
     "page": "Function reference",
     "title": "JuliaInterpreter.handle_err",
@@ -389,7 +397,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "Frame execution",
     "category": "section",
-    "text": "JuliaInterpreter.Compiled\nJuliaInterpreter.step_expr!\nJuliaInterpreter.finish!\nJuliaInterpreter.finish_and_return!\nJuliaInterpreter.finish_stack!\nJuliaInterpreter.get_return\nJuliaInterpreter.next_until!\nJuliaInterpreter.through_methoddef_or_done!\nJuliaInterpreter.evaluate_call!\nJuliaInterpreter.evaluate_foreigncall\nJuliaInterpreter.maybe_evaluate_builtin\nJuliaInterpreter.maybe_next_call!\nJuliaInterpreter.next_line!\nJuliaInterpreter.next_call!\nJuliaInterpreter.maybe_reset_frame!\nJuliaInterpreter.maybe_step_through_wrapper!\nJuliaInterpreter.handle_err\nJuliaInterpreter.debug_command"
+    "text": "JuliaInterpreter.Compiled\nJuliaInterpreter.step_expr!\nJuliaInterpreter.finish!\nJuliaInterpreter.finish_and_return!\nJuliaInterpreter.finish_stack!\nJuliaInterpreter.get_return\nJuliaInterpreter.next_until!\nJuliaInterpreter.through_methoddef_or_done!\nJuliaInterpreter.evaluate_call!\nJuliaInterpreter.evaluate_foreigncall\nJuliaInterpreter.maybe_evaluate_builtin\nJuliaInterpreter.maybe_next_call!\nJuliaInterpreter.next_line!\nJuliaInterpreter.next_call!\nJuliaInterpreter.maybe_reset_frame!\nJuliaInterpreter.maybe_step_through_wrapper!\nJuliaInterpreter.maybe_step_through_kwprep!\nJuliaInterpreter.handle_err\nJuliaInterpreter.debug_command"
 },
 
 {
