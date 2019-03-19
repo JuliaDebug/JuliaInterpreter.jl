@@ -250,6 +250,72 @@ function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
 end
 maybe_step_through_wrapper!(frame::Frame) = maybe_step_through_wrapper!(finish_and_return!, frame)
 
+
+"""
+    frame = maybe_step_through_kwprep!(recurse, frame)
+    frame = maybe_step_through_kwprep!(frame)
+
+If `frame.pc` points to the beginning of preparatory work for calling a keyword-argument
+function, advance forward until the actual call.
+"""
+function maybe_step_through_kwprep!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
+    pc, src = frame.pc, frame.framecode.src
+    n = length(src.code)
+    stmt = pc_expr(frame, pc)
+    if isa(stmt, Tuple{Symbol,Vararg{Symbol}})
+        # Check to see if we're creating a NamedTuple followed by kwfunc call
+        pccall = pc + 5
+        if pccall <= n
+            stmt1 = src.code[pc+1]
+            # We deliberately check isexpr(stmt, :call) rather than is_call(stmt): if it's
+            # assigned to a local, it's *not* kwarg preparation.
+            if isexpr(stmt1, :call) && is_quotenode(stmt1.args[1], Core.apply_type) && is_quoted_type(stmt1.args[2], :NamedTuple)
+                stmt4 = src.code[pc+4]
+                if isexpr(stmt4, :call) && is_quotenode(stmt4.args[1], Core.kwfunc)
+                    while pc < pccall
+                        pc = step_expr!(recurse, frame, istoplevel)
+                    end
+                    return frame
+                end
+            end
+        end
+    elseif isexpr(stmt, :call) && is_quoted_type(stmt.args[1], :NamedTuple) && length(stmt.args) == 1
+        # Creating an empty NamedTuple, now split by type (no supplied kwargs vs kwargs...)
+        if pc + 1 <= n
+            stmt1 = src.code[pc+1]
+            if isexpr(stmt1, :call)
+                f = stmt1.args[1]
+                if is_quotenode(f, Base.pairs)
+                    # No supplied kwargs
+                    pccall = pc + 2
+                    if pccall <= n
+                        stmt2 = src.code[pccall]
+                        if isexpr(stmt2, :call) && length(stmt2.args) >= 3 && stmt2.args[2] == SSAValue(pc+1) && stmt2.args[3] == SlotNumber(1)
+                            while pc < pccall
+                                pc = step_expr!(recurse, frame, istoplevel)
+                            end
+                        end
+                    end
+                elseif is_quotenode(f, Base.merge) && ((pccall = pc + 7) <= n)
+                    stmtk = src.code[pccall-1]
+                    if isexpr(stmtk, :call) && is_quotenode(stmtk.args[1], Core.kwfunc)
+                        for i = 1:4
+                            pc = step_expr!(recurse, frame, istoplevel)
+                        end
+                        stmti = src.code[pc]
+                        if isexpr(stmti, :call) && is_quotenode(stmti.args[1], Core.kwfunc)
+                            pc = step_expr!(recurse, frame, istoplevel)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return frame
+end
+maybe_step_through_kwprep!(frame::Frame, istoplevel::Bool=false) =
+    maybe_step_through_kwprep!(finish_and_return!, frame, istoplevel)
+
 """
     ret = maybe_reset_frame!(recurse, frame, pc, rootistoplevel)
 
@@ -319,6 +385,14 @@ or one of the 'advanced' commands
 `rootistoplevel` and `ret` are as described for [`JuliaInterpreter.maybe_reset_frame!`](@ref).
 """
 function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootistoplevel::Bool=false)
+    function nicereturn!(@nospecialize(recurse), frame, pc, rootistoplevel)
+        if pc === nothing || isa(pc, BreakpointRef)
+            return maybe_reset_frame!(recurse, frame, pc, rootistoplevel)
+        end
+        maybe_step_through_kwprep!(recurse, frame, rootistoplevel && frame.caller === nothing)
+        return frame, frame.pc
+    end
+
     istoplevel = rootistoplevel && frame.caller === nothing
     cmd0 = cmd
     if cmd == :si
@@ -326,8 +400,8 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootis
         cmd = is_call(stmt) ? :s : :se
     end
     try
-        cmd == :nc && return maybe_reset_frame!(recurse, frame, next_call!(recurse, frame, istoplevel), rootistoplevel)
-        cmd == :n && return maybe_reset_frame!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
+        cmd == :nc && return nicereturn!(recurse, frame, next_call!(recurse, frame, istoplevel), rootistoplevel)
+        cmd == :n && return nicereturn!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
         cmd == :se && return maybe_reset_frame!(recurse, frame, step_expr!(recurse, frame, istoplevel), rootistoplevel)
 
         enter_generated = false
@@ -338,6 +412,8 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootis
         if cmd == :s
             pc = maybe_next_call!(recurse, frame, istoplevel)
             (isa(pc, BreakpointRef) || pc === nothing) && return maybe_reset_frame!(recurse, frame, pc, rootistoplevel)
+            maybe_step_through_kwprep!(recurse, frame, istoplevel)
+            pc = frame.pc
             stmt0 = stmt = pc_expr(frame, pc)
             isexpr(stmt0, :return) && return maybe_reset_frame!(recurse, frame, nothing, rootistoplevel)
             if isexpr(stmt, :(=))

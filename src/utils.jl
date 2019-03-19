@@ -84,6 +84,20 @@ Tests whether `g` is equal to `GlobalRef(mod, name)`.
 """
 is_global_ref(@nospecialize(g), mod::Module, name::Symbol) = isa(g, GlobalRef) && g.mod === mod && g.name == name
 
+is_quotenode(@nospecialize(q), @nospecialize(val)) = isa(q, QuoteNode) && q.value == val
+
+function is_quoted_type(@nospecialize(a), name::Symbol)
+    if isa(a, QuoteNode)
+        T = a.value
+        isa(T, Type) || return false
+        if isa(T, UnionAll)
+            T = Base.unwrap_unionall(T)
+        end
+        return T.name.name == :NamedTuple
+    end
+    return false
+end
+
 function is_function_def(@nospecialize(ex))
     (isexpr(ex, :(=)) && isexpr(ex.args[1], :call)) ||
     isexpr(ex,:function)
