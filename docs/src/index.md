@@ -106,7 +106,7 @@ julia> function f_outer()
 
 julia> f_inner() = error("inner error");
 
-julia> JuliaInterpreter.break_on(:error)
+julia> break_on(:error)
 
 julia> fr, pc = @interpret f_outer()
 before error
@@ -131,7 +131,7 @@ BreakpointRef
 julia> pc.err
 ErrorException("inner error")
 
-julia> JuliaInterpreter.break_off(:error)
+julia> break_off(:error)
 
 julia> @interpret f_outer()
 before error
