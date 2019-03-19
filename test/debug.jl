@@ -346,6 +346,17 @@ struct B{T} end
         @test get_return(frame) == f_inv(2)
     end
 
+    f_inv_latest(x::Real) = 1 + Core._apply_latest(f_inv, x)
+    @testset "invokelatest" begin
+        fr = JuliaInterpreter.enter_call(f_inv_latest, 2.0)
+        fr, pc = JuliaInterpreter.debug_command(fr, :nc)
+        frame, pc = JuliaInterpreter.debug_command(fr, :s) # step into invokelatest
+        @test frame.framecode.scope.sig == Tuple{typeof(f_inv),Real}
+        JuliaInterpreter.debug_command(frame, :c)
+        frame = root(frame)
+        @test get_return(frame) == f_inv_latest(2.0)
+    end
+
     @testset "Issue #178" begin
         remove()
         a = [1, 2, 3, 4]
