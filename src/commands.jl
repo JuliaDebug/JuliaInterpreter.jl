@@ -300,8 +300,9 @@ end
 
 const always_run_recursive_interpret = Ref(false)
 function any_active_breakpoint()
-    for bp in _breakpoints
-        if bp.isactive && bp.condition !== always_false
+    for bpref in _breakpoints
+        bp = bpref[]
+        if bp.isactive && bp.condition !== falsecondition
             return true
         end
     end
