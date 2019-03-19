@@ -2,10 +2,6 @@ using JuliaInterpreter, Test
 using JuliaInterpreter: enter_call, enter_call_expr, get_return, @lookup
 using Base.Meta: isexpr
 
-# We want to test recursive interpretation
-JuliaInterpreter.always_run_recursive_interpret[] = true
-@test !JuliaInterpreter.run_in_compiled()
-
 const ALL_COMMANDS = (:n, :s, :c, :finish, :nc, :se, :si)
 
 function step_through_command(fr::Frame, cmd::Symbol)
@@ -365,18 +361,4 @@ struct B{T} end
         @test debug_command(frame, :c) === nothing
         @test get_return(frame) == sum(a)
     end
-
-    @testset "compiled mode when no breakpoints" begin
-        try 
-            JuliaInterpreter.always_run_recursive_interpret[] = false    
-            remove()
-            @test JuliaInterpreter.run_in_compiled()
-            fr = JuliaInterpreter.enter_call(sin, 2.0)
-            JuliaInterpreter.debug_command(fr, :c)
-            @test get_return(fr) == sin(2.0)
-        finally
-            JuliaInterpreter.always_run_recursive_interpret[] = true
-        end
-    end
-
 # end
