@@ -131,14 +131,15 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         return Some{Any}(ntuple(i->@lookup(frame, args[i+1]), length(args)-1))
 """)
             continue
-        elseif f === Core._apply
-            # Resolve varargs calls
+        elseif f === Core._apply || f === Core._apply_latest
+            # Resolve varargs calls and invokelatest
+            fstr = scopedname(f)
             print(io,
 """
-    $head f === Core._apply
+    $head f === $fstr
         argswrapped = getargs(args, frame)
         if !expand
-            return Some{Any}(Core._apply(argswrapped...))
+            return Some{Any}($fstr(argswrapped...))
         end
         argsflat = Base.append_any((argswrapped[1],), argswrapped[2:end]...)
         new_expr = Expr(:call, map(x->isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode) ? QuoteNode(x) : x, argsflat)...)
@@ -146,7 +147,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
 """)
             continue
         elseif f === Core.invoke
-            print(io, 
+            print(io,
 """
     $head f === invoke
             argswrapped = getargs(args, frame)
