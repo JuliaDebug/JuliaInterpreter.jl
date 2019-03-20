@@ -216,6 +216,7 @@ function next_line!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false
         end
         shouldbreak(frame, pc) && return BreakpointRef(frame.framecode, pc)
     end
+    maybe_step_through_kwprep!(recurse, frame, istoplevel)
     maybe_next_call!(recurse, frame, istoplevel)
 end
 next_line!(frame::Frame, istoplevel::Bool=false) = next_line!(finish_and_return!, frame, istoplevel)
