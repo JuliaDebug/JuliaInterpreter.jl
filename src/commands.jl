@@ -405,9 +405,11 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootis
 
     istoplevel = rootistoplevel && frame.caller === nothing
     cmd0 = cmd
+    is_si = false
     if cmd == :si
         stmt = pc_expr(frame)
         cmd = is_call(stmt) ? :s : :se
+        is_si = true
     end
     try
         cmd == :nc && return nicereturn!(recurse, frame, next_call!(recurse, frame, istoplevel), rootistoplevel)
@@ -422,7 +424,7 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootis
         if cmd == :s
             pc = maybe_next_call!(recurse, frame, istoplevel)
             (isa(pc, BreakpointRef) || pc === nothing) && return maybe_reset_frame!(recurse, frame, pc, rootistoplevel)
-            maybe_step_through_kwprep!(recurse, frame, istoplevel)
+            is_si || maybe_step_through_kwprep!(recurse, frame, istoplevel)
             pc = frame.pc
             stmt0 = stmt = pc_expr(frame, pc)
             isexpr(stmt0, :return) && return maybe_reset_frame!(recurse, frame, nothing, rootistoplevel)
@@ -439,7 +441,8 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootis
             if isa(ret, BreakpointRef)
                 newframe = leaf(frame)
                 cmd0 == :si && return newframe, ret
-                newframe = maybe_step_through_wrapper!(recurse, newframe)
+                is_si || (newframe = maybe_step_through_wrapper!(recurse, newframe))
+                is_si || maybe_step_through_kwprep!(recurse, newframe, istoplevel)
                 return newframe, BreakpointRef(newframe.framecode, 0)
             end
             # if we got here, the call returned a value
