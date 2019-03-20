@@ -303,7 +303,9 @@ function locals(frame::Frame)
     if code.scope isa Method
         syms = sparam_syms(code.scope)
         for i in 1:length(syms)
-            push!(vars, Variable(data.sparams[i], syms[i], true))
+            if isassigned(data.sparams, i)
+                push!(vars, Variable(data.sparams[i], syms[i], true))
+            end
         end
     end
     return vars

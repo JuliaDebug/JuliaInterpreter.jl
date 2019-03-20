@@ -413,3 +413,8 @@ e = try
     end
 @test e isa UndefVarError
 @test e.var == :S
+# https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/200
+locs = JuliaInterpreter.locals(JuliaInterpreter.enter_call(foo, ""))
+@test length(locs) == 3 # #self# + 2 variables
+@test JuliaInterpreter.Variable("", :x, false) in locs
+@test JuliaInterpreter.Variable(String, :T, true) in locs
