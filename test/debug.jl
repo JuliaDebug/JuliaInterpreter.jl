@@ -154,7 +154,7 @@ struct B{T} end
         frame = JuliaInterpreter.enter_call(f, 2; b = 4)
         fr = JuliaInterpreter.maybe_step_through_wrapper!(frame)
         fr, pc = debug_command(fr, :nc)
-        fr, pc = debug_command(fr, :nc)
+        debug_command(fr, :nc)
         @test get_return(frame) == 6
     end
 
@@ -397,5 +397,10 @@ struct B{T} end
         frame, pc = debug_command(frame, :n)
         # Check that we are at the kw call to g
         @test Core.kwfunc(g) == JuliaInterpreter.@lookup frame JuliaInterpreter.pc_expr(frame).args[1]
+        # Step into the inner g
+        frame, pc = debug_command(frame, :s)
+        # Finish the frame and make sure we step out of the wrapper
+        frame, pc = debug_command(frame, :finish)
+        @test frame.framecode.scope == @which f(2, 3)
     end
 # end
