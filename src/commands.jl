@@ -162,6 +162,9 @@ function changed_line!(expr, line, fls)
     end
 end
 
+# Sentinel to see if the call was a wrapper call
+struct Wrapper end
+
 """
     pc = next_line!(recurse, frame, istoplevel=false)
     pc = next_line!(frame, istoplevel=false)
@@ -236,7 +239,7 @@ function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
     last = stmts[end-1]
     isexpr(last, :(=)) && (last = last.args[2])
     is_kw = isa(scope, Method) && startswith(String(Base.unwrap_unionall(Base.unwrap_unionall(scope.sig).parameters[1]).name.name), "#kw")
-    if is_kw || isexpr(last, :call) && any(x->x==Core.SlotNumber(1), last.args)
+    if is_kw || isexpr(last, :call) && any(isequal(Core.SlotNumber(1)), last.args)
         # If the last expr calls #self# or passes it to an implementation method,
         # this is a wrapper function that we might want to step through
         while frame.pc != length(stmts)-1
@@ -245,6 +248,7 @@ function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
         end
         ret = evaluate_call!(dummy_breakpoint, frame, last)
         @assert isa(ret, BreakpointRef)
+        frame.framedata.ssavalues[frame.pc] = Wrapper()
         return maybe_step_through_wrapper!(recurse, callee(frame))
     end
     return frame
@@ -339,8 +343,13 @@ function maybe_reset_frame!(@nospecialize(recurse), frame::Frame, @nospecialize(
         frame = caller(frame)
         frame === nothing && return nothing
         frame.callee = nothing
+        ssavals = frame.framedata.ssavalues
+        is_wrapper = isassigned(ssavals, frame.pc) && ssavals[frame.pc] === Wrapper()
         maybe_assign!(frame, val)
         frame.pc += 1
+        if is_wrapper
+            return maybe_reset_frame!(recurse, frame, finish!(recurse, frame), rootistoplevel)
+        end
         pc = maybe_next_call!(recurse, frame, rootistoplevel && frame.caller===nothing)
         return maybe_reset_frame!(recurse, frame, pc, rootistoplevel)
     end
