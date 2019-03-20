@@ -402,7 +402,7 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootis
     end
     try
         cmd == :nc && return nicereturn!(recurse, frame, next_call!(recurse, frame, istoplevel), rootistoplevel)
-        cmd == :n && return nicereturn!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
+        cmd == :n && return maybe_reset_frame!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
         cmd == :se && return maybe_reset_frame!(recurse, frame, step_expr!(recurse, frame, istoplevel), rootistoplevel)
 
         enter_generated = false
