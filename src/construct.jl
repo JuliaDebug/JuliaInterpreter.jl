@@ -586,7 +586,7 @@ function extract_args(__module__, ex0)
     if isa(ex0, Expr) && ex0.head == :macrocall # Make @edit @time 1+2 edit the macro by using the types of the *expressions*
         return error("Macros are not supported in @enter")
     end
-    ex = lower(__module__, ex0)
+    ex = Meta.lower(__module__, ex0)
     exret = Expr(:none)
     if !isa(ex, Expr)
         return error("expression is not a function call or symbol")
