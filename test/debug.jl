@@ -403,4 +403,20 @@ struct B{T} end
         frame, pc = debug_command(frame, :finish)
         @test frame.framecode.scope == @which f(2, 3)
     end
+
+    h_1(x, y) = h_2(x, y)
+    h_2(x, y) = h_3(x; y=y)
+    h_3(x; y = 2) = x + y
+    @testset "stepping through kwprep after stepping through wrapper" begin
+        frame = JuliaInterpreter.enter_call(h_1, 2, 1)
+        frame, pc = debug_command(frame, :s)
+        # Should have skipped the kwprep in h_2 and be at call to kwfunc h_3
+        @test Core.kwfunc(h_3) == JuliaInterpreter.@lookup frame JuliaInterpreter.pc_expr(frame).args[1]
+    end
+
+    @testset "si should not step through wrappers or kwprep" begin
+        frame = JuliaInterpreter.enter_call(h_1, 2, 1)
+        frame, pc = debug_command(frame, :si)
+        @test frame.pc == 1
+    end
 # end
