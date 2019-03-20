@@ -386,4 +386,16 @@ struct B{T} end
         frame = stepkw!(frame)
         @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1
     end
+
+    function f(x, y)
+        sin(2.0)
+        g(x; y = 3)
+    end
+    g(x; y) = x + y
+    @testset "interaction of :n with kw functions" begin
+        frame = JuliaInterpreter.enter_call(f, 2, 3) # at sin
+        frame, pc = debug_command(frame, :n)
+        # Check that we are at the kw call to g
+        @test Core.kwfunc(g) == JuliaInterpreter.@lookup frame JuliaInterpreter.pc_expr(frame).args[1]
+    end
 # end

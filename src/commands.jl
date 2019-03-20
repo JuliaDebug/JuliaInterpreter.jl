@@ -216,6 +216,7 @@ function next_line!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false
         end
         shouldbreak(frame, pc) && return BreakpointRef(frame.framecode, pc)
     end
+    maybe_step_through_kwprep!(recurse, frame, istoplevel)
     maybe_next_call!(recurse, frame, istoplevel)
 end
 next_line!(frame::Frame, istoplevel::Bool=false) = next_line!(finish_and_return!, frame, istoplevel)
@@ -401,7 +402,7 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootis
     end
     try
         cmd == :nc && return nicereturn!(recurse, frame, next_call!(recurse, frame, istoplevel), rootistoplevel)
-        cmd == :n && return nicereturn!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
+        cmd == :n && return maybe_reset_frame!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
         cmd == :se && return maybe_reset_frame!(recurse, frame, step_expr!(recurse, frame, istoplevel), rootistoplevel)
 
         enter_generated = false
