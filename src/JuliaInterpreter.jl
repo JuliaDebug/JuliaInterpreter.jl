@@ -68,6 +68,9 @@ function set_compiled_methods()
         push!(compiled_methods, which(Base.access_env, Tuple{Function, AbstractString}))
         push!(compiled_methods, which(Base._hasenv, Tuple{Vector{UInt16}}))
     end
+    # These are currently extremely slow to interpret (https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/193)
+    push!(compiled_methods, which(subtypes, Tuple{Module, Type}))
+    push!(compiled_methods, which(subtypes, Tuple{Type}))
 end
 
 function __init__()
