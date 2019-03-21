@@ -418,3 +418,9 @@ locs = JuliaInterpreter.locals(JuliaInterpreter.enter_call(foo, ""))
 @test length(locs) == 3 # #self# + 2 variables
 @test JuliaInterpreter.Variable("", :x, false) in locs
 @test JuliaInterpreter.Variable(String, :T, true) in locs
+
+# Test interpreting subtypes finishes in a reasonable time
+@test @interpret subtypes(Integer) == subtypes(Integer)
+@test @interpret subtypes(Main, Integer) == subtypes(Main, Integer)
+@test (@elapsed @interpret subtypes(Integer)) < 30
+@test (@elapsed @interpret subtypes(Main, Integer)) < 30
