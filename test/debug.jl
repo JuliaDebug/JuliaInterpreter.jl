@@ -370,6 +370,11 @@ struct B{T} end
         frame = stepkw!(frame)
         @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1
 
+        scopedreversesort(x) = Base.sort(x, rev=true)  # https://github.com/JuliaDebug/Debugger.jl/issues/141
+        frame = JuliaInterpreter.enter_call(scopedreversesort, a)
+        frame = stepkw!(frame)
+        @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1
+
         frame = JuliaInterpreter.enter_call(sort, a)
         frame = stepkw!(frame)
         @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1
