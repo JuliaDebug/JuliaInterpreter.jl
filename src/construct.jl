@@ -47,11 +47,13 @@ end
 
 get_source(meth::Method) = Base.uncompressed_ast(meth)
 
-function get_source(g::GeneratedFunctionStub, env)
-    b = g(env..., g.argnames...)
-    b isa CodeInfo && return b
-    return eval(b)
-end
+# The following creates the CodeInfo holding the generated expression. May be
+# useful if we decide to revert to that behavior.
+# function get_source(g::GeneratedFunctionStub, env)
+#     b = @which g(env..., g.argnames...)
+#     b isa CodeInfo && return b
+#     return eval(b)
+# end
 
 function copy_codeinfo(code::CodeInfo)
     @static if VERSION < v"1.1.0-DEV.762"
@@ -129,6 +131,7 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
         framecode = get(framedict, method, nothing)
     end
     if framecode === nothing
+        method0 = method
         if is_generated(method) && !enter_generated
             # If we're stepping into a staged function, we need to use
             # the specialization, rather than stepping through the
@@ -138,7 +141,11 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
             generator = false
         else
             if is_generated(method)
-                code = get_source(method.generator, lenv)
+                g = method.generator
+                methsg = collect(methods(g.gen))
+                @assert length(methsg) == 1
+                method = first(methsg)
+                code = get_source(method)
                 generator = true
             else
                 code = get_source(method)
@@ -146,8 +153,8 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
             end
         end
         framecode = FrameCode(method, code; generator=generator)
-        if is_generated(method) && !enter_generated
-            genframedict[(method, argtypes)] = framecode
+        if is_generated(method0) && !generator
+            genframedict[(method0, argtypes)] = framecode
         else
             framedict[method] = framecode
         end
@@ -225,8 +232,10 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     isa(ret, Compiled) && return ret
     # Typical return
     framecode, lenv = ret
-    if is_generated(method) && enter_generated
+    if framecode.generator
         args = Any[_Typeof(a) for a in args]
+        selfarg = Base.unwrap_unionall(scopeof(framecode).sig).parameters[1]  #  #self#
+        args = Any[selfarg, lenv..., args...]
     end
     return framecode, args, lenv, argtypes
 end
@@ -292,7 +301,12 @@ end
 Construct a new `Frame` for `framecode`, given lowered-code arguments `frameargs` and
 static parameters `lenv`. See [`JuliaInterpreter.prepare_call`](@ref) for information about how to prepare the inputs.
 """
-function prepare_frame(framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector)
+function prepare_frame(framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector; enter_generated=false)
+    s = scopeof(framecode)
+    if framecode.generator
+        args = Any[_Typeof(a) for a in args]
+        args = Any[Base.unwrap_unionall(s.sig).parameters[1], lenv..., args...]  # first is #self#
+    end
     framedata = prepare_framedata(framecode, args)
     resize!(framedata.sparams, length(lenv))
     # Add static parameters to environment
@@ -304,8 +318,8 @@ function prepare_frame(framecode::FrameCode, args::Vector{Any}, lenv::SimpleVect
     return Frame(framecode, framedata)
 end
 
-function prepare_frame_caller(caller::Frame, framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector)
-    caller.callee = frame = prepare_frame(framecode, args, lenv)
+function prepare_frame_caller(caller::Frame, framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector; enter_generated=false)
+    caller.callee = frame = prepare_frame(framecode, args, lenv; enter_generated=enter_generated)
     frame.caller = caller
     return frame
 end

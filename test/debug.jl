@@ -28,11 +28,15 @@ end
 step_through(f, args...; kwargs...) = step_through_frame(() -> enter_call(f, args...; kwargs...))
 step_through(expr::Expr) = step_through_frame(() -> enter_call_expr(expr))
 
-@generated function generatedfoo(T)
-    :(return $T)
+@generated function generatedfoo(x)
+    # A deliberately-complicated way to perform this operation
+    ex = Expr(:block)
+    push!(ex.args, :(return x))
+    return ex
 end
 callgenerated() = generatedfoo(1)
 @generated function generatedparams(a::Array{T,N}) where {T,N}
+    zz = 1
     :(return ($T,$N))
 end
 callgeneratedparams() = generatedparams([1 2; 3 4])
@@ -91,23 +95,28 @@ struct B{T} end
         @test isa(pc, BreakpointRef)
         @test JuliaInterpreter.scopeof(f).name == :generatedfoo
         stmt = JuliaInterpreter.pc_expr(f)
-        @test stmt.head == :return && stmt.args[1] === Int
+        @test stmt.head == :return
         @test debug_command(frame, :c) === nothing
         @test frame.callee === nothing
-        @test get_return(frame) === Int
+        @test get_return(frame) === 1
         # This time, step into the generated function itself
         frame = enter_call_expr(:($(callgenerated)()))
         f, pc = debug_command(frame, :sg)
         @test isa(pc, BreakpointRef)
-        @test JuliaInterpreter.scopeof(f).name == :generatedfoo
         stmt = JuliaInterpreter.pc_expr(f)
-        @test stmt.head == :return && @lookup(f, stmt.args[1]) === 1
+        if stmt === nothing
+            f, pc = debug_command(f, :se)
+            stmt = JuliaInterpreter.pc_expr(f)
+        end
+        @test stmt.head == :(=)
         f2, pc = debug_command(f, :finish)
         @test JuliaInterpreter.scopeof(f2).name == :callgenerated
         # Now finish the regular function
         @test debug_command(frame, :finish) === nothing
         @test frame.callee === nothing
-        @test get_return(frame) === 1
+        excmp = quote return x end
+        deleteat!(excmp.args, 1)  # delete LineNumberNode
+        @test get_return(frame) == excmp
 
         # Parametric generated function (see #157)
         frame = fr = JuliaInterpreter.enter_call(callgeneratedparams)
@@ -115,10 +124,16 @@ struct B{T} end
             fr, pc = debug_command(fr, :se)
         end
         fr, pc = debug_command(fr, :sg)
-        @test JuliaInterpreter.scopeof(fr).name == :generatedparams
+        JuliaInterpreter.finish!(fr)
+        vzz = filter(v -> v.name == :zz, JuliaInterpreter.locals(fr))[1]
+        @test vzz.value == 1
         fr, pc = debug_command(fr, :finish)
         @test debug_command(fr, :finish) === nothing
-        @test JuliaInterpreter.get_return(fr) == (Int, 2)
+        ex = get_return(fr)
+        isa(ex.args[1], LineNumberNode) && deleteat!(ex.args, 1)
+        excmp = quote return ($Int, 2) end
+        deleteat!(excmp.args, 1)
+        @test ex == excmp
     end
 
     @testset "Optional arguments" begin
