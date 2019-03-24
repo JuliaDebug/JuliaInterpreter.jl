@@ -338,3 +338,49 @@ function show_stackloc(io::IO, frame)
     end
 end
 show_stackloc(frame) = show_stackloc(stdout, frame)
+
+# Pretty printing of stacktraces and errors with Frame
+function Base.StackTraces.StackFrame(frame::Frame)
+    if frame.framecode.scope isa Method
+        method = frame.framecode.scope
+        method_args = something.(frame.framedata.locals[1:frame.framecode.scope.nargs])
+        atypes = Tuple{typeof.(method_args)...}
+        sig = frame.framecode.scope.sig
+        (ti, lenv) = ccall(:jl_type_intersection_with_env, Any, (Any, Any), atypes, sig)
+        mi = Core.Compiler.code_for_method(method, atypes, lenv, typemax(UInt))
+    else
+        mi = frame.framecode.src
+    end
+
+    Base.StackFrame(
+        frame.framecode.scope.name,
+        Symbol(JuliaInterpreter.getfile(frame)),
+        JuliaInterpreter.linenumber(frame),
+        mi,
+        false,
+        false,
+        C_NULL
+    )
+end
+
+function Base.show_backtrace(io::IO, frame::Frame)
+    stackframes = Tuple{Base.StackTraces.StackFrame, Int}[]
+    while frame !== nothing
+        push!(stackframes, (Base.StackTraces.StackFrame(frame), 1))
+        frame = JuliaInterpreter.caller(frame)
+    end
+
+    print(io, "\nStacktrace:")
+    try invokelatest(Base.update_stackframes_callback[], stackframes) catch end
+    frame_counter = 0
+    for (last_frame, n) in stackframes
+        frame_counter += 1
+        Base.show_trace_entry(IOContext(io, :backtrace => true), last_frame, n, prefix = string(" [", frame_counter, "] "))
+    end
+end
+
+function Base.display_error(io::IO, er, frame::Frame)
+    printstyled(io, "ERROR: "; bold=true, color=Base.error_color())
+    showerror(IOContext(io, :limit => true), er, frame)
+    println(io)
+end
