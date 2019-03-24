@@ -275,11 +275,19 @@ function maybe_step_through_kwprep!(@nospecialize(recurse), frame::Frame, istopl
             # We deliberately check isexpr(stmt, :call) rather than is_call(stmt): if it's
             # assigned to a local, it's *not* kwarg preparation.
             if isexpr(stmt1, :call) && is_quotenode(stmt1.args[1], Core.apply_type) && is_quoted_type(stmt1.args[2], :NamedTuple)
-                stmt4 = src.code[pc+4]
+                stmt4, stmt5 = src.code[pc+4], src.code[pc+5]
                 if isexpr(stmt4, :call) && is_quotenode(stmt4.args[1], Core.kwfunc)
                     while pc < pccall
                         pc = step_expr!(recurse, frame, istoplevel)
                     end
+                    return frame
+                elseif isexpr(stmt5, :call) && is_quotenode(stmt5.args[1], Core.kwfunc) && pccall+1 <= n
+                    # This happens when the call is scoped by a module
+                    pccall += 1
+                    while pc < pccall
+                        pc = step_expr!(recurse, frame, istoplevel)
+                    end
+                    maybe_next_call!(recurse, frame, istoplevel)
                     return frame
                 end
             end
