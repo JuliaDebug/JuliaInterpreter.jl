@@ -278,7 +278,7 @@ struct B{T} end
         g_inner() = error()
         fr = JuliaInterpreter.enter_call(f_outer)
         @test_throws ErrorException debug_command(fr, :finish)
-        @test stacklength(fr) == 1
+        @test stacklength(fr) == 3
 
         # Break on error
         try
@@ -423,5 +423,22 @@ struct B{T} end
         frame = JuliaInterpreter.enter_call(h_1, 2, 1)
         frame, pc = debug_command(frame, :si)
         @test frame.pc == 1
+    end
+
+
+    @testset "preservation of stack when throwing to toplevel" begin
+        try
+            f() = "αβ"[2]
+            frame1 = JuliaInterpreter.enter_call(f);
+            err = try debug_command(frame1, :c)
+            catch err
+                err
+            end
+            break_on(:error)
+            frame2, pc = @interpret f()
+            @test leaf(frame2).framecode.scope === leaf(frame1).framecode.scope
+        finally
+            break_off(:error)
+        end
     end
 # end
