@@ -424,3 +424,21 @@ locs = JuliaInterpreter.locals(JuliaInterpreter.enter_call(foo, ""))
 @test @interpret subtypes(Main, Integer) == subtypes(Main, Integer)
 @test (@elapsed @interpret subtypes(Integer)) < 30
 @test (@elapsed @interpret subtypes(Main, Integer)) < 30
+
+# Test showing stacktraces from frames
+g_1(x) = g_2(x)
+g_2(x) = g_3(x)
+g_3(x) = error("foo")
+line_g = @__LINE__
+try
+    break_on(:error)
+    frame, bp = @interpret g_1(2.0)
+    stacktrace_lines = split(sprint(Base.display_error, bp.err, leaf(frame)), '\n')
+    @test occursin(string("ERROR: ", sprint(showerror, ErrorException("foo"))), stacktrace_lines[1])
+    @test occursin("[1] error(::String) at error.jl:", stacktrace_lines[3])
+    @test occursin("[2] g_3(::Float64) at $(@__FILE__):$(line_g - 1)", stacktrace_lines[4])
+    @test occursin("[3] g_2(::Float64) at $(@__FILE__):$(line_g - 2)", stacktrace_lines[5])
+    @test occursin("[4] g_1(::Float64) at $(@__FILE__):$(line_g - 3)", stacktrace_lines[6])
+finally
+    break_off(:error)
+end
