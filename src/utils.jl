@@ -347,7 +347,7 @@ function Base.StackTraces.StackFrame(frame::Frame)
         atypes = Tuple{typeof.(method_args)...}
         sig = method.sig
         sparams = Core.svec(frame.framedata.sparams...)
-        mi = Core.Compiler.code_for_method(method, atypes, lenv, typemax(UInt))
+        mi = Core.Compiler.code_for_method(method, atypes, sparams, typemax(UInt))
     else
         mi = frame.framecode.src
     end
