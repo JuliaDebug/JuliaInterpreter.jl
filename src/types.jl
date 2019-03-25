@@ -126,6 +126,7 @@ struct FrameData
     sparams::Vector{Any}
     exception_frames::Vector{Int}
     last_exception::Base.RefValue{Any}
+    caller_will_catch_err::Bool
     # A vector from names to the slotnumber of that name
     # for which a reference was last encountered.
     last_reference::Dict{Symbol,Int}
