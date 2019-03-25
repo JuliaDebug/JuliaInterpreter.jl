@@ -329,6 +329,19 @@ end
 maybe_step_through_kwprep!(frame::Frame, istoplevel::Bool=false) =
     maybe_step_through_kwprep!(finish_and_return!, frame, istoplevel)
 
+function maybe_assign!(frame, @nospecialize(stmt), @nospecialize(val))
+    pc = frame.pc
+    if isexpr(stmt, :(=))
+        lhs = stmt.args[1]
+        do_assignment!(frame, lhs, val)
+    elseif isassign(frame, pc)
+        lhs = getlhs(pc)
+        do_assignment!(frame, lhs, val)
+    end
+    return nothing
+end
+maybe_assign!(frame, @nospecialize(val)) = maybe_assign!(frame, pc_expr(frame), val)
+
 """
     ret = maybe_reset_frame!(recurse, frame, pc, rootistoplevel)
 
