@@ -19,6 +19,20 @@ end
 finish!(frame::Frame, istoplevel::Bool=false) = finish!(finish_and_return!, frame, istoplevel)
 
 """
+    ret = get_return(frame)
+
+Get the return value of `frame`. Throws an error if `frame.pc` does not point to a `return` expression.
+`frame` must have already been executed so that the return value has been computed (see,
+e.g., [`JuliaInterpreter.finish!`](@ref)).
+"""
+function get_return(frame)
+    node = pc_expr(frame)
+    isexpr(node, :return) || error("expected return statement, got ", node)
+    return @lookup(frame, (node::Expr).args[1])
+end
+get_return(t::Tuple{Module,Expr,Frame}) = get_return(t[end])
+
+"""
     ret = finish_and_return!(recurse, frame, istoplevel::Bool=false)
     ret = finish_and_return!(frame, istoplevel::Bool=false)
 
