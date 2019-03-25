@@ -485,7 +485,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.Frame",
     "category": "type",
-    "text": "Frame represents the current execution state in a particular call frame. Fields:\n\nframecode: the [FrameCode] for this frame\nframedata: the [FrameData] for this frame\npc: the program counter (integer index of the next statment to be evaluated) for this frame\ncaller: the parent caller of this frame, or nothing\ncallee: the frame called by this one, or nothing\n\n\n\n\n\n"
+    "text": "Frame represents the current execution state in a particular call frame. Fields:\n\nframecode: the [FrameCode] for this frame\nframedata: the [FrameData] for this frame\npc: the program counter (integer index of the next statment to be evaluated) for this frame\ncaller: the parent caller of this frame, or nothing\ncallee: the frame called by this one, or nothing\n\nThe Base functions show_backtrace and display_error are overloaded such that show_backtrace(io::IO, frame::Frame) and display_error(io::IO, er, frame::Frame) shows a backtrace or error, respectively, in a similar way as to how Base shows them.\n\n\n\n\n\n"
 },
 
 {
