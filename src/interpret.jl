@@ -551,26 +551,15 @@ behaviors:
 - otherwise, `err` gets rethrown.
 """
 function handle_err(@nospecialize(recurse), frame, err)
+    data = frame.framedata
     if break_on_error[]
         # See if the current frame or a frame in the stack will catch this exception,
         # otherwise this exception would have been thrown to the user and we should
         # return a breakpoint
-        # Note: this is potentially O(N^2) in the stack depth. Consider storing `exception_caught`
-        # in the caller frames.
-        exception_caught = false
-        fr = frame
-        while fr !== nothing
-            if !isempty(fr.framedata.exception_frames)
-                exception_caught = true
-                break
-            end
-            fr = caller(fr)
-        end
-        if !exception_caught
+        if isempty(data.exception_frames) && !data.caller_will_catch_err
             return BreakpointRef(frame.framecode, frame.pc, err)
         end
     end
-    data = frame.framedata
     if isempty(data.exception_frames)
         if frame.caller !== nothing
             frame.caller.callee = nothing

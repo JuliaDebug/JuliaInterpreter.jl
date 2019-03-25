@@ -231,7 +231,7 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     return framecode, args, lenv, argtypes
 end
 
-function prepare_framedata(framecode, argvals::Vector{Any})
+function prepare_framedata(framecode, argvals::Vector{Any}, caller_will_catch_err::Bool=false)
     if isa(framecode.scope, Method)
         meth, src = framecode.scope::Method, framecode.src
         ssavt = src.ssavaluetypes
@@ -283,7 +283,7 @@ function prepare_framedata(framecode, argvals::Vector{Any})
         callargs = Any[]
         last_exception = Ref{Any}(nothing)
     end
-    FrameData(locals, ssavalues, sparams, exception_frames, last_exception, last_reference, callargs)
+    FrameData(locals, ssavalues, sparams, exception_frames, last_exception, caller_will_catch_err, last_reference, callargs)
 end
 
 """
@@ -292,8 +292,8 @@ end
 Construct a new `Frame` for `framecode`, given lowered-code arguments `frameargs` and
 static parameters `lenv`. See [`JuliaInterpreter.prepare_call`](@ref) for information about how to prepare the inputs.
 """
-function prepare_frame(framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector)
-    framedata = prepare_framedata(framecode, args)
+function prepare_frame(framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector, caller_will_catch_err::Bool=false)
+    framedata = prepare_framedata(framecode, args, caller_will_catch_err)
     resize!(framedata.sparams, length(lenv))
     # Add static parameters to environment
     for i = 1:length(lenv)
@@ -305,7 +305,8 @@ function prepare_frame(framecode::FrameCode, args::Vector{Any}, lenv::SimpleVect
 end
 
 function prepare_frame_caller(caller::Frame, framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector)
-    caller.callee = frame = prepare_frame(framecode, args, lenv)
+    caller_will_catch_err = !isempty(caller.framedata.exception_frames) || caller.framedata.caller_will_catch_err
+    caller.callee = frame = prepare_frame(framecode, args, lenv, caller_will_catch_err)
     frame.caller = caller
     return frame
 end
