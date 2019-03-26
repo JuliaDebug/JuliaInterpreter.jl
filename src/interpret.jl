@@ -562,7 +562,7 @@ function handle_err(@nospecialize(recurse), frame, err)
         end
     end
     if isempty(data.exception_frames)
-        is_root_frame = frame.caller == nothing
+        is_root_frame = frame.caller === nothing
         if !is_root_frame && !err_will_be_thrown_to_top_level
             frame.caller.callee = nothing
             recycle(frame)
