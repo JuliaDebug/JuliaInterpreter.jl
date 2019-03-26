@@ -427,13 +427,13 @@ struct B{T} end
 
 
     @testset "preservation of stack when throwing to toplevel" begin
+        f() = "αβ"[2]
+        frame1 = JuliaInterpreter.enter_call(f);
+        err = try debug_command(frame1, :c)
+        catch err
+            err
+        end
         try
-            f() = "αβ"[2]
-            frame1 = JuliaInterpreter.enter_call(f);
-            err = try debug_command(frame1, :c)
-            catch err
-                err
-            end
             break_on(:error)
             frame2, pc = @interpret f()
             @test leaf(frame2).framecode.scope === leaf(frame1).framecode.scope
