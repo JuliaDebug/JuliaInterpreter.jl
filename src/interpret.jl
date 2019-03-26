@@ -171,14 +171,18 @@ function evaluate_foreigncall(frame::Frame, call_expr::Expr)
     return Core.eval(moduleof(frame), Expr(head, args...))
 end
 
-# We have to intercept llvmcall before we try it as a builtin
+# We have to intercept ccalls / llvmcalls before we try it as a builtin
 function bypass_builtins(frame, call_expr, pc)
     if isassigned(frame.framecode.methodtables, pc)
         tme = frame.framecode.methodtables[pc]
         if isa(tme, Compiled)
             fargs = collect_args(frame, call_expr)
             f = to_function(fargs[1])
-            return Some{Any}(f(fargs[2:end]...))
+            if parentmodule(f) === JuliaInterpreter.CompiledCalls
+                return Some{Any}(Base.invokelatest(f, fargs[2:end]...))
+            else
+                return Some{Any}(f(fargs[2:end]...))
+            end
         end
     end
     return nothing

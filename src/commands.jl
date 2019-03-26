@@ -247,7 +247,9 @@ function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
             pc === nothing && return frame
         end
         ret = evaluate_call!(dummy_breakpoint, frame, last)
-        @assert isa(ret, BreakpointRef)
+        if !isa(ret, BreakpointRef) # Happens if next call is Compiled
+            return frame
+        end
         frame.framedata.ssavalues[frame.pc] = Wrapper()
         return maybe_step_through_wrapper!(recurse, callee(frame))
     end
