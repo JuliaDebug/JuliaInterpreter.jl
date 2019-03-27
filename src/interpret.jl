@@ -116,7 +116,7 @@ function lookup_or_eval(@nospecialize(recurse), frame, @nospecialize(node))
 end
 
 function resolvefc(frame, @nospecialize(expr))
-    if isa(expr, SlotNumber)
+    if isa(expr, SlotNumber) || isa(expr, SSAValue)
         expr = lookup_var(frame, expr)
     end
     (isa(expr, Symbol) || isa(expr, String) || isa(expr, Ptr) || isa(expr, QuoteNode)) && return expr
@@ -151,7 +151,7 @@ Evaluate a `:foreigncall` (from a `ccall`) statement `callexpr` in the context o
 function evaluate_foreigncall(frame::Frame, call_expr::Expr)
     head = call_expr.head
     args = collect_args(frame, call_expr; isfc = head==:foreigncall)
-    for i = 2:length(args)
+    for i = 1:length(args)
         arg = args[i]
         args[i] = isa(arg, Symbol) ? QuoteNode(arg) : arg
     end
