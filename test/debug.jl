@@ -432,6 +432,7 @@ struct B{T} end
         frame = JuliaInterpreter.enter_call(f)
         JuliaInterpreter.maybe_step_through_wrapper!(frame)
         @test leaf(frame).framecode.scope == @which g()
+    end
 
     @testset "preservation of stack when throwing to toplevel" begin
         f() = "αβ"[2]
