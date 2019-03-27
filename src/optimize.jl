@@ -106,7 +106,7 @@ which this will run) and ensures that no statement includes nested `:call` expre
 """
 function optimize!(code::CodeInfo, scope)
     mod = moduleof(scope)
-    sparams = scope isa Method ? Symbol[scope.sparam_syms...] : Symbol[]
+    sparams = scope isa Method ? Symbol[sparam_syms(scope)...] : Symbol[]
     code.inferred && error("optimization of inferred code not implemented")
     # TODO: because of builtins.jl, for CodeInfos like
     #   %1 = Core.apply_type
@@ -164,7 +164,7 @@ function optimize!(code::CodeInfo, scope)
                 build_compiled_call!(stmt, methname, Base.llvmcall, stmt.args[2:4], code, idx, nargs, sparams)
                 methodtables[idx] = Compiled()
             end
-        elseif isexpr(stmt, :foreigncall) && isempty(sparams) && scope isa Method
+        elseif isexpr(stmt, :foreigncall) && scope isa Method && isempty(sparams)
             f = lookup_stmt(code.code, stmt.args[1])
             if isa(f, Ptr)
                 f = string(uuid4())
@@ -220,9 +220,9 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
                 push!(args, arg)
             else
                 @assert arg isa SSAValue
-                unsafe_convert = code.code[arg.id]
-                cconvert = code.code[unsafe_convert.args[3].id]
-                push!(args, cconvert.args[3])
+                unsafe_convert_expr = code.code[arg.id]
+                cconvert_expr = code.code[unsafe_convert_expr.args[3].id]
+                push!(args, cconvert_expr.args[3])
             end
         end
     else
@@ -257,7 +257,7 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
                 return $fcall($cfunc, $RetType, $ArgType, $(argnames...))
             end)
         end
-    f =  Core.eval(CompiledCalls, def)
+    f = Core.eval(CompiledCalls, def)
     stmt.args[1] = QuoteNode(f)
     stmt.head = :call
     deleteat!(stmt.args, 2:length(stmt.args))
