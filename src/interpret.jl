@@ -118,6 +118,9 @@ end
 function resolvefc(frame, @nospecialize(expr))
     if isa(expr, SlotNumber)
         expr = lookup_var(frame, expr)
+    elseif isa(expr, SSAValue)
+        expr = lookup_var(frame, expr)
+        isa(expr, Symbol) && return QuoteNode(expr)
     end
     (isa(expr, Symbol) || isa(expr, String) || isa(expr, Ptr) || isa(expr, QuoteNode)) && return expr
     isa(expr, Tuple{Symbol,Symbol}) && return expr
