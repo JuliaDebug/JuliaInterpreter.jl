@@ -444,5 +444,5 @@ finally
 end
 
 # Check #args for builtins (#217)
-f217() =  Core._typevar(:foo, Union{}, Any, "foo")
+f217() = <:(Float64, Float32, Float16)
 @test_throws ArgumentError @interpret(f217())
