@@ -16,6 +16,11 @@ end
     end
     @test JuliaInterpreter.is_doc_expr(ex.args[2])
     @test !JuliaInterpreter.is_doc_expr(:(1+1))
+    ex = :(@doc doc"""
+       bla
+       """)
+    modexs, docexs = JuliaInterpreter.split_expressions(Main, ex; extract_docexprs=true)
+    @test isempty(docexs)
 
     @test JuliaInterpreter.prepare_thunk(Main, :(export foo)) === nothing
     @test JuliaInterpreter.prepare_thunk(Base.Threads, :(global Condition)) === nothing
