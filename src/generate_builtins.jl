@@ -31,11 +31,9 @@ end
 function generate_fcall_nargs(fname, minarg, maxarg)
     # Generate a separate call for each number of arguments
     maxarg < typemax(Int) || error("call this only for constrained number of arguments")
-    wrapper = minarg == maxarg ? "" : "if nargs == "
+    wrapper = "if nargs == "
     for nargs = minarg:maxarg
-        if minarg < maxarg
-            wrapper *= "$nargs\n            "
-        end
+        wrapper *= "$nargs\n            "
         argcall = ""
         for i = 1:nargs
             argcall *= "@lookup(frame, args[$(i+1)])"
@@ -48,9 +46,9 @@ function generate_fcall_nargs(fname, minarg, maxarg)
             wrapper *= "\n        elseif nargs == "
         end
     end
-    if minarg < maxarg
-        wrapper *= "\n        end"
-    end
+    wrapper *= "\n        else"
+    wrapper *= "\n            return Some{Any}($fname(getargs(args, frame)...))"  # to throw the correct error
+    wrapper *= "\n        end"
     return wrapper
 end
 

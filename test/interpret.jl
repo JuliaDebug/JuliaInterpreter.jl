@@ -442,3 +442,7 @@ try
 finally
     break_off(:error)
 end
+
+# Check #args for builtins (#217)
+f217() =  Core._typevar(:foo, Union{}, Any, "foo")
+@test_throws ArgumentError @interpret(f217())
