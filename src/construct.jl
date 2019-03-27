@@ -411,7 +411,7 @@ function split_expressions!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; 
             end
         end
         split_expressions!(modexs, docexprs, lex, newmod, ex.args[3]; extract_docexprs=extract_docexprs, filename=filename)
-    elseif extract_docexprs && is_doc_expr(ex)
+    elseif extract_docexprs && is_doc_expr(ex) && length(ex.args) >= 4
         docexs = get(docexprs, mod, nothing)
         if docexs === nothing
             docexs = docexprs[mod] = Expr[]
