@@ -446,3 +446,10 @@ end
 # Check #args for builtins (#217)
 f217() =  Core._typevar(:foo, Union{}, Any, "foo")
 @test_throws ArgumentError @interpret(f217())
+
+# issue #220
+function hash220(x::Tuple{Ptr{UInt8},Int}, h::UInt)
+    h += Base.memhash_seed
+    ccall(Base.memhash, UInt, (Ptr{UInt8}, Csize_t, UInt32), x[1], x[2], h % UInt32) + h
+end
+@test @interpret(hash220((Ptr{UInt8}(0),0), UInt(1))) == hash220((Ptr{UInt8}(0),0), UInt(1))
