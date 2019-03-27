@@ -424,4 +424,13 @@ struct B{T} end
         frame, pc = debug_command(frame, :si)
         @test frame.pc == 1
     end
+
+    @testset "breakpoints hit during wrapper step through" begin
+        f(x = g()) = x
+        g() = 5
+        @breakpoint g()
+        frame = JuliaInterpreter.enter_call(f)
+        JuliaInterpreter.maybe_step_through_wrapper!(frame)
+        @test leaf(frame).framecode.scope == @which g()
+    end
 # end
