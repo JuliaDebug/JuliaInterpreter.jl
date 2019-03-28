@@ -21,6 +21,26 @@ end
        """)
     modexs, docexs = JuliaInterpreter.split_expressions(Main, ex; extract_docexprs=true)
     @test isempty(docexs)
+    # https://github.com/JunoLab/Juno.jl/issues/271
+    ex = quote
+        """
+        Special Docstring
+        """
+        module DocStringTest
+        function foo()
+            x = 4 + 5
+        end
+        end
+    end
+    modexs, docexs = JuliaInterpreter.split_expressions(Main, ex; extract_docexprs=true)
+    m, ex = first(modexs)
+    @test m == Main.DocStringTest
+    dex = first(docexs[Main])
+    @test dex.args[4] == :DocStringTest
+    eval(dex)
+    io = IOBuffer()
+    show(io, @doc(Main.DocStringTest))
+    @test occursin("Special", String(take!(io)))
 
     @test JuliaInterpreter.prepare_thunk(Main, :(export foo)) === nothing
     @test JuliaInterpreter.prepare_thunk(Base.Threads, :(global Condition)) === nothing
