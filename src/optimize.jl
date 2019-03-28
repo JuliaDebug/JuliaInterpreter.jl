@@ -153,6 +153,10 @@ function optimize!(code::CodeInfo, scope)
     methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(code.code))
   #  @show code
     for (idx, stmt) in enumerate(code.code)
+        # Foregincalls can be rhs of assignments
+        if isexpr(stmt, :(=))
+            stmt = stmt.args[2]
+        end
         if isexpr(stmt, :call)
             # Check for :llvmcall
             arg1 = stmt.args[1]
