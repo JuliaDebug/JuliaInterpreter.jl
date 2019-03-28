@@ -456,3 +456,10 @@ end
 
 # ccall with type parameters
 @test (@interpret Base.unsafe_convert(Ptr{Int}, [1,2])) isa Ptr{Int}
+
+# ccall with call to get the pointer
+cf = [@cfunction(fcfun, Int, (Int, Int))]
+function call_cf()
+    ccall(cf[1], Int, (Int, Int), 1, 2)
+end
+@test (@interpret call_cf()) == call_cf()

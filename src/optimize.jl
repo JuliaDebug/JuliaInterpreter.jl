@@ -173,7 +173,8 @@ function optimize!(code::CodeInfo, scope)
             if isa(f, Ptr)
                 f = string(uuid4())
             elseif isexpr(f, :call)
-                @assert length(f.args) == 3
+                length(f.args) == 3 || continue
+                f.args[1] === tuple || continue
                 lib = f.args[3] isa String ? f.args[3] : f.args[3].value
                 prefix = f.args[2] isa String ? f.args[2] : f.args[2].value
                 f = Symbol(prefix, '_', lib)
