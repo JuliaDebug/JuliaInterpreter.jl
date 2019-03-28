@@ -67,7 +67,7 @@ end
 const BREAKPOINT_EXPR = :($(QuoteNode(getproperty))($JuliaInterpreter, :__BREAKPOINT_MARKER__))
 function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
     if optimize
-        src, methodtables = optimize!(copy_codeinfo(src), moduleof(scope))
+        src, methodtables = optimize!(copy_codeinfo(src), scope)
     else
         src = copy_codeinfo(src)
         methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(src.code))

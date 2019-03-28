@@ -104,13 +104,14 @@ Currently it looks up `GlobalRef`s (for which it needs `mod` to know the scope i
 which this will run) and ensures that no statement includes nested `:call` expressions
 (splitting them out into multiple SSA-form statements if needed).
 """
-function optimize!(code::CodeInfo, mod::Module)
+function optimize!(code::CodeInfo, scope)
+    mod = moduleof(scope)
+    sparams = scope isa Method ? Symbol[sparam_syms(scope)...] : Symbol[]
     code.inferred && error("optimization of inferred code not implemented")
     # TODO: because of builtins.jl, for CodeInfos like
     #   %1 = Core.apply_type
     #   %2 = (%1)(args...)
     # it would be best to *not* resolve the GlobalRef at %1
-
     ## Replace GlobalRefs with QuoteNodes
     for (i, stmt) in enumerate(code.code)
         if isa(stmt, GlobalRef)
@@ -150,42 +151,131 @@ function optimize!(code::CodeInfo, mod::Module)
     # Replace :llvmcall and :foreigncall with compiled variants. See
     # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/13#issuecomment-464880123
     methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(code.code))
+  #  @show code
     for (idx, stmt) in enumerate(code.code)
+        # Foregincalls can be rhs of assignments
+        if isexpr(stmt, :(=))
+            stmt = stmt.args[2]
+        end
         if isexpr(stmt, :call)
             # Check for :llvmcall
             arg1 = stmt.args[1]
-            if arg1 == :llvmcall || lookup_stmt(code.code, arg1) == Base.llvmcall
+            if (arg1 == :llvmcall || lookup_stmt(code.code, arg1) == Base.llvmcall) && isempty(sparams) && scope isa Method
                 uuid = uuid4()
                 ustr = replace(string(uuid), '-'=>'_')
                 methname = Symbol("llvmcall_", ustr)
                 nargs = length(stmt.args)-4
-                argnames = [Symbol("arg", string(i)) for i = 1:nargs]
-                # Run a mini-interpreter to extract the types
-                framecode = FrameCode(CompiledCalls, code; optimize=false)
-                frame = Frame(framecode, prepare_framedata(framecode, []))
-                idxstart = idx
-                for i = 2:4
-                    idxstart = smallest_ref(code.code, stmt.args[i], idxstart)
-                end
-                frame.pc = idxstart
-                while true
-                    pc = step_expr!(Compiled(), frame)
-                    pc == idx && break
-                    pc === nothing && error("this should never happen")
-                end
-                str, RetType, ArgType = @lookup(frame, stmt.args[2]), @lookup(frame, stmt.args[3]), @lookup(frame, stmt.args[4])
-                def = quote
-                    function $methname($(argnames...))
-                        return Base.llvmcall($str, $RetType, $ArgType, $(argnames...))
-                    end
-                end
-                f = Core.eval(CompiledCalls, def)
-                stmt.args[1] = QuoteNode(f)
-                deleteat!(stmt.args, 2:4)
+                build_compiled_call!(stmt, methname, Base.llvmcall, stmt.args[2:4], code, idx, nargs, sparams)
                 methodtables[idx] = Compiled()
             end
+        elseif isexpr(stmt, :foreigncall) && scope isa Method
+            f = lookup_stmt(code.code, stmt.args[1])
+            if isa(f, Ptr)
+                f = string(uuid4())
+            elseif isexpr(f, :call)
+                length(f.args) == 3 || continue
+                f.args[1] === tuple || continue
+                lib = f.args[3] isa String ? f.args[3] : f.args[3].value
+                prefix = f.args[2] isa String ? f.args[2] : f.args[2].value
+                f = Symbol(prefix, '_', lib)
+            end
+            # Punt on non literal ccall arguments for now
+            if !(isa(f, String) || isa(f, Symbol) || isa(f, Ptr))
+                continue
+            end
+            # TODO: Only compile one ccall per call and argument types
+            uuid = uuid4()
+            ustr = replace(string(uuid), '-'=>'_')
+            methname = Symbol("ccall", '_', f, '_', ustr)
+            nargs = stmt.args[5]
+            build_compiled_call!(stmt, methname, :ccall, stmt.args[1:3], code, idx, nargs, sparams)
+            methodtables[idx] = Compiled()
         end
     end
 
     return code, methodtables
 end
+
+function parametric_type_to_expr(t::Type)
+    t isa Core.TypeofBottom && return t
+    return t.hasfreetypevars ? Expr(:curly, t.name.name, ((tv-> tv isa TypeVar ? tv.name : tv).(t.parameters))...) : t
+end
+
+# Handle :llvmcall & :foreigncall (issue #28)
+function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, sparams)
+    argnames = Any[Symbol("arg", string(i)) for i = 1:nargs]
+    if fcall == :ccall
+        cfunc, RetType, ArgType = lookup_stmt(code.code, stmt.args[1]), stmt.args[2], stmt.args[3]
+        # The result of this is useful to have next to you when reading this code:
+        # f(x, y) =  ccall(:jl_value_ptr, Ptr{Cvoid}, (Float32,Any), x, y)
+        # @code_lowered f(2, 3)
+        args = []
+        for (atype, arg) in zip(ArgType, stmt.args[6:6+nargs-1])
+            if atype === Any
+                push!(args, arg)
+            else
+                @assert arg isa SSAValue
+                unsafe_convert_expr = code.code[arg.id]
+                cconvert_expr = code.code[unsafe_convert_expr.args[3].id]
+                push!(args, cconvert_expr.args[3])
+            end
+        end
+    else
+        # Run a mini-interpreter to extract the types
+        framecode = FrameCode(CompiledCalls, code; optimize=false)
+        frame = Frame(framecode, prepare_framedata(framecode, []))
+        idxstart = idx
+        for i = 2:4
+            idxstart = smallest_ref(code.code, stmt.args[i], idxstart)
+        end
+        frame.pc = idxstart
+        if idxstart < idx
+            while true
+                pc = step_expr!(Compiled(), frame)
+                pc == idx && break
+                pc === nothing && error("this should never happen")
+            end
+        end
+        cfunc, RetType, ArgType = @lookup(frame, stmt.args[2]), @lookup(frame, stmt.args[3]), @lookup(frame, stmt.args[4])
+        args = stmt.args[5:end]
+    end
+    if isa(cfunc, Expr)
+        cfunc = eval(cfunc)
+    end
+    if isa(cfunc, Symbol)
+        cfunc = QuoteNode(cfunc)
+    end
+    if fcall == :ccall
+        ArgType = Expr(:tuple, [parametric_type_to_expr(t) for t in ArgType]...)
+    end
+    if isa(RetType, SimpleVector)
+        @assert length(RetType) == 1
+        RetType = RetType[1]
+    end
+    RetType = parametric_type_to_expr(RetType)
+    wrapargs = copy(argnames)
+    for sparam in sparams
+        push!(wrapargs, :(::Type{$sparam}))
+    end
+    if stmt.args[4] == :(:llvmcall)
+        def = :(
+            function $methname($(wrapargs...)) where {$(sparams...)}
+                return $fcall($cfunc, llvmcall, $RetType, $ArgType, $(argnames...))
+            end)
+    else
+        def = :(
+            function $methname($(wrapargs...)) where {$(sparams...)}
+                return $fcall($cfunc, $RetType, $ArgType, $(argnames...))
+            end)
+        end
+    f = Core.eval(CompiledCalls, def)
+    stmt.args[1] = QuoteNode(f)
+    stmt.head = :call
+    deleteat!(stmt.args, 2:length(stmt.args))
+    append!(stmt.args, args)
+    for i in 1:length(sparams)
+        push!(stmt.args, :($(Expr(:static_parameter, 1))))
+    end
+    return
+end
+
