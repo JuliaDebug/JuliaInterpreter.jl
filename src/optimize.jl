@@ -196,6 +196,7 @@ function optimize!(code::CodeInfo, scope)
 end
 
 function parametric_type_to_expr(t::Type)
+    t isa Core.TypeofBottom && return t
     return t.hasfreetypevars ? Expr(:curly, t.name.name, ((tv-> tv isa TypeVar ? tv.name : tv).(t.parameters))...) : t
 end
 
