@@ -453,3 +453,6 @@ function hash220(x::Tuple{Ptr{UInt8},Int}, h::UInt)
     ccall(Base.memhash, UInt, (Ptr{UInt8}, Csize_t, UInt32), x[1], x[2], h % UInt32) + h
 end
 @test @interpret(hash220((Ptr{UInt8}(0),0), UInt(1))) == hash220((Ptr{UInt8}(0),0), UInt(1))
+
+# ccall with type parameters
+@test (@interpret Base.unsafe_convert(Ptr{Int}, [1,2])) isa Ptr{Int}

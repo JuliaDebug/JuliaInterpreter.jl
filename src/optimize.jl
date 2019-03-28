@@ -164,7 +164,7 @@ function optimize!(code::CodeInfo, scope)
                 build_compiled_call!(stmt, methname, Base.llvmcall, stmt.args[2:4], code, idx, nargs, sparams)
                 methodtables[idx] = Compiled()
             end
-        elseif isexpr(stmt, :foreigncall) && scope isa Method && isempty(sparams)
+        elseif isexpr(stmt, :foreigncall) && scope isa Method
             f = lookup_stmt(code.code, stmt.args[1])
             if isa(f, Ptr)
                 f = string(uuid4())
@@ -191,26 +191,15 @@ function optimize!(code::CodeInfo, scope)
     return code, methodtables
 end
 
+function parametric_type_to_expr(t::Type)
+    return t.hasfreetypevars ? Expr(:curly, t.name.name, ((tv-> tv isa TypeVar ? tv.name : tv).(t.parameters))...) : t
+end
+
 # Handle :llvmcall & :foreigncall (issue #28)
 function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, sparams)
     argnames = Any[Symbol("arg", string(i)) for i = 1:nargs]
-    # Run a mini-interpreter to extract the types
-    framecode = FrameCode(CompiledCalls, code; optimize=false)
-    frame = Frame(framecode, prepare_framedata(framecode, []))
-    idxstart = idx
-    for i = 2:4
-        idxstart = smallest_ref(code.code, stmt.args[i], idxstart)
-    end
-    frame.pc = idxstart
-    if idxstart < idx
-        while true
-            pc = step_expr!(Compiled(), frame)
-            pc == idx && break
-            pc === nothing && error("this should never happen")
-        end
-    end
     if fcall == :ccall
-        cfunc, RetType, ArgType = lookup_stmt(code.code, stmt.args[1]), @lookup(frame, stmt.args[2]), @lookup(frame, stmt.args[3])
+        cfunc, RetType, ArgType = lookup_stmt(code.code, stmt.args[1]), stmt.args[2], stmt.args[3]
         # The result of this is useful to have next to you when reading this code:
         # f(x, y) =  ccall(:jl_value_ptr, Ptr{Cvoid}, (Float32,Any), x, y)
         # @code_lowered f(2, 3)
@@ -226,6 +215,21 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
             end
         end
     else
+        # Run a mini-interpreter to extract the types
+        framecode = FrameCode(CompiledCalls, code; optimize=false)
+        frame = Frame(framecode, prepare_framedata(framecode, []))
+        idxstart = idx
+        for i = 2:4
+            idxstart = smallest_ref(code.code, stmt.args[i], idxstart)
+        end
+        frame.pc = idxstart
+        if idxstart < idx
+            while true
+                pc = step_expr!(Compiled(), frame)
+                pc == idx && break
+                pc === nothing && error("this should never happen")
+            end
+        end
         cfunc, RetType, ArgType = @lookup(frame, stmt.args[2]), @lookup(frame, stmt.args[3]), @lookup(frame, stmt.args[4])
         args = stmt.args[5:end]
     end
@@ -236,12 +240,13 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
         cfunc = QuoteNode(cfunc)
     end
     if fcall == :ccall
-        ArgType = Expr(:tuple, ArgType...)
+        ArgType = Expr(:tuple, [parametric_type_to_expr(t) for t in ArgType]...)
     end
     if isa(RetType, SimpleVector)
         @assert length(RetType) == 1
         RetType = RetType[1]
     end
+    RetType = parametric_type_to_expr(RetType)
     wrapargs = copy(argnames)
     for sparam in sparams
         push!(wrapargs, :(::Type{$sparam}))
