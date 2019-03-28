@@ -274,7 +274,7 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
     deleteat!(stmt.args, 2:length(stmt.args))
     append!(stmt.args, args)
     for i in 1:length(sparams)
-        push!(stmt.args, :($(Expr(:static_parameter, i))))
+        push!(stmt.args, :($(Expr(:static_parameter, 1))))
     end
     return
 end
