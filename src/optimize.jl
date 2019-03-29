@@ -232,6 +232,10 @@ end
 
 function parametric_type_to_expr(t::Type)
     t isa Core.TypeofBottom && return t
+    t isa UnionAll && (t = t.body)
+    if t <: Vararg 
+        return Expr(:(...), t.parameters[1])
+    end
     return t.hasfreetypevars ? Expr(:curly, t.name.name, ((tv-> tv isa TypeVar ? tv.name : tv).(t.parameters))...) : t
 end
 
