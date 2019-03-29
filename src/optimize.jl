@@ -56,6 +56,19 @@ function renumber_ssa!(stmts::Vector{Any}, ssalookup)
     return stmts
 end
 
+function compute_ssa_mapping_delete_statements!(code::CodeInfo, stmts::Vector{Int})
+    stmts = unique!(sort!(stmts))
+    ssalookup = collect(1:length(code.codelocs))
+    cnt = 1
+    for i in 1:length(stmts)
+        start = stmts[i] + 1
+        stop = i == length(stmts) ? length(code.codelocs) : stmts[i+1]
+        ssalookup[start:stop] .-= cnt
+        cnt += 1
+    end
+    return ssalookup
+end
+
 # Pre-frame-construction lookup
 function lookup_stmt(stmts, arg)
     if isa(arg, SSAValue)
@@ -127,10 +140,10 @@ function optimize!(code::CodeInfo, scope)
         end
     end
 
-        # Replace :llvmcall and :foreigncall with compiled variants. See
+    # Replace :llvmcall and :foreigncall with compiled variants. See
     # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/13#issuecomment-464880123
-  #  @show code
     foreigncalls_idx = Int[]
+    delete_idxs = Int[]
     for (idx, stmt) in enumerate(code.code)
         # Foregincalls can be rhs of assignments
         if isexpr(stmt, :(=))
@@ -144,8 +157,9 @@ function optimize!(code::CodeInfo, scope)
                 ustr = replace(string(uuid), '-'=>'_')
                 methname = Symbol("llvmcall_", ustr)
                 nargs = length(stmt.args)-4
-                build_compiled_call!(stmt, methname, Base.llvmcall, stmt.args[2:4], code, idx, nargs, sparams)
+                delete_idx = build_compiled_call!(stmt, methname, Base.llvmcall, stmt.args[2:4], code, idx, nargs, sparams)
                 push!(foreigncalls_idx, idx)
+                append!(delete_idxs, delete_idx)
             end
         elseif isexpr(stmt, :foreigncall) && scope isa Method
             f = lookup_stmt(code.code, stmt.args[1])
@@ -169,9 +183,19 @@ function optimize!(code::CodeInfo, scope)
             ustr = replace(string(uuid), '-'=>'_')
             methname = Symbol("ccall", '_', f, '_', ustr)
             nargs = stmt.args[5]
-            build_compiled_call!(stmt, methname, :ccall, stmt.args[1:3], code, idx, nargs, sparams)
+            delete_idx = build_compiled_call!(stmt, methname, :ccall, stmt.args[1:3], code, idx, nargs, sparams)
             push!(foreigncalls_idx, idx)
+            append!(delete_idxs, delete_idx)
         end
+    end
+
+    if !isempty(delete_idxs)
+        ssalookup = compute_ssa_mapping_delete_statements!(code, delete_idxs)
+        foreigncalls_idx = map(x -> ssalookup[x], foreigncalls_idx)
+        deleteat!(code.codelocs, delete_idxs)
+        deleteat!(code.code, delete_idxs)
+        code.ssavaluetypes = length(code.code)
+        renumber_ssa!(code.code, ssalookup)
     end
 
     ## Un-nest :call expressions (so that there will be only one :call per line)
@@ -214,6 +238,7 @@ end
 # Handle :llvmcall & :foreigncall (issue #28)
 function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, sparams)
     argnames = Any[Symbol("arg", string(i)) for i = 1:nargs]
+    delete_idx = Int[]
     if fcall == :ccall
         cfunc, RetType, ArgType = lookup_stmt(code.code, stmt.args[1]), stmt.args[2], stmt.args[3]
         # The result of this is useful to have next to you when reading this code:
@@ -226,7 +251,10 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
             else
                 @assert arg isa SSAValue
                 unsafe_convert_expr = code.code[arg.id]
-                cconvert_expr = code.code[unsafe_convert_expr.args[3].id]
+                push!(delete_idx, arg.id) # delete the unsafe_convert
+                cconvert_stmt = unsafe_convert_expr.args[3]
+                push!(delete_idx, cconvert_stmt.id) # delete the cconvert
+                cconvert_expr = code.code[cconvert_stmt.id]
                 push!(args, cconvert_expr.args[3])
             end
         end
@@ -286,6 +314,6 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
     for i in 1:length(sparams)
         push!(stmt.args, :($Val($(Expr(:static_parameter, i)))))
     end
-    return
+    return delete_idx
 end
 
