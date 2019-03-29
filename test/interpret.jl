@@ -463,3 +463,11 @@ function call_cf()
     ccall(cf[1], Int, (Int, Int), 1, 2)
 end
 @test (@interpret call_cf()) == call_cf()
+
+f() = ccall((:clock, "libc"), Int32, ())
+# See that the method gets compiled
+try @interpret f()
+catch
+end
+compiled_calls = names(JuliaInterpreter.CompiledCalls; all=true)
+@test any(x -> startswith(string(x), "ccall_clock_libc"), compiled_calls)
