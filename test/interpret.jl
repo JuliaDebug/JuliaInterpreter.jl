@@ -467,3 +467,11 @@ end
 # ccall with literal 
 f_N() =  Array{Float64, 4}(undef, 1, 3, 2, 1)
 @test (@interpret f_N()) isa Array{Float64, 4}
+
+f() = ccall((:clock, "libc"), Int32, ())
+# See that the method gets compiled
+try @interpret f()
+catch
+end
+compiled_calls = names(JuliaInterpreter.CompiledCalls; all=true)
+@test any(x -> startswith(string(x), "ccall_clock_libc"), compiled_calls)

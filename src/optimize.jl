@@ -153,7 +153,9 @@ function optimize!(code::CodeInfo, scope)
                 f = string(uuid1(rng))
             elseif isexpr(f, :call)
                 length(f.args) == 3 || continue
-                f.args[1] === tuple || continue
+                if !(f.args[1] === tuple || f.args[1] == :($(QuoteNode(tuple))))
+                    continue
+                end
                 lib = f.args[3] isa String ? f.args[3] : f.args[3].value
                 prefix = f.args[2] isa String ? f.args[2] : f.args[2].value
                 f = Symbol(prefix, '_', lib)
