@@ -197,6 +197,15 @@ end
     @test bp.stmtidx == 3
 end
 
+@testset "breakpoint on first statement" begin
+    JuliaInterpreter.breakpoint(gcd)
+    frame = JuliaInterpreter.enter_call_expr(Expr(:call, gcd, 2,3))
+    ret = JuliaInterpreter.debug_command(frame, :finish)
+    @test ret !== nothing
+    @test ret[2] isa BreakpointRef
+    JuliaInterpreter.remove()
+end
+
 if tmppath != ""
     rm(tmppath)
 end

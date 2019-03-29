@@ -10,6 +10,7 @@ In the latter case, `leaf(frame)` returns the frame in which it hit the breakpoi
 by normal dispatch, whereas the default `recurse = finish_and_return!` uses recursive interpretation.
 """
 function finish!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
+    shouldbreak(frame, frame.pc) && return BreakpointRef(frame.framecode, frame.pc)
     while true
         pc = step_expr!(recurse, frame, istoplevel)
         (pc === nothing || isa(pc, BreakpointRef)) && return pc
@@ -26,6 +27,7 @@ Call [`JuliaInterpreter.finish!`](@ref) and pass back the return value `ret`. If
 pauses at a breakpoint, `ret` is the reference to the breakpoint.
 """
 function finish_and_return!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
+    shouldbreak(frame, frame.pc) && return BreakpointRef(frame.framecode, frame.pc)
     pc = finish!(recurse, frame, istoplevel)
     isa(pc, BreakpointRef) && return pc
     return get_return(frame)
