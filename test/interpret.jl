@@ -464,6 +464,10 @@ function call_cf()
 end
 @test (@interpret call_cf()) == call_cf()
 
+# ccall with integer static parameter
+f_N() =  Array{Float64, 4}(undef, 1, 3, 2, 1)
+@test (@interpret f_N()) isa Array{Float64, 4}
+
 f() = ccall((:clock, "libc"), Int32, ())
 # See that the method gets compiled
 try @interpret f()

@@ -127,33 +127,10 @@ function optimize!(code::CodeInfo, scope)
         end
     end
 
-    ## Un-nest :call expressions (so that there will be only one :call per line)
-    # This will allow us to re-use args-buffers rather than having to allocate new ones each time.
-    old_code, old_codelocs = code.code, code.codelocs
-    code.code = new_code = eltype(old_code)[]
-    code.codelocs = new_codelocs = Int32[]
-    ssainc = fill(1, length(old_code))
-    for (i, stmt) in enumerate(old_code)
-        loc = old_codelocs[i]
-        inner = extract_inner_call!(stmt, length(new_code)+1)
-        while inner !== nothing
-            push!(new_code, inner)
-            push!(new_codelocs, loc)
-            ssainc[i] += 1
-            inner = extract_inner_call!(stmt, length(new_code)+1)
-        end
-        push!(new_code, stmt)
-        push!(new_codelocs, loc)
-    end
-    # Fix all the SSAValues and GotoNodes
-    ssalookup = cumsum(ssainc)
-    renumber_ssa!(new_code, ssalookup)
-    code.ssavaluetypes = length(new_code)
-
-    # Replace :llvmcall and :foreigncall with compiled variants. See
+        # Replace :llvmcall and :foreigncall with compiled variants. See
     # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/13#issuecomment-464880123
-    methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(code.code))
   #  @show code
+    foreigncalls_idx = Int[]
     for (idx, stmt) in enumerate(code.code)
         # Foregincalls can be rhs of assignments
         if isexpr(stmt, :(=))
@@ -168,7 +145,7 @@ function optimize!(code::CodeInfo, scope)
                 methname = Symbol("llvmcall_", ustr)
                 nargs = length(stmt.args)-4
                 build_compiled_call!(stmt, methname, Base.llvmcall, stmt.args[2:4], code, idx, nargs, sparams)
-                methodtables[idx] = Compiled()
+                push!(foreigncalls_idx, idx)
             end
         elseif isexpr(stmt, :foreigncall) && scope isa Method
             f = lookup_stmt(code.code, stmt.args[1])
@@ -193,8 +170,37 @@ function optimize!(code::CodeInfo, scope)
             methname = Symbol("ccall", '_', f, '_', ustr)
             nargs = stmt.args[5]
             build_compiled_call!(stmt, methname, :ccall, stmt.args[1:3], code, idx, nargs, sparams)
-            methodtables[idx] = Compiled()
+            push!(foreigncalls_idx, idx)
         end
+    end
+
+    ## Un-nest :call expressions (so that there will be only one :call per line)
+    # This will allow us to re-use args-buffers rather than having to allocate new ones each time.
+    old_code, old_codelocs = code.code, code.codelocs
+    code.code = new_code = eltype(old_code)[]
+    code.codelocs = new_codelocs = Int32[]
+    ssainc = fill(1, length(old_code))
+    for (i, stmt) in enumerate(old_code)
+        loc = old_codelocs[i]
+        inner = extract_inner_call!(stmt, length(new_code)+1)
+        while inner !== nothing
+            push!(new_code, inner)
+            push!(new_codelocs, loc)
+            ssainc[i] += 1
+            inner = extract_inner_call!(stmt, length(new_code)+1)
+        end
+        push!(new_code, stmt)
+        push!(new_codelocs, loc)
+    end
+    # Fix all the SSAValues and GotoNodes
+    ssalookup = cumsum(ssainc)
+    renumber_ssa!(new_code, ssalookup)
+    code.ssavaluetypes = length(new_code)
+
+    # Insert the foreigncall wrappers at the updated idxs
+    methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(code.code))
+    for idx in foreigncalls_idx
+        methodtables[ssalookup[idx]] = Compiled()
     end
 
     return code, methodtables
@@ -259,7 +265,7 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
     RetType = parametric_type_to_expr(RetType)
     wrapargs = copy(argnames)
     for sparam in sparams
-        push!(wrapargs, :(::Type{$sparam}))
+        push!(wrapargs, :(::Val{$sparam}))
     end
     if stmt.args[4] == :(:llvmcall)
         def = :(
@@ -278,7 +284,7 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
     deleteat!(stmt.args, 2:length(stmt.args))
     append!(stmt.args, args)
     for i in 1:length(sparams)
-        push!(stmt.args, :($(Expr(:static_parameter, i))))
+        push!(stmt.args, :($Val($(Expr(:static_parameter, i)))))
     end
     return
 end
