@@ -1,6 +1,7 @@
 using JuliaInterpreter
 using JuliaInterpreter: enter_call_expr
 using Test, InteractiveUtils, CodeTracking
+using Mmap
 
 module Isolated end
 
@@ -483,3 +484,19 @@ compiled_calls = names(JuliaInterpreter.CompiledCalls; all=true)
 # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/194
 f() =  Meta.lower(Main, Meta.parse("(a=1,0)"))
 @test @interpret f() == f()
+
+# Test for vararg ccalls (used by mmap)
+function f_mmap()
+    tmp = tempname()
+    local b_mmap
+    try
+        x = rand(10)
+        write(tmp, x)
+        b_mmap = Mmap.mmap(tmp, Vector{Float64})
+        @test b_mmap == x
+    finally
+        finalize(b_mmap)
+        rm(tmp)
+    end
+end
+@interpret f_mmap()
