@@ -479,3 +479,7 @@ catch
 end
 compiled_calls = names(JuliaInterpreter.CompiledCalls; all=true)
 @test any(x -> startswith(string(x), "ccall_clock_libc"), compiled_calls)
+
+# https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/194
+f() =  Meta.lower(Main, Meta.parse("(a=1,0)"))
+@test @interpret f() == f()
