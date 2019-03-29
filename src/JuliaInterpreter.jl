@@ -6,6 +6,7 @@ using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfo
             GeneratedFunctionStub, MethodInstance, NewvarNode, TypeName
 
 using UUIDs
+using Random
 # The following are for circumventing #28, memcpy invalid instruction error,
 # in Base and stdlib
 using Random.DSFMT

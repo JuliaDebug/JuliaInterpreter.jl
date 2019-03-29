@@ -95,6 +95,8 @@ function lookup_global_refs!(ex::Expr)
     return nothing
 end
 
+const rng = MersenneTwister()
+
 """
     optimize!(code::CodeInfo, mod::Module)
 
@@ -161,7 +163,7 @@ function optimize!(code::CodeInfo, scope)
             # Check for :llvmcall
             arg1 = stmt.args[1]
             if (arg1 == :llvmcall || lookup_stmt(code.code, arg1) == Base.llvmcall) && isempty(sparams) && scope isa Method
-                uuid = uuid4()
+                uuid = uuid1(rng)
                 ustr = replace(string(uuid), '-'=>'_')
                 methname = Symbol("llvmcall_", ustr)
                 nargs = length(stmt.args)-4
@@ -171,7 +173,7 @@ function optimize!(code::CodeInfo, scope)
         elseif isexpr(stmt, :foreigncall) && scope isa Method
             f = lookup_stmt(code.code, stmt.args[1])
             if isa(f, Ptr)
-                f = string(uuid4())
+                f = string(uuid1(rng))
             elseif isexpr(f, :call)
                 length(f.args) == 3 || continue
                 f.args[1] === tuple || continue
@@ -184,7 +186,7 @@ function optimize!(code::CodeInfo, scope)
                 continue
             end
             # TODO: Only compile one ccall per call and argument types
-            uuid = uuid4()
+            uuid = uuid1(rng)
             ustr = replace(string(uuid), '-'=>'_')
             methname = Symbol("ccall", '_', f, '_', ustr)
             nargs = stmt.args[5]
