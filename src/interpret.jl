@@ -327,8 +327,8 @@ function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
         data.ssavalues[lhs.id] = rhs
     elseif isa(lhs, SlotNumber)
         data.locals[lhs.id] = Some{Any}(rhs)
-        data.last_reference[code.src.slotnames[lhs.id]] =
-            lhs.id
+        slotnames = code.src.slotnames::Vector{Any}
+        data.last_reference[slotnames[lhs.id]::Symbol] = lhs.id
     elseif isa(lhs, GlobalRef)
         Core.eval(lhs.mod, :($(lhs.name) = $(QuoteNode(rhs))))
     elseif isa(lhs, Symbol)
@@ -430,7 +430,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                     throw(TypeError(nameof(frame), "if", Bool, node.args[1]))
                 end
                 if !arg
-                    return (frame.pc = node.args[2])
+                    return (frame.pc = node.args[2]::Int)
                 end
             elseif node.head == :enter
                 rhs = node.args[1]

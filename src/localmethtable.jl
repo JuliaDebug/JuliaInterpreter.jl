@@ -7,11 +7,11 @@ Return the framecode and environment for a call specified by `fargs = [f, args..
 `parentframecode` is the caller, and `idx` is the program-counter index.
 If possible, `framecode` will be looked up from the local method tables of `parentframe`.
 """
-function get_call_framecode(fargs, parentframe::FrameCode, idx::Int; enter_generated::Bool=false)
+function get_call_framecode(fargs::Vector{Any}, parentframe::FrameCode, idx::Int; enter_generated::Bool=false)
     nargs = length(fargs)  # includes f as the first "argument"
     # Determine whether we can look up the appropriate framecode in the local method table
     if isassigned(parentframe.methodtables, idx)  # if this is the first call, this may not yet be set
-        tme = tme1 = parentframe.methodtables[idx]
+        tme = tme1 = parentframe.methodtables[idx]::TypeMapEntry
         local tmeprev
         depth = 1
         while true

@@ -209,7 +209,8 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     elseif any(is_vararg_type, allargs)
         return nothing  # https://github.com/JuliaLang/julia/issues/30995
     end
-    argtypes = Tuple{map(_Typeof,allargs)...}
+    argtypesv = Any[_Typeof(a) for a in allargs]
+    argtypes = Tuple{argtypesv...}
     method = whichtt(argtypes)
     if method === nothing
         # Call it to generate the exact error
@@ -234,9 +235,10 @@ end
 function prepare_framedata(framecode, argvals::Vector{Any}, caller_will_catch_err::Bool=false)
     if isa(framecode.scope, Method)
         meth, src = framecode.scope::Method, framecode.src
+        slotnames = src.slotnames::Vector{Any}  # this is more strongly typed in julia.h than in jltypes.c
         ssavt = src.ssavaluetypes
         ng = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any})
-        nargs = length(argvals)
+        nargs, meth_nargs = length(argvals), Int(meth.nargs)
         if !isempty(junk)
             olddata = first(junk)
             delete!(junk, olddata)
@@ -260,21 +262,21 @@ function prepare_framedata(framecode, argvals::Vector{Any}, caller_will_catch_er
             callargs = Any[]
             last_exception = Ref{Any}(nothing)
         end
-        for i = 1:meth.nargs
-            last_reference[framecode.src.slotnames[i]] = i
-            if meth.isva && i == meth.nargs
+        for i = 1:meth_nargs
+            last_reference[slotnames[i]::Symbol] = i
+            if meth.isva && i == meth_nargs
                 locals[i] = nargs < i ? Some{Any}(()) : (let i=i; Some{Any}(ntuple(k->argvals[i+k-1], nargs-i+1)); end)
                 break
             end
             locals[i] = nargs >= i ? Some{Any}(argvals[i]) : Some{Any}(())
         end
         # add local variables initially undefined
-        for i = (meth.nargs+1):length(src.slotnames)
+        for i = (meth_nargs+1):length(slotnames)
             locals[i] = nothing
         end
     else
         src = framecode.src
-        locals = Vector{Union{Nothing,Some{Any}}}(undef, length(src.slotflags))
+        locals = Vector{Union{Nothing,Some{Any}}}(undef, length(src.slotflags))  # src.slotflags is concretely typed, unlike slotnames
         fill!(locals, nothing)
         ssavalues = Vector{Any}(undef, length(src.code))
         sparams = Any[]
