@@ -293,7 +293,8 @@ function locals(frame::Frame)
     vars = Variable[]
     data, code = frame.framedata, frame.framecode
     added = Set{Symbol}()
-    for sym in code.src.slotnames
+    slotnames = code.src.slotnames::Vector{Any}
+    for sym in slotnames
         sym ∈ added && continue
         idx = get(data.last_reference, sym, 0)
         idx == 0 && continue
