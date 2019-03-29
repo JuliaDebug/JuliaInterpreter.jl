@@ -127,6 +127,51 @@ function optimize!(code::CodeInfo, scope)
         end
     end
 
+        # Replace :llvmcall and :foreigncall with compiled variants. See
+    # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/13#issuecomment-464880123
+  #  @show code
+    foreigncalls_idx = Int[]
+    for (idx, stmt) in enumerate(code.code)
+        # Foregincalls can be rhs of assignments
+        if isexpr(stmt, :(=))
+            stmt = stmt.args[2]
+        end
+        if isexpr(stmt, :call)
+            # Check for :llvmcall
+            arg1 = stmt.args[1]
+            if (arg1 == :llvmcall || lookup_stmt(code.code, arg1) == Base.llvmcall) && isempty(sparams) && scope isa Method
+                uuid = uuid1(rng)
+                ustr = replace(string(uuid), '-'=>'_')
+                methname = Symbol("llvmcall_", ustr)
+                nargs = length(stmt.args)-4
+                build_compiled_call!(stmt, methname, Base.llvmcall, stmt.args[2:4], code, idx, nargs, sparams)
+                push!(foreigncalls_idx, idx)
+            end
+        elseif isexpr(stmt, :foreigncall) && scope isa Method
+            f = lookup_stmt(code.code, stmt.args[1])
+            if isa(f, Ptr)
+                f = string(uuid1(rng))
+            elseif isexpr(f, :call)
+                length(f.args) == 3 || continue
+                f.args[1] === tuple || continue
+                lib = f.args[3] isa String ? f.args[3] : f.args[3].value
+                prefix = f.args[2] isa String ? f.args[2] : f.args[2].value
+                f = Symbol(prefix, '_', lib)
+            end
+            # Punt on non literal ccall arguments for now
+            if !(isa(f, String) || isa(f, Symbol) || isa(f, Ptr))
+                continue
+            end
+            # TODO: Only compile one ccall per call and argument types
+            uuid = uuid1(rng)
+            ustr = replace(string(uuid), '-'=>'_')
+            methname = Symbol("ccall", '_', f, '_', ustr)
+            nargs = stmt.args[5]
+            build_compiled_call!(stmt, methname, :ccall, stmt.args[1:3], code, idx, nargs, sparams)
+            push!(foreigncalls_idx, idx)
+        end
+    end
+
     ## Un-nest :call expressions (so that there will be only one :call per line)
     # This will allow us to re-use args-buffers rather than having to allocate new ones each time.
     old_code, old_codelocs = code.code, code.codelocs
@@ -150,49 +195,10 @@ function optimize!(code::CodeInfo, scope)
     renumber_ssa!(new_code, ssalookup)
     code.ssavaluetypes = length(new_code)
 
-    # Replace :llvmcall and :foreigncall with compiled variants. See
-    # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/13#issuecomment-464880123
+    # Insert the foreigncall wrappers at the updated idxs
     methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(code.code))
-  #  @show code
-    for (idx, stmt) in enumerate(code.code)
-        # Foregincalls can be rhs of assignments
-        if isexpr(stmt, :(=))
-            stmt = stmt.args[2]
-        end
-        if isexpr(stmt, :call)
-            # Check for :llvmcall
-            arg1 = stmt.args[1]
-            if (arg1 == :llvmcall || lookup_stmt(code.code, arg1) == Base.llvmcall) && isempty(sparams) && scope isa Method
-                uuid = uuid1(rng)
-                ustr = replace(string(uuid), '-'=>'_')
-                methname = Symbol("llvmcall_", ustr)
-                nargs = length(stmt.args)-4
-                build_compiled_call!(stmt, methname, Base.llvmcall, stmt.args[2:4], code, idx, nargs, sparams)
-                methodtables[idx] = Compiled()
-            end
-        elseif isexpr(stmt, :foreigncall) && scope isa Method
-            f = lookup_stmt(code.code, stmt.args[1])
-            if isa(f, Ptr)
-                f = string(uuid1(rng))
-            elseif isexpr(f, :call)
-                length(f.args) == 3 || continue
-                f.args[1] === tuple || continue
-                lib = f.args[3] isa String ? f.args[3] : f.args[3].value
-                prefix = f.args[2] isa String ? f.args[2] : f.args[2].value
-                f = Symbol(prefix, '_', lib)
-            end
-            # Punt on non literal ccall arguments for now
-            if !(isa(f, String) || isa(f, Symbol) || isa(f, Ptr))
-                continue
-            end
-            # TODO: Only compile one ccall per call and argument types
-            uuid = uuid1(rng)
-            ustr = replace(string(uuid), '-'=>'_')
-            methname = Symbol("ccall", '_', f, '_', ustr)
-            nargs = stmt.args[5]
-            build_compiled_call!(stmt, methname, :ccall, stmt.args[1:3], code, idx, nargs, sparams)
-            methodtables[idx] = Compiled()
-        end
+    for idx in foreigncalls_idx
+        methodtables[ssalookup[idx]] = Compiled()
     end
 
     return code, methodtables
@@ -257,7 +263,7 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
     RetType = parametric_type_to_expr(RetType)
     wrapargs = copy(argnames)
     for sparam in sparams
-        push!(wrapargs, :(::Type{$sparam}))
+        push!(wrapargs, :(::Val{$sparam}))
     end
     if stmt.args[4] == :(:llvmcall)
         def = :(
@@ -276,7 +282,7 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
     deleteat!(stmt.args, 2:length(stmt.args))
     append!(stmt.args, args)
     for i in 1:length(sparams)
-        push!(stmt.args, :($(Expr(:static_parameter, i))))
+        push!(stmt.args, :($Val($(Expr(:static_parameter, i)))))
     end
     return
 end

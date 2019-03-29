@@ -463,3 +463,7 @@ function call_cf()
     ccall(cf[1], Int, (Int, Int), 1, 2)
 end
 @test (@interpret call_cf()) == call_cf()
+
+# ccall with literal 
+f_N() =  Array{Float64, 4}(undef, 1, 3, 2, 1)
+@test (@interpret f_N()) isa Array{Float64, 4}
