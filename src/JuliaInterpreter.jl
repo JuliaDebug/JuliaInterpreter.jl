@@ -30,6 +30,11 @@ withenv("JULIA_LOAD_PATH" => joinpath(@__DIR__, "..")) do
 end
 include_dependency(gen_builtins_file)
 
+# "Backport" of https://github.com/JuliaLang/julia/pull/31536
+if VERSION < v"1.2.0-DEV.572"
+    Base.convert(::Type{Some{T}}, x::Some{T}) where {T} = x
+end
+
 include("types.jl")
 include("utils.jl")
 include("construct.jl")
