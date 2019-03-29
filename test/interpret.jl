@@ -443,6 +443,10 @@ finally
     break_off(:error)
 end
 
+# https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/154
+q = QuoteNode([1])
+@test @interpret deepcopy(q) == q
+
 # Check #args for builtins (#217)
 f217() = <:(Float64, Float32, Float16)
 @test_throws ArgumentError @interpret(f217())
