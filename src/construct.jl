@@ -412,14 +412,24 @@ function split_expressions!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; 
         end
         split_expressions!(modexs, docexprs, lex, newmod, ex.args[3]; extract_docexprs=extract_docexprs, filename=filename)
     elseif extract_docexprs && is_doc_expr(ex) && length(ex.args) >= 4
+        body = ex.args[4]
+        if isa(body, Expr) && body.head != :call
+            split_expressions!(modexs, docexprs, lex, mod, body; extract_docexprs=extract_docexprs, filename=filename)
+        end
         docexs = get(docexprs, mod, nothing)
         if docexs === nothing
             docexs = docexprs[mod] = Expr[]
         end
-        push!(docexs, ex)
-        body = ex.args[4]
-        if isa(body, Expr) && body.head != :call
-            split_expressions!(modexs, docexprs, lex, mod, body; extract_docexprs=extract_docexprs, filename=filename)
+        if isexpr(body, :module)
+            # If it's a module expression, don't include the entire expression, just document the module itself.
+            excopy = Expr(ex.head, ex.args[1], ex.args[2], ex.args[3])
+            push!(excopy.args, body.args[2])
+            if length(ex.args) > 4
+                append!(excopy.args, ex.args[5:end])   # there should only be a 5th, but just for robustness
+            end
+            push!(docexs, excopy)
+        else
+            push!(docexs, ex)
         end
     else
         if isempty(lex.args)
