@@ -304,12 +304,17 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
             function $methname($(wrapargs...)) where {$(sparams...)}
                 return $fcall($cfunc, llvmcall, $RetType, $ArgType, $(argnames...))
             end)
+    elseif stmt.args[4] == :(:stdcall)
+        def = :(
+            function $methname($(wrapargs...)) where {$(sparams...)}
+                return $fcall($cfunc, stdcall, $RetType, $ArgType, $(argnames...))
+            end)
     else
         def = :(
             function $methname($(wrapargs...)) where {$(sparams...)}
                 return $fcall($cfunc, $RetType, $ArgType, $(argnames...))
             end)
-        end
+    end
     f = Core.eval(CompiledCalls, def)
     stmt.args[1] = QuoteNode(f)
     stmt.head = :call
