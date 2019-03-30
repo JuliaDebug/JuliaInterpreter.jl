@@ -561,11 +561,19 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
+    "location": "dev_reference/#JuliaInterpreter.compiled_modules",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.compiled_modules",
+    "category": "constant",
+    "text": "mod ∈ compiled_modules indicates that any method in mod should be run using Compiled rather than recursed into via the interpreter.\n\n\n\n\n\n"
+},
+
+{
     "location": "dev_reference/#Internal-storage-1",
     "page": "Function reference",
     "title": "Internal storage",
     "category": "section",
-    "text": "JuliaInterpreter.framedict\nJuliaInterpreter.genframedict\nJuliaInterpreter.compiled_methods"
+    "text": "JuliaInterpreter.framedict\nJuliaInterpreter.genframedict\nJuliaInterpreter.compiled_methods\nJuliaInterpreter.compiled_modules"
 },
 
 {
