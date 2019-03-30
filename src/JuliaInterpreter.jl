@@ -77,6 +77,9 @@ function set_compiled_methods()
     # These are currently extremely slow to interpret (https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/193)
     push!(compiled_methods, which(subtypes, Tuple{Module, Type}))
     push!(compiled_methods, which(subtypes, Tuple{Type}))
+
+    push!(compiled_modules, Core.Compiler)
+    push!(compiled_modules, Base.Threads)
 end
 
 function __init__()

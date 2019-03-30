@@ -20,6 +20,12 @@ rather than recursed into via the interpreter.
 """
 const compiled_methods = Set{Method}()
 
+"""
+`mod ∈ compiled_modules` indicates that any method in `mod` should be run using [`Compiled`](@ref)
+rather than recursed into via the interpreter.
+"""
+const compiled_modules = Set{Module}()
+
 const junk = Base.IdSet{FrameData}()      # to allow re-use of allocated memory (this is otherwise a bottleneck)
 recycle(frame) = push!(junk, frame.framedata)  # using an IdSet ensures that a frame can't be added twice
 
@@ -116,7 +122,7 @@ end
 
 function prepare_framecode(method::Method, @nospecialize(argtypes); enter_generated=false)
     sig = method.sig
-    if method.module == Core.Compiler || method.module == Base.Threads || method ∈ compiled_methods
+    if method.module ∈ compiled_modules || method ∈ compiled_methods
         return Compiled()
     end
     # Get static parameters

@@ -83,6 +83,7 @@ JuliaInterpreter.BreakpointRef
 JuliaInterpreter.framedict
 JuliaInterpreter.genframedict
 JuliaInterpreter.compiled_methods
+JuliaInterpreter.compiled_modules
 ```
 
 ## Utilities
