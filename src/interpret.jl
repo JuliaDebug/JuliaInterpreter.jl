@@ -178,6 +178,9 @@ function bypass_builtins(frame, call_expr, pc)
         if isa(tme, Compiled)
             fargs = collect_args(frame, call_expr)
             f = to_function(fargs[1])
+            @info "Calling $f with $fargs"
+            @show f
+            @show code_lowered(f, Tuple{typeof.(fargs[2:end])...})
             if parentmodule(f) === JuliaInterpreter.CompiledCalls
                 return Some{Any}(Base.invokelatest(f, fargs[2:end]...))
             else
