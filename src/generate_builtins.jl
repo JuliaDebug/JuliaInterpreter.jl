@@ -22,8 +22,14 @@ function nargs(f, table, id)
         maxarg = typemax(Int)
     end
     # The tfunc tables are wrong for fptoui and fptosi (fixed in https://github.com/JuliaLang/julia/pull/30787)
-    if f == "Base.fptoui" || f == "Base.fptosi"
+    if f == Base.fptoui || f == Base.fptosi
         minarg = 2
+    end
+    # Specialize arrayref and arrayset for small numbers of arguments
+    if f == Core.arrayref
+        maxarg = 5
+    elseif f == Core.arrayset
+        maxarg = 6
     end
     return minarg, maxarg
 end
