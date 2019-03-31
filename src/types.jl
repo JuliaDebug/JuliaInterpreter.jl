@@ -90,7 +90,21 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
         end
     end
     used = find_used(src)
-    return FrameCode(scope, src, methodtables, breakpoints, used, generator)
+    framecode = FrameCode(scope, src, methodtables, breakpoints, used, generator)
+    if scope isa Method
+        for bp in _breakpoints
+            # Manual union splitting
+            if bp isa BreakpointSignature
+                add_breakpoint_if_match!(framecode, bp)
+            elseif bp isa BreakpointFileLocation
+                add_breakpoint_if_match!(framecode, bp)
+            else
+                error("unhandled breakpoint type")
+            end
+        end
+    end
+
+    return framecode
 end
 
 nstatements(framecode::FrameCode) = length(framecode.src.code)
@@ -248,6 +262,9 @@ struct BreakpointRef
     err
 end
 BreakpointRef(framecode, stmtidx) = BreakpointRef(framecode, stmtidx, nothing)
+Base.getindex(bp::BreakpointRef) = bp.framecode.breakpoints[bp.stmtidx]
+Base.setindex!(bp::BreakpointRef, isactive::Bool) =
+    bp.framecode.breakpoints[bp.stmtidx] = BreakpointState(isactive, bp[].condition)
 
 function Base.show(io::IO, bp::BreakpointRef)
     if checkbounds(Bool, bp.framecode.breakpoints, bp.stmtidx)
@@ -261,3 +278,59 @@ function Base.show(io::IO, bp::BreakpointRef)
     end
     print(io, ')')
 end
+
+# Possible types for breakpoint condition
+const Condition = Union{Nothing,Expr,Tuple{Module,Expr}}
+
+abstract type AbstractBreakpoint end
+
+same_location(::AbstractBreakpoint, ::AbstractBreakpoint) = false
+
+struct BreakpointSignature <: AbstractBreakpoint
+    f # Method or function
+    sig::Union{Nothing, Type}
+    line::Int # 0 is a sentinel for first statement
+    condition::Condition
+    enabled::Ref{Bool}
+    applications::Vector{BreakpointRef}
+end
+same_location(bp2::BreakpointSignature, bp::BreakpointSignature) = 
+    bp2.f == bp.f && bp2.sig == bp.sig && bp2.line == bp.line
+function Base.show(io::IO, bp::BreakpointSignature)
+    print(io, "BreakpointSignature: ")
+    print(io, bp.f)
+    if bp.sig !== nothing
+        print(io, '(', join("::" .* string.(bp.sig.types), ", "), ')')
+    end
+    if bp.line !== 0
+        print(io, bp.line)
+    end
+    if bp.condition !== nothing
+        print(io, " ", Base.remove_linenums!(copy(bp.condition)))
+    end
+    if !bp.enabled[]
+        print(io, " [disabled]")
+    end
+end
+
+struct BreakpointFileLocation <: AbstractBreakpoint
+    path::String
+    abspath::String
+    line::Integer
+    condition::Condition
+    enabled::Ref{Bool}
+    applications::Vector{BreakpointRef}
+end
+same_location(bp2::BreakpointFileLocation, bp::BreakpointFileLocation) = 
+    bp2.path == bp.path && bp2.abspath == bp.abspath && bp2.line == bp.line
+function Base.show(io::IO, bp::BreakpointFileLocation)
+    print(io, "BreakpointFileLocation: ")
+    print(io, bp.path, ':', bp.line)
+    if bp.condition !== nothing
+        print(io, " ", Base.remove_linenums!(copy(bp.condition)))
+    end
+    if !bp.enabled[]
+        print(io, " [disabled]")
+    end
+end
+

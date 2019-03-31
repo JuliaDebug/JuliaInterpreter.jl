@@ -38,8 +38,7 @@ Let's set a conditional breakpoint, to be triggered any time one of the elements
 argument to `sum` is bigger than 4:
 
 ```jldoctest demo1; filter = r"in Base at .*$"
-julia> @breakpoint sum([1, 2]) any(x->x>4, a)
-breakpoint(sum(a::AbstractArray) in Base at reducedim.jl:648, line 648)
+julia> bp = @breakpoint sum([1, 2]) any(x->x>4, a);
 ```
 
 Note that in writing the condition, we used `a`, the name of the argument to the relevant
@@ -53,7 +52,7 @@ Now let's see what happens:
 julia> @interpret sum([1,2,3])  # no element bigger than 4, breakpoint should not trigger
 6
 
-julia> frame, bp = @interpret sum([1,2,5])  # should trigger breakpoint
+julia> frame, bpref = @interpret sum([1,2,5])  # should trigger breakpoint
 (Frame for sum(a::AbstractArray) in Base at reducedim.jl:648
 c 1* 648  1 ─      nothing
   2  648  │   %2 = (Base.#sum#550)(Colon(), #self#, a)
@@ -63,18 +62,16 @@ a = [1, 2, 5], breakpoint(sum(a::AbstractArray) in Base at reducedim.jl:648, lin
 
 `frame` is described in more detail on the next page; for now, suffice it to say
 that the `c` in the leftmost column indicates the presence of a conditional breakpoint
-upon entry to `sum`. `bp` is a reference to the breakpoint. You can manipulate these
-at the command line:
+upon entry to `sum`. `bpref` is a reference to the breakpoint of type [`BreakpointRef`](@ref).
+The breakpoint `bp` we created can be manipulated at the command line
 
 ```jldoctest demo1; filter = r"in Base at .*$"
 julia> disable(bp)
-false
 
 julia> @interpret sum([1,2,5])
 8
 
 julia> enable(bp)
-true
 
 julia> @interpret sum([1,2,5])
 (Frame for sum(a::AbstractArray) in Base at reducedim.jl:648

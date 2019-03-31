@@ -8,19 +8,17 @@ function loop_radius2(n)
 end
 
 tmppath = ""
-if isdefined(Main, :Revise)
-    global tmppath
-    tmppath, io = mktemp()
-    print(io, """
-    function jikwfunc(x, y=0; z="hello")
-        a = x + y
-        b = z^a
-        return length(b)
-    end
-    """)
-    close(io)
-    includet(tmppath)
+global tmppath
+tmppath, io = mktemp()
+print(io, """
+function jikwfunc(x, y=0; z="hello")
+    a = x + y
+    b = z^a
+    return length(b)
 end
+""")
+close(io)
+include(tmppath)
 
 using JuliaInterpreter, Test
 
@@ -33,6 +31,8 @@ function stacklength(frame)
     end
     return n
 end
+
+struct Squarer end
 
 @testset "Breakpoints" begin
     breakpoint(radius2)
@@ -70,9 +70,9 @@ end
     # Conditional breakpoints on local variables
     remove()
     halfthresh = loop_radius2(5)
-    @breakpoint loop_radius2(10) 5 s>$halfthresh
-    frame, bp = @interpret loop_radius2(10)
-    @test isa(bp, JuliaInterpreter.BreakpointRef)
+    bp = @breakpoint loop_radius2(10) 5 s>$halfthresh
+    frame, bpref = @interpret loop_radius2(10)
+    @test isa(bpref, JuliaInterpreter.BreakpointRef)
     lframe = leaf(frame)
     s_extractor = eval(JuliaInterpreter.prepare_slotfunction(lframe.framecode, :s))
     @test s_extractor(lframe) == loop_radius2(6)
@@ -102,29 +102,20 @@ end
     @test JuliaInterpreter.finish_stack!(frame) == 2
 
     # Breakpoints by file/line
-    if isdefined(Main, :Revise)
-        remove()
-        method = which(JuliaInterpreter.locals, Tuple{Frame})
-        breakpoint(String(method.file), method.line+1)
-        frame = JuliaInterpreter.enter_call(loop_radius2, 2)
-        ret = @interpret JuliaInterpreter.locals(frame)
-        @test isa(ret, Tuple{Frame,JuliaInterpreter.BreakpointRef})
-        # Test kwarg method
-        remove()
-        bp = breakpoint(tmppath, 3)
-        frame, bp2 = @interpret jikwfunc(2)
-        @test bp2 == bp
-        var = JuliaInterpreter.locals(leaf(frame))
-        @test !any(v->v.name == :b, var)
-        @test filter(v->v.name == :a, var)[1].value == 2
-    else
-        try
-            breakpoint(pathof(JuliaInterpreter.CodeTracking), 5)
-        catch err
-            @test isa(err, ErrorException)
-            @test occursin("Revise", err.msg)
-        end
-    end
+    remove()
+    method = which(JuliaInterpreter.locals, Tuple{Frame})
+    breakpoint(String(method.file), method.line+1)
+    frame = JuliaInterpreter.enter_call(loop_radius2, 2)
+    ret = @interpret JuliaInterpreter.locals(frame)
+    @test isa(ret, Tuple{Frame,JuliaInterpreter.BreakpointRef})
+    # Test kwarg method
+    remove()
+    bp = breakpoint(tmppath, 3)
+    frame, bp2 = @interpret jikwfunc(2)
+    var = JuliaInterpreter.locals(leaf(frame))
+    @test !any(v->v.name == :b, var)
+    @test filter(v->v.name == :a, var)[1].value == 2
+
 
     # Direct return
     @breakpoint gcd(1,1) a==5
@@ -185,14 +176,11 @@ end
     io = IOBuffer()
     frame = JuliaInterpreter.enter_call(loop_radius2, 2)
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 1)
-    show(io, bp)
-    @test String(take!(io)) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, line 3)"
+    @test repr(bp) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, line 3)"
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 0)  # fictive breakpoint
-    show(io, bp)
-    @test String(take!(io)) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, %0)"
+    @test repr(bp) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, %0)"
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 1, ArgumentError("whoops"))
-    show(io, bp)
-    @test String(take!(io)) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, line 3, ArgumentError(\"whoops\"))"
+    @test repr(bp) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, line 3, ArgumentError(\"whoops\"))"
 
     # In source breakpointing
     f_outer_bp(x) = g_inner_bp(x)
@@ -207,8 +195,86 @@ end
     fr, bp = @interpret f_outer_bp(3)
     @test leaf(fr).framecode.scope.name == :g_inner_bp
     @test bp.stmtidx == 3
+
+    # Breakpoints on types
+    remove()
+    g() = Int(5.0)
+    @breakpoint Int(5.0)
+    frame, bp = @interpret g()
+    @test bp isa BreakpointRef
+    @test leaf(frame).framecode.scope === @which Int(5.0) 
+
+    # Breakpoint on call overloads
+    (::Squarer)(x) = x^2
+    squarer = Squarer()
+    @breakpoint squarer(2)
+    frame, bp = @interpret squarer(3.0)
+    @test bp isa BreakpointRef
+    @test leaf(frame).framecode.scope === @which squarer(3.0)
+end
+
+mktemp() do path, io
+    print(io, """
+    function somefunc(x, y=0)
+        a = x + y
+        b = z^a
+        return a + b
+    end
+    """)
+    close(io)
+    breakpoint(path, 3)
+    include(path)
+    frame, bp = @interpret somefunc(2, 3)
+    @test JuliaInterpreter.whereis(frame) == (path, 3)
+    breakpoint(path, 2)
+    frame, bp = @interpret somefunc(2, 3)
+    @test JuliaInterpreter.whereis(frame) == (path, 2)
 end
 
 if tmppath != ""
     rm(tmppath)
+end
+
+@testset "toggling" begin
+    remove()
+    f_break(x::Int) = x
+    bp = breakpoint(f_break)
+    frame, bpref = @interpret f_break(5)
+    @test bpref isa BreakpointRef
+    toggle(bp)
+    @test (@interpret f_break(5)) == 5
+    f_break(x::Float64) = 2x
+    @test (@interpret f_break(2.0)) == 4.0
+    toggle(bp)
+    frame, bpref = @interpret f_break(5)
+    @test bpref isa BreakpointRef
+    frame, bpref = @interpret f_break(2.0)
+    @test bpref isa BreakpointRef
+end
+
+using Dates
+@testset "breakpoint in stdlibs by path" begin
+    m = @which now() - Month(2)
+    f = String(m.file)
+    l = m.line + 1
+    for f in (f, basename(f))
+        remove()
+        breakpoint(f, l)
+        frame, bp = @interpret now() - Month(2)
+        @test bp isa BreakpointRef
+        @test JuliaInterpreter.whereis(frame)[2] == l
+    end
+end
+
+@testset "breakpoint in Base by path" begin
+    m = @which sin(2.0)
+    f = String(m.file)
+    l = m.line + 1
+    for f in (f, basename(f))
+        remove()
+        breakpoint(f, l)
+        frame, bp = @interpret sin(2.0)
+        @test bp isa BreakpointRef
+        @test JuliaInterpreter.whereis(frame)[2] == l
+    end
 end

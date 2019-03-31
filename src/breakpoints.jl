@@ -1,24 +1,102 @@
-const _breakpoints = BreakpointRef[]
+const _breakpoints = AbstractBreakpoint[]
 breakpoints() = copy(_breakpoints)
 
-Base.getindex(bp::BreakpointRef) = bp.framecode.breakpoints[bp.stmtidx]
-function Base.setindex!(bp::BreakpointRef, isactive::Bool)
-    bp.framecode.breakpoints[bp.stmtidx] = BreakpointState(isactive, bp[].condition)
-end
-function toggle!(bp::BreakpointRef)
-    state = bp[]
-    bp.framecode.breakpoints[bp.stmtidx] = BreakpointState(!state.isactive, state.condition)
+function add_to_existing_framecodes(bp::AbstractBreakpoint)
+    for framecode in values(framedict)
+        add_breakpoint_if_match!(framecode, bp)
+    end
 end
 
-function add_breakpoint(framecode, stmtidx)
-    bp = BreakpointRef(framecode, stmtidx)
-    # Since there can be only one BreakpointState for a given framecode/stmtidx,
-    # check whether _breakpoints is already storing a reference to that location
-    idx = findfirst(isequal(bp), _breakpoints)
-    if idx === nothing
-        push!(_breakpoints, bp)
+function add_breakpoint_if_match!(framecode::FrameCode, bp::AbstractBreakpoint)
+    if framecode_matches_breakpoint(framecode, bp)
+        stmtidx = bp.line === 0 ? 1 : statementnumber(framecode, bp.line)
+        breakpoint!(framecode, stmtidx, bp.condition, bp.enabled[])
+        push!(bp.applications, BreakpointRef(framecode, stmtidx))
     end
+end
+
+function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointSignature)
+    function extract_function_from_method(m::Method)
+        sig = Base.unwrap_unionall(m.sig)
+        ft0 = sig.parameters[1]
+        ft = Base.unwrap_unionall(ft0)
+        if ft <: Function && isa(ft, DataType) && isdefined(ft, :instance)
+            return ft.instance
+        elseif isa(ft, DataType) && ft.name === Type.body.name
+            f = ft.parameters[1]
+        else
+            return ft
+        end
+    end
+
+    framecode.scope isa Method || return false
+    meth = framecode.scope
+    bp.f isa Method && return meth === bp.f
+    bp.f === extract_function_from_method(meth) || return false
+    bp.sig === nothing && return true
+    return bp.sig <: meth.sig
+end
+
+"""
+    breakpoint(f, [sig], [line], [condition])
+
+Add a breakpoint to `f` with the specified argument types `sig`.¨
+If `sig` is not given, the breakpoint will apply to all methods of `f`.
+If `f` is a method, the breakpoint will only apply to that method.
+Optionally specify an absolute line number `line` in the source file; the default
+is to break upon entry at the first line of the body.
+Without `condition`, the breakpoint will be triggered every time it is encountered;
+the second only if `condition` evaluates to `true`.
+`condition` should be written in terms of the arguments and local variables of `f`.
+
+# Example
+```julia
+function radius2(x, y)
+    return x^2 + y^2
+end
+
+breakpoint(radius2, Tuple{Int,Int}, :(y > x))
+```
+"""
+function breakpoint(f, sig=nothing, line::Integer=0, condition::Condition=nothing)
+    sig !== nothing && (sig = Base.to_tuple_type(sig))
+    bp = BreakpointSignature(f, sig, line, condition, Ref(true), BreakpointRef[])
+    add_to_existing_framecodes(bp)
+    idx = findfirst(bp2 -> same_location(bp, bp2), _breakpoints)
+    idx === nothing ? push!(_breakpoints, bp) : (_breakpoints[idx] = bp)
     return bp
+end
+breakpoint(f, sig, condition::Condition) = breakpoint(f, sig, 0, condition)
+breakpoint(f, line::Integer, condition::Condition=nothing) = breakpoint(f, nothing, line, condition)
+breakpoint(f, condition::Condition) = breakpoint(f, nothing, 0, condition)
+
+
+"""
+    breakpoint(file, line, [condition])
+
+Set a breakpoint in `file` at `line`. The argument `file` can be a filename, a partial path or absolute path.
+For example, `file = foo.jl` will match against all files with the name `foo.jl`,
+`file = src/foo.jl` will match against all paths containing `src/foo.jl`, e.g. both `Foo/src/foo.jl` and `Bar/src/foo.jl`.
+Absolute paths only matches against the file with that exact absolute path.
+"""
+function breakpoint(file::String, line::Integer, condition::Condition=nothing)
+    file = normpath(file)
+    bp = BreakpointFileLocation(file, CodeTracking.maybe_fix_path(abspath(file)), line, condition, Ref(true), BreakpointRef[])
+    add_to_existing_framecodes(bp)
+    idx = findfirst(bp2 -> same_location(bp, bp2), _breakpoints)
+    idx === nothing ? push!(_breakpoints, bp) : (_breakpoints[idx] = bp)
+    return bp
+end
+
+function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointFileLocation)
+    framecode.scope isa Method || return false
+    meth = framecode.scope
+    methpath = CodeTracking.maybe_fix_path(String(meth.file))
+    if bp.abspath == methpath || endswith(methpath, bp.path)
+        return method_contains_line(meth, bp.line)
+    else
+        return false
+    end
 end
 
 function shouldbreak(frame::Frame, pc::Int)
@@ -58,48 +136,66 @@ function prepare_slotfunction(framecode::FrameCode, body::Union{Symbol,Expr})
     return Expr(:function, Expr(:call, funcname, framename), Expr(:block, assignments..., body))
 end
 
-const Condition = Union{Nothing,Expr,Tuple{Module,Expr}}
 _unpack(condition) = isa(condition, Expr) ? (Main, condition) : condition
 
 ## The fundamental implementations of breakpoint-setting
-function breakpoint!(framecode::FrameCode, pc, condition::Condition=nothing)
+function breakpoint!(framecode::FrameCode, pc, condition::Condition=nothing, enabled=true)
     stmtidx = pc
     if condition === nothing
-        framecode.breakpoints[stmtidx] = BreakpointState()
+        framecode.breakpoints[stmtidx] = BreakpointState(enabled)
     else
         mod, cond = _unpack(condition)
         fex = prepare_slotfunction(framecode, cond)
-        framecode.breakpoints[stmtidx] = BreakpointState(true, Core.eval(mod, fex))
+        framecode.breakpoints[stmtidx] = BreakpointState(enabled, Core.eval(mod, fex))
     end
-    return add_breakpoint(framecode, stmtidx)
 end
 breakpoint!(frame::Frame, pc=frame.pc, condition::Condition=nothing) =
     breakpoint!(frame.framecode, pc, condition)
 
+update_states!(bp::AbstractBreakpoint) = foreach(bpref -> update_state!(bpref, bp.enabled[]), bp.applications)
+update_state!(bp::BreakpointRef, v::Bool) = bp[] = v
+
 """
-    enable(bp::BreakpointRef)
+    enable(bp::AbstractBreakpoint)
 
 Enable breakpoint `bp`.
 """
-enable(bp::BreakpointRef)  = bp[] = true
+enable(bp::AbstractBreakpoint) = (bp.enabled[] = true; update_states!(bp))
+enable(bp::BreakpointRef) = bp[] = true
+
 
 """
-    disable(bp::BreakpointRef)
+    disable(bp::AbstractBreakpoint)
 
 Disable breakpoint `bp`. Disabled breakpoints can be re-enabled with [`enable`](@ref).
 """
+disable(bp::AbstractBreakpoint) = (bp.enabled[] = false; update_states!(bp))
 disable(bp::BreakpointRef) = bp[] = false
 
 """
-    remove(bp::BreakpointRef)
+    remove(bp::AbstractBreakpoint)
 
 Remove (delete) breakpoint `bp`. Removed breakpoints cannot be re-enabled.
 """
-function remove(bp::BreakpointRef)
+function remove(bp::AbstractBreakpoint)
     idx = findfirst(isequal(bp), _breakpoints)
-    deleteat!(_breakpoints, idx)
+    idx === nothing || deleteat!(_breakpoints, idx)
+    foreach(remove, bp.applications)
+end
+function remove(bp::BreakpointRef)
     bp.framecode.breakpoints[bp.stmtidx] = BreakpointState(false, falsecondition)
     return nothing
+end
+
+"""
+    toggle(bp::AbstractBreakpoint)
+
+Toggle breakpoint `bp`.
+"""
+toggle(bp::AbstractBreakpoint) = (bp.enabled[] = !bp.enabled[]; update_states!(bp))
+function toggle(bp::BreakpointRef)
+    state = bp[]
+    bp.framecode.breakpoints[bp.stmtidx] = BreakpointState(!state.isactive, state.condition)
 end
 
 """
@@ -107,14 +203,14 @@ end
 
 Enable all breakpoints.
 """
-enable() = for bp in _breakpoints enable(bp) end
+enable() = foreach(enable, _breakpoints)
 
 """
     disable()
 
 Disable all breakpoints.
 """
-disable() = for bp in _breakpoints disable(bp) end
+disable() = foreach(disable, _breakpoints)
 
 """
     remove()
@@ -123,10 +219,9 @@ Remove all breakpoints.
 """
 function remove()
     for bp in _breakpoints
-        bp.framecode.breakpoints[bp.stmtidx] = BreakpointState(false, falsecondition)
+        foreach(remove, bp.applications)
     end
     empty!(_breakpoints)
-    return nothing
 end
 
 """
@@ -168,106 +263,6 @@ function break_off(states::Vararg{Symbol})
     end
 end
 
-"""
-    breakpoint(f, sig)
-    breakpoint(f, sig, line)
-    breakpoint(f, sig, condition)
-    breakpoint(f, sig, line, condition)
-    breakpoint(...; enter_generated=false)
-
-Add a breakpoint to `f` with the specified argument types `sig`.
-Optionally specify an absolute line number `line` in the source file; the default
-is to break upon entry at the first line of the body.
-Without `condition`, the breakpoint will be triggered every time it is encountered;
-the second only if `condition` evaluates to `true`.
-`condition` should be written in terms of the arguments and local variables of `f`.
-
-# Example
-```julia
-function radius2(x, y)
-    return x^2 + y^2
-end
-
-breakpoint(radius2, Tuple{Int,Int}, :(y > x))
-```
-"""
-function breakpoint(f, sig::Type, line::Integer, condition::Condition=nothing; enter_generated=false)
-    method = which(f, sig)
-    framecode, _ = prepare_framecode(method, sig; enter_generated=enter_generated)
-    # Don't use statementnumber(method, line) in case it's enter_generated
-    linec = line - whereis(method)[2] + method.line
-    stmtidx = statementnumber(framecode, linec)
-    breakpoint!(framecode, stmtidx, condition)
-end
-function breakpoint(f, sig::Type, condition::Condition=nothing; enter_generated=false)
-    method = which(f, sig)
-    framecode, _ = prepare_framecode(method, sig; enter_generated=enter_generated)
-    breakpoint!(framecode, 1, condition)
-end
-
-"""
-    breakpoint(method::Method)
-    breakpoint(method::Method, line)
-    breakpoint(method::Method, condition::Expr)
-    breakpoint(method::Method, line, condition::Expr)
-
-Add a breakpoint to `method`.
-"""
-function breakpoint(method::Method, line::Integer, condition::Condition=nothing)
-    framecode, stmtidx = statementnumber(method, line)
-    breakpoint!(framecode, stmtidx, condition)
-end
-function breakpoint(method::Method, condition::Condition=nothing)
-    framecode = get_framecode(method)
-    breakpoint!(framecode, 1, condition)
-end
-
-"""
-    breakpoint(f)
-    breakpoint(f, condition)
-
-Break-on-entry to all methods of `f`.
-"""
-function breakpoint(f, condition::Condition=nothing)
-    bps = BreakpointRef[]
-    for method in methods(f)
-        push!(bps, breakpoint(method, condition))
-    end
-    return bps
-end
-
-"""
-    breakpoint(filename, line)
-    breakpoint(filename, line, condition)
-
-Set a breakpoint at the specified file and line number.
-"""
-function breakpoint(filename::AbstractString, line::Integer, args...)
-    local sigs
-    try
-        sigs = signatures_at(filename, line)
-    catch
-        sigs = nothing
-    end
-    if sigs === nothing
-        # TODO: build a Revise-free fallback. Note this won't work well for methods with keywords.
-        error("no signatures found at $filename, $line.\nRestarting and `using Revise` and the relevant package may fix this problem.")
-    end
-    for sig in sigs
-        method = JuliaInterpreter.whichtt(sig)
-        method === nothing && continue
-        # Check to see if this method really contains that line. Methods that fill in a default positional argument,
-        # keyword arguments, and @generated sections may not contain the line.
-        _, line1 = whereis(method)
-        offset = line1 - method.line
-        src = JuliaInterpreter.get_source(method)
-        lastline = src.linetable[end]
-        if getline(lastline) + offset >= line
-            return breakpoint(method, line, args...)
-        end
-    end
-    error("no signatures found at $filename, $line among the signatures $sigs")
-end
 
 """
     @breakpoint f(args...) condition=nothing

@@ -26,6 +26,7 @@ rather than recursed into via the interpreter.
 """
 const compiled_modules = Set{Module}()
 
+
 const junk = FrameData[] # to allow re-use of allocated memory (this is otherwise a bottleneck)
 const debug_recycle = Base.RefValue(false)
 @noinline _check_frame_not_in_junk(frame) = @assert frame.framedata ∉ junk
