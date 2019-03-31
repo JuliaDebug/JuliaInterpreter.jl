@@ -28,8 +28,10 @@ const compiled_modules = Set{Module}()
 
 const junk = FrameData[] # to allow re-use of allocated memory (this is otherwise a bottleneck)
 const debug_recycle = Base.RefValue(false)
+const disable_recycle = Base.RefValue(false)
 @noinline _check_frame_not_in_junk(frame) = @assert frame.framedata ∉ junk
 @inline function recycle(frame)
+    disable_recycle[] && return
     debug_recycle[] && _check_frame_not_in_junk(frame)
     push!(junk, frame.framedata)
 end

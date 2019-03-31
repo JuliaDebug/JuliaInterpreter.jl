@@ -504,3 +504,13 @@ end
 # Test exception type for undefined variables
 f() = s = s + 1
 @test_throws UndefVarError @interpret f()
+
+# Recursive squared
+f() = @interpret 1+1
+JuliaInterpreter.disable_recycle[] = true
+empty!(JuliaInterpreter.junk)
+try
+    @test (@interpret f()) == 2
+finally
+    JuliaInterpreter.disable_recycle[] = false
+end
