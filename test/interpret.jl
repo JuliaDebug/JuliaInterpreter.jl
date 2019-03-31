@@ -505,7 +505,7 @@ end
 f() = s = s + 1
 @test_throws UndefVarError @interpret f()
 
-# Recursive squared
+# Interpret squared
 f() = @interpret 1+1
 JuliaInterpreter.disable_recycle[] = true
 empty!(JuliaInterpreter.junk)
