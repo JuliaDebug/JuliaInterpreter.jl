@@ -1,5 +1,6 @@
 const _breakpoints = BreakpointRef[]
 breakpoints() = copy(_breakpoints)
+const unresolved_breakpoints = Set{UnresolvedBreakpoint}()
 
 Base.getindex(bp::BreakpointRef) = bp.framecode.breakpoints[bp.stmtidx]
 function Base.setindex!(bp::BreakpointRef, isactive::Bool)
@@ -242,7 +243,7 @@ end
 
 Set a breakpoint at the specified file and line number.
 """
-function breakpoint(filename::AbstractString, line::Integer, args...)
+function breakpoint(filename::AbstractString, line::Integer, condition=nothing)
     local sigs
     try
         sigs = signatures_at(filename, line)
@@ -250,23 +251,26 @@ function breakpoint(filename::AbstractString, line::Integer, args...)
         sigs = nothing
     end
     if sigs === nothing
-        # TODO: build a Revise-free fallback. Note this won't work well for methods with keywords.
-        error("no signatures found at $filename, $line.\nRestarting and `using Revise` and the relevant package may fix this problem.")
+        filename = Symbol(abspath(filename))
+        if haskey(framecode_locations, filename)
+            for (linerange, framecode) in framecode_locations[filename]
+                if line in linerange
+                    stmtidx = statementnumber(framecode, line)
+                    breakpoint!(framecode, stmtidx, condition)
+                    return
+                end
+            end
+        end
+        push!(unresolved_breakpoints, UnresolvedBreakpoint(filename, line, condition))
+        return
     end
     for sig in sigs
         method = JuliaInterpreter.whichtt(sig)
         method === nothing && continue
-        # Check to see if this method really contains that line. Methods that fill in a default positional argument,
-        # keyword arguments, and @generated sections may not contain the line.
-        _, line1 = whereis(method)
-        offset = line1 - method.line
-        src = JuliaInterpreter.get_source(method)
-        lastline = src.linetable[end]
-        if getline(lastline) + offset >= line
-            return breakpoint(method, line, args...)
+        if method_contains_line(method, line)
+            return breakpoint(method, line, condition)
         end
     end
-    error("no signatures found at $filename, $line among the signatures $sigs")
 end
 
 """

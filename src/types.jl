@@ -81,7 +81,21 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
         end
     end
     used = find_used(src)
-    return FrameCode(scope, src, methodtables, breakpoints, used, generator)
+    framecode = FrameCode(scope, src, methodtables, breakpoints, used, generator)
+    if scope isa Method && !is_generated(scope) # TODO: Relax this
+        method = scope
+        for bp in unresolved_breakpoints
+            method.file === bp.file || continue
+            if method_contains_line(method, bp.line)
+                stmtidx = statementnumber(framecode, bp.line)
+                breakpoint!(framecode, stmtidx, bp.condition)
+            end
+        end
+        lineranges = get!(() -> Pair{UnitRange, FrameCode}[], framecode_locations, method.file)
+        push!(lineranges, compute_corrected_linerange(method) => framecode)
+    end
+
+    return framecode
 end
 
 nstatements(framecode::FrameCode) = length(framecode.src.code)
@@ -252,3 +266,12 @@ function Base.show(io::IO, bp::BreakpointRef)
     end
     print(io, ')')
 end
+
+struct UnresolvedBreakpoint
+    file::Symbol
+    line::Int
+    condition
+end
+Base.isequal(bp1::UnresolvedBreakpoint, bp2::UnresolvedBreakpoint) =
+    bp1.file == bp2.file && bp1.line == bp2.line && bp1.condition == bp2.condition
+Base.hash(bp::UnresolvedBreakpoint, h::UInt) = hash(bp.file, hash(bp.line, hash(bp.condition, h)))

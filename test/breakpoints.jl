@@ -209,6 +209,24 @@ end
     @test bp.stmtidx == 3
 end
 
+mktemp() do path, io
+    print(io, """
+    function somefunc(x, y=0)
+        a = x + y
+        b = z^a
+        return a + b
+    end
+    """)
+    close(io)
+    breakpoint(path, 3)
+    include(path)
+    frame, bp = @interpret somefunc(2, 3)
+    @test JuliaInterpreter.whereis(frame) == (path, 3)
+    breakpoint(path, 2)
+    frame, bp = @interpret somefunc(2, 3)
+    @test JuliaInterpreter.whereis(frame) == (path, 2)
+end
+
 if tmppath != ""
     rm(tmppath)
 end
