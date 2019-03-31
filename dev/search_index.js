@@ -453,7 +453,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.break_on",
     "category": "function",
-    "text": "break_on(states...)\n\nTurn on automatic breakpoints when any of the conditions described in states occurs. The supported states are:\n\n:error: trigger a breakpoint any time an uncaught exception is thrown\n\n\n\n\n\n"
+    "text": "break_on(states...)\n\nTurn on automatic breakpoints when any of the conditions described in states occurs. The supported states are:\n\n:error: trigger a breakpoint any time an uncaught exception is thrown\n:throw : trigger a breakpoint any time a throw is executed (even if it will eventually be caught)\n\n\n\n\n\n"
 },
 
 {
