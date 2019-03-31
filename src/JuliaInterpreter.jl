@@ -36,6 +36,8 @@ if VERSION < v"1.2.0-DEV.572"
     Base.convert(::Type{Some{T}}, x::Some{T}) where {T} = x
 end
 
+const SlotNamesType = VERSION < v"1.2.0-DEV.606" ? Vector{Any} : Vector{Symbol}
+
 include("types.jl")
 include("utils.jl")
 include("construct.jl")
