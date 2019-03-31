@@ -165,6 +165,18 @@ end
         v = JuliaInterpreter.finish_and_return!(frame)
         @test v isa ErrorException
         @test stacklength(frame) == 1
+
+        # Break on caught exception when enabled
+        break_on(:throw)
+        try
+            frame = JuliaInterpreter.enter_call(f_exc_outer);
+            v = JuliaInterpreter.finish_and_return!(frame)
+            @test v isa BreakpointRef
+            @test v.err isa ErrorException
+            @test v.framecode.scope == @which error()
+        finally
+            break_off(:throw)
+        end
     finally
         break_off(:error)
     end
