@@ -22,8 +22,14 @@ function nargs(f, table, id)
         maxarg = typemax(Int)
     end
     # The tfunc tables are wrong for fptoui and fptosi (fixed in https://github.com/JuliaLang/julia/pull/30787)
-    if f == "Base.fptoui" || f == "Base.fptosi"
+    if f == Base.fptoui || f == Base.fptosi
         minarg = 2
+    end
+    # Specialize arrayref and arrayset for small numbers of arguments
+    if f == Core.arrayref
+        maxarg = 5
+    elseif f == Core.arrayset
+        maxarg = 6
     end
     return minarg, maxarg
 end
@@ -139,8 +145,9 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         if !expand
             return Some{Any}($fstr(argswrapped...))
         end
-        argsflat = Base.append_any((argswrapped[1],), argswrapped[2:end]...)
-        new_expr = Expr(:call)
+        new_expr = Expr(:call, argswrapped[1])
+        popfirst!(argswrapped)
+        argsflat = Base.append_any(argswrapped...)
         for x in argsflat
             push!(new_expr.args, (isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode)) ? QuoteNode(x) : x)
         end
@@ -212,11 +219,11 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
 """)
     end
     # Now handle calls with bounded numbers of args
-    fcall = generate_fcall_nargs("f", minmin, maxmax)
     print(io,
 """
     if isa(f, Core.IntrinsicFunction)
-        $fcall
+        cargs = getargs(args, frame)
+        return Some{Any}(ccall(:jl_f_intrinsic_call, Any, (Any, Ptr{Any}, UInt32), f, cargs, length(cargs)))
 """)
     print(io,
 """

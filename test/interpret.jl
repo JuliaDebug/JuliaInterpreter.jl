@@ -99,6 +99,7 @@ end
 # issue #6
 @test @interpret(Array.body.body.name) === Array.body.body.name
 @test @interpret(Vararg.body.body.name) === Vararg.body.body.name
+@test !JuliaInterpreter.is_vararg_type(Union{})
 frame = JuliaInterpreter.prepare_thunk(Main, :(Vararg.body.body.name))
 @test JuliaInterpreter.finish_and_return!(frame, true) === Vararg.body.body.name
 frame = JuliaInterpreter.prepare_thunk(Base, :(Union{AbstractChar,Tuple{Vararg{<:AbstractChar}},AbstractVector{<:AbstractChar},Set{<:AbstractChar}}))

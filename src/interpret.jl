@@ -135,7 +135,7 @@ function resolvefc(frame, @nospecialize(expr))
     error("unexpected ccall to ", expr)
 end
 
-function collect_args(frame, call_expr; isfc=false)
+function collect_args(frame::Frame, call_expr::Expr; isfc::Bool=false)
     args = frame.framedata.callargs
     resize!(args, length(call_expr.args))
     mod = moduleof(frame)
