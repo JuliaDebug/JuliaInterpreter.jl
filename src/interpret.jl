@@ -10,7 +10,7 @@ lookup_var(frame, ref::GlobalRef) = getfield(ref.mod, ref.name)
 function lookup_var(frame, slot::SlotNumber)
     val = frame.framedata.locals[slot.id]
     val !== nothing && return val.value
-    error("slot ", slot, " with name ", frame.framecode.src.slotnames[slot.id], " not assigned")
+    throw(UndefVarError(frame.framecode.src.slotnames[slot.id]))
 end
 
 function lookup_expr(frame, e::Expr)

@@ -336,7 +336,7 @@ f113(;x) = x
     end
     frame = JuliaInterpreter.enter_call(f_multi, 1)
     nlocals = length(frame.framedata.locals)
-    @test_throws ErrorException("slot _4 with name x not assigned") JuliaInterpreter.lookup_var(frame, Core.SlotNumber(nlocals))
+    @test_throws UndefVarError JuliaInterpreter.lookup_var(frame, Core.SlotNumber(nlocals))
     stack = [frame]
     locals = JuliaInterpreter.locals(frame)
     @test length(locals) == 2
@@ -500,3 +500,7 @@ function f_mmap()
     end
 end
 @interpret f_mmap()
+
+# Test exception type for undefined variables
+f() = s = s + 1
+@test_throws UndefVarError @interpret f()
