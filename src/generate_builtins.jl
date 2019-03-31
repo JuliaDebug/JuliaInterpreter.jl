@@ -212,11 +212,11 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
 """)
     end
     # Now handle calls with bounded numbers of args
-    fcall = generate_fcall_nargs("f", minmin, maxmax)
     print(io,
 """
     if isa(f, Core.IntrinsicFunction)
-        $fcall
+        cargs = getargs(args, frame)
+        return Some{Any}(ccall(:jl_f_intrinsic_call, Any, (Any, Ptr{Any}, UInt32), f, cargs, length(cargs)))
 """)
     print(io,
 """
