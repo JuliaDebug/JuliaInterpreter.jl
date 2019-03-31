@@ -246,7 +246,7 @@ end
 function prepare_framedata(framecode, argvals::Vector{Any}, caller_will_catch_err::Bool=false)
     if isa(framecode.scope, Method)
         meth, src = framecode.scope::Method, framecode.src
-        slotnames = src.slotnames::Vector{Any}  # this is more strongly typed in julia.h than in jltypes.c
+        slotnames = src.slotnames::SlotNamesType
         ssavt = src.ssavaluetypes
         ng = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any})
         nargs, meth_nargs = length(argvals), Int(meth.nargs)
