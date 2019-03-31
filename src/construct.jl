@@ -26,8 +26,13 @@ rather than recursed into via the interpreter.
 """
 const compiled_modules = Set{Module}()
 
-const junk = Base.IdSet{FrameData}()      # to allow re-use of allocated memory (this is otherwise a bottleneck)
-recycle(frame) = push!(junk, frame.framedata)  # using an IdSet ensures that a frame can't be added twice
+const junk = FrameData[] # to allow re-use of allocated memory (this is otherwise a bottleneck)
+const debug_recycle = Base.RefValue(false)
+@noinline _check_frame_not_in_junk(frame) = @assert frame.framedata ∉ junk
+@inline function recycle(frame)
+    debug_recycle[] && _check_frame_not_in_junk(frame)
+    push!(junk, frame.framedata)
+end
 
 const empty_svec = Core.svec()
 
@@ -245,9 +250,8 @@ function prepare_framedata(framecode, argvals::Vector{Any}, caller_will_catch_er
         ssavt = src.ssavaluetypes
         ng = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any})
         nargs, meth_nargs = length(argvals), Int(meth.nargs)
-        if !isempty(junk)
-            olddata = first(junk)
-            delete!(junk, olddata)
+        if length(junk) > 0
+            olddata = pop!(junk)
             locals, ssavalues, sparams = olddata.locals, olddata.ssavalues, olddata.sparams
             exception_frames, last_reference = olddata.exception_frames, olddata.last_reference
             last_exception = olddata.last_exception
@@ -523,6 +527,7 @@ T = Float64
 See [`enter_call`](@ref) for a similar approach not based on expressions.
 """
 function enter_call_expr(expr; enter_generated = false)
+    empty!(junk)
     r = determine_method_for_expr(expr; enter_generated = enter_generated)
     if isa(r, Tuple)
         return prepare_frame(r[1:end-1]...)
@@ -564,6 +569,7 @@ would be created by the generator.
 See [`enter_call_expr`](@ref) for a similar approach based on expressions.
 """
 function enter_call(@nospecialize(finfo), @nospecialize(args...); kwargs...)
+    empty!(junk)
     if isa(finfo, Tuple)
         f = finfo[1]
         enter_generated = finfo[2]::Bool
