@@ -136,11 +136,14 @@ Turn on automatic breakpoints when any of the conditions described in `states` o
 The supported states are:
 
 - `:error`: trigger a breakpoint any time an uncaught exception is thrown
+- `:throw` : trigger a breakpoint any time a throw is executed (even if it will eventually be caught)
 """
 function break_on(states::Vararg{Symbol})
     for state in states
         if state == :error
             break_on_error[] = true
+        elseif state == :throw
+            break_on_throw[] = true
         else
             throw(ArgumentError(string("unsupported state :", state)))
         end
@@ -157,6 +160,8 @@ function break_off(states::Vararg{Symbol})
     for state in states
         if state == :error
             break_on_error[] = false
+        elseif state == :throw
+            break_on_throw[] = false
         else
             throw(ArgumentError(string("unsupported state :", state)))
         end

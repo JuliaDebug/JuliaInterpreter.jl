@@ -15,6 +15,7 @@ end
 truecondition(frame) = true
 falsecondition(frame) = false
 const break_on_error = Ref(false)
+const break_on_throw = Ref(false)
 
 """
     BreakpointState(isactive=true, condition=JuliaInterpreter.truecondition)

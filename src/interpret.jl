@@ -560,13 +560,8 @@ behaviors:
 function handle_err(@nospecialize(recurse), frame, err)
     data = frame.framedata
     err_will_be_thrown_to_top_level = isempty(data.exception_frames) && !data.caller_will_catch_err
-    if break_on_error[]
-        # See if the current frame or a frame in the stack will catch this exception,
-        # otherwise this exception would have been thrown to the user and we should
-        # return a breakpoint
-        if err_will_be_thrown_to_top_level
-            return BreakpointRef(frame.framecode, frame.pc, err)
-        end
+    if break_on_throw[] || (break_on_error[] && err_will_be_thrown_to_top_level)
+        return BreakpointRef(frame.framecode, frame.pc, err)
     end
     if isempty(data.exception_frames)
         is_root_frame = frame.caller === nothing
