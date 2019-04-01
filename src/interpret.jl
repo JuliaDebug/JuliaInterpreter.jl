@@ -5,6 +5,11 @@ getlhs(pc) = SSAValue(pc)
 isassign(frame) = isassign(frame, frame.pc)
 isassign(frame, pc) = (pc in frame.framecode.used)
 
+struct SSAWrapper
+    value::Core.SSAValue
+end
+
+lookup_var(frame, val::SSAWrapper) = val.value
 lookup_var(frame, val::SSAValue) = frame.framedata.ssavalues[val.id]
 lookup_var(frame, ref::GlobalRef) = getfield(ref.mod, ref.name)
 function lookup_var(frame, slot::SlotNumber)
@@ -67,6 +72,7 @@ macro lookup(args...)
         isa($nodetmp, QuoteNode) ? $nodetmp.value :
         isa($nodetmp, Symbol) ? getfield(moduleof($(esc(frame))), $nodetmp) :
         isa($nodetmp, Expr) ? lookup_expr($(esc(frame)), $nodetmp) :
+        isa($nodetmp, SSAWrapper) ? lookup_var($(esc(frame)), $nodetmp) :
         $fallback
     end
 end

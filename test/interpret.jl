@@ -505,3 +505,10 @@ end
 # Test exception type for undefined variables
 f() = s = s + 1
 @test_throws UndefVarError @interpret f()
+
+# Handling of SSAValues
+function f()
+    z = [Core.SSAValue(5),]
+    repr(z[1])
+end
+@test @interpret f() == f()
