@@ -5,6 +5,11 @@ getlhs(pc) = SSAValue(pc)
 isassign(frame) = isassign(frame, frame.pc)
 isassign(frame, pc) = (pc in frame.framecode.used)
 
+struct SSAWrapper
+    value::Core.SSAValue
+end
+
+lookup_var(frame, val::SSAWrapper) = val.value
 lookup_var(frame, val::SSAValue) = frame.framedata.ssavalues[val.id]
 lookup_var(frame, ref::GlobalRef) = getfield(ref.mod, ref.name)
 function lookup_var(frame, slot::SlotNumber)
@@ -67,6 +72,7 @@ macro lookup(args...)
         isa($nodetmp, QuoteNode) ? $nodetmp.value :
         isa($nodetmp, Symbol) ? getfield(moduleof($(esc(frame))), $nodetmp) :
         isa($nodetmp, Expr) ? lookup_expr($(esc(frame)), $nodetmp) :
+        isa($nodetmp, SSAWrapper) ? lookup_var($(esc(frame)), $nodetmp) :
         $fallback
     end
 end
@@ -368,7 +374,8 @@ function eval_rhs(@nospecialize(recurse), frame, node::Expr)
     elseif head == :call
         # here it's crucial to avoid dynamic dispatch
         isa(recurse, Compiled) && return evaluate_call_compiled!(recurse, frame, node)
-        return evaluate_call_recurse!(recurse, frame, node)
+        q = evaluate_call_recurse!(recurse, frame, node)
+        return q
     elseif head == :foreigncall || head == :cfunction
         return evaluate_foreigncall(frame, node)
     elseif head == :copyast
@@ -411,7 +418,6 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
     @assert is_leaf(frame)
     local rhs
     # show_stackloc(frame)
-    # @show node
     try
         if isa(node, Expr)
             if node.head == :(=)

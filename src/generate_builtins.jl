@@ -149,6 +149,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         popfirst!(argswrapped)
         argsflat = Base.append_any(argswrapped...)
         for x in argsflat
+            x isa SSAValue && (x = SSAWrapper(x))
             push!(new_expr.args, (isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode)) ? QuoteNode(x) : x)
         end
         return new_expr
