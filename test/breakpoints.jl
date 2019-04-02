@@ -8,19 +8,17 @@ function loop_radius2(n)
 end
 
 tmppath = ""
-if isdefined(Main, :Revise)
-    global tmppath
-    tmppath, io = mktemp()
-    print(io, """
-    function jikwfunc(x, y=0; z="hello")
-        a = x + y
-        b = z^a
-        return length(b)
-    end
-    """)
-    close(io)
-    includet(tmppath)
+global tmppath
+tmppath, io = mktemp()
+print(io, """
+function jikwfunc(x, y=0; z="hello")
+    a = x + y
+    b = z^a
+    return length(b)
 end
+""")
+close(io)
+include(tmppath)
 
 using JuliaInterpreter, Test
 
@@ -102,29 +100,20 @@ end
     @test JuliaInterpreter.finish_stack!(frame) == 2
 
     # Breakpoints by file/line
-    if isdefined(Main, :Revise)
-        remove()
-        method = which(JuliaInterpreter.locals, Tuple{Frame})
-        breakpoint(String(method.file), method.line+1)
-        frame = JuliaInterpreter.enter_call(loop_radius2, 2)
-        ret = @interpret JuliaInterpreter.locals(frame)
-        @test isa(ret, Tuple{Frame,JuliaInterpreter.BreakpointRef})
-        # Test kwarg method
-        remove()
-        bp = breakpoint(tmppath, 3)
-        frame, bp2 = @interpret jikwfunc(2)
-        @test bp2 == bp
-        var = JuliaInterpreter.locals(leaf(frame))
-        @test !any(v->v.name == :b, var)
-        @test filter(v->v.name == :a, var)[1].value == 2
-    else
-        try
-            breakpoint(pathof(JuliaInterpreter.CodeTracking), 5)
-        catch err
-            @test isa(err, ErrorException)
-            @test occursin("Revise", err.msg)
-        end
-    end
+    remove()
+    method = which(JuliaInterpreter.locals, Tuple{Frame})
+    breakpoint(String(method.file), method.line+1)
+    frame = JuliaInterpreter.enter_call(loop_radius2, 2)
+    ret = @interpret JuliaInterpreter.locals(frame)
+    @test isa(ret, Tuple{Frame,JuliaInterpreter.BreakpointRef})
+    # Test kwarg method
+    remove()
+    bp = breakpoint(tmppath, 3)
+    frame, bp2 = @interpret jikwfunc(2)
+    var = JuliaInterpreter.locals(leaf(frame))
+    @test !any(v->v.name == :b, var)
+    @test filter(v->v.name == :a, var)[1].value == 2
+
 
     # Direct return
     @breakpoint gcd(1,1) a==5
@@ -185,14 +174,11 @@ end
     io = IOBuffer()
     frame = JuliaInterpreter.enter_call(loop_radius2, 2)
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 1)
-    show(io, bp)
-    @test String(take!(io)) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, line 3)"
+    @test repr(bp) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, line 3)"
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 0)  # fictive breakpoint
-    show(io, bp)
-    @test String(take!(io)) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, %0)"
+    @test repr(bp) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, %0)"
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 1, ArgumentError("whoops"))
-    show(io, bp)
-    @test String(take!(io)) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, line 3, ArgumentError(\"whoops\"))"
+    @test repr(bp) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, line 3, ArgumentError(\"whoops\"))"
 
     # In source breakpointing
     f_outer_bp(x) = g_inner_bp(x)

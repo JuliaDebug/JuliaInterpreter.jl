@@ -82,17 +82,17 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
     end
     used = find_used(src)
     framecode = FrameCode(scope, src, methodtables, breakpoints, used, generator)
-    if scope isa Method && !is_generated(scope) # TODO: Relax this
-        method = scope
-        for bp in unresolved_breakpoints
-            method.file === bp.file || continue
-            if method_contains_line(method, bp.line)
-                stmtidx = statementnumber(framecode, bp.line)
-                breakpoint!(framecode, stmtidx, bp.condition)
+    if scope isa Method
+        for bp in _breakpoints
+            # Manual union splitting
+            if bp isa BreakpointSignature
+                add_breakpoint_if_match!(framecode, bp)
+            elseif bp isa BreakpointFileLocation
+                add_breakpoint_if_match!(framecode, bp)
+            else
+                error("unhandled breakpoint type")
             end
         end
-        lineranges = get!(() -> Pair{UnitRange, FrameCode}[], framecode_locations, method.file)
-        push!(lineranges, compute_corrected_linerange(method) => framecode)
     end
 
     return framecode
