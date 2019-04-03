@@ -2,7 +2,7 @@ using JuliaInterpreter, Test
 using JuliaInterpreter: enter_call, enter_call_expr, get_return, @lookup
 using Base.Meta: isexpr
 
-const ALL_COMMANDS = (:n, :s, :c, :finish, :nc, :se, :si)
+const ALL_COMMANDS = (:n, :s, :c, :finish, :nc, :se, :si, :until)
 
 function step_through_command(fr::Frame, cmd::Symbol)
     while true
@@ -83,6 +83,27 @@ struct B{T} end
         @test step_through(:($(+)(1,2.5))) == 3.5
         @test step_through(:($(sin)(1))) == sin(1)
         @test step_through(:($(gcd)(10,20))) == gcd(10, 20)
+    end
+
+    @testset "until" begin
+        function f_with_lines(s)
+            sin(2.0)
+            cos(2.0)
+            for i in 1:100
+                s += i
+            end
+            sin(2.0)
+        end
+        meth_def = @__LINE__() - 8
+
+        frame = enter_call(f_with_lines, 0)
+        @test whereis(frame)[2] == meth_def + 1
+        debug_command(frame, :until)
+        @test whereis(frame)[2] == meth_def + 2
+        debug_command(frame, :until; line=(meth_def + 4))
+        @test whereis(frame)[2] == meth_def + 4
+        debug_command(frame, :until; line=(meth_def + 6))
+        @test whereis(frame)[2] == meth_def + 6
     end
 
     @testset "generated" begin
