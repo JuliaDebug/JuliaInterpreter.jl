@@ -147,21 +147,6 @@ through_methoddef_or_done!(@nospecialize(recurse), modex::Tuple{Module,Expr,Expr
 through_methoddef_or_done!(@nospecialize(recurse), ::Nothing) = nothing
 through_methoddef_or_done!(arg) = through_methoddef_or_done!(finish_and_return!, arg)
 
-function changed_line!(expr, line, fls)
-    if length(fls) == 1 && isa(expr, LineNumberNode)
-        return expr.line != line
-    elseif length(fls) == 1 && isa(expr, Expr) && isexpr(expr, :line)
-        return expr.args[1] != line
-    else
-        if is_loc_meta(expr, :pop_loc)
-            pop!(fls)
-        elseif is_loc_meta(expr, :push_loc)
-            push!(fls,(expr.args[2],0))
-        end
-        return false
-    end
-end
-
 # Sentinel to see if the call was a wrapper call
 struct Wrapper end
 
