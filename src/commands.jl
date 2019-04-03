@@ -183,40 +183,9 @@ function next_line!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false
         expr = pc_expr(frame, pc)
         (!first && isexpr(expr, :return)) && return pc
         first = false
-        # If this is a goto node, step it and reevaluate
-        if is_goto_node(expr)
-            pc = step_expr!(recurse, frame, istoplevel)
-            (pc === nothing || isa(pc, BreakpointRef)) && return pc
-        elseif recurse !== nothing && is_wrapper_call(expr)
-            # With splatting it can happen that we do something like ssa = tuple(#self#), _apply(ssa), which
-            # confuses the logic here, just step into the first call that's not a builtin
-            switched = false
-            while is_wrapper_call(expr)
-                ret = evaluate_call!(dummy_breakpoint, frame, expr)
-                if frame.callee === nothing &&  !isa(ret, BreakpointRef)
-                    # This wasn't a real wrapper call
-                    if isassign(frame, pc)
-                        lhs = getlhs(pc)
-                        do_assignment!(frame, lhs, ret)
-                    end
-                    frame.pc = pc = pc + 1
-                    break
-                end
-                frame = frame.callee
-                switched = true
-                expr = pc_expr(frame)
-            end
-            # Signal that we've switched frames
-            if switched
-                pc = next_line!(recurse, frame, false)
-                pc === nothing && error("confusing next_line!")
-                lframe = leaf(frame)
-                return isa(pc, BreakpointRef) ? pc : BreakpointRef(lframe.framecode, lframe.pc)
-            end
-        else
-            pc = step_expr!(recurse, frame, istoplevel)
-            (pc === nothing || isa(pc, BreakpointRef)) && return pc
-        end
+
+        pc = step_expr!(recurse, frame, istoplevel)
+        (pc === nothing || isa(pc, BreakpointRef)) && return pc
         shouldbreak(frame, pc) && return BreakpointRef(frame.framecode, pc)
     end
     maybe_step_through_kwprep!(recurse, frame, istoplevel)
