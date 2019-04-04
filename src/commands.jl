@@ -86,13 +86,13 @@ finish_stack!(frame::Frame, istoplevel::Bool=false) = finish_stack!(finish_and_r
     pc = next_until!(predicate, frame, istoplevel=false)
 
 Execute the current statement. Then step through statements of `frame` until the next
-statement satifies `predicate(stmt)`. `pc` will be the index of the statement at which
+statement satifies `predicate(frame)`. `pc` will be the index of the statement at which
 evaluation terminates, `nothing` (if the frame reached a `return`), or a `BreakpointRef`.
 """
 function next_until!(@nospecialize(predicate), @nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
     pc = step_expr!(recurse, frame, istoplevel)
     while pc !== nothing && !isa(pc, BreakpointRef)
-        if predicate(pc_expr(frame, pc)) || shouldbreak(frame, pc)
+        if predicate(frame) || shouldbreak(frame, pc)
             return pc
         end
         pc = step_expr!(recurse, frame, istoplevel)
@@ -103,6 +103,20 @@ next_until!(predicate, frame::Frame, istoplevel::Bool=false) =
     next_until!(predicate, finish_and_return!, frame, istoplevel)
 
 """
+    pc = maybe_next_until!(predicate, recurse, frame, istoplevel=false)
+    pc = maybe_next_until!(predicate, frame, istoplevel=false)
+
+Like [`next_until!`](@ref) except checks `predicate` before executing the current statment.
+
+"""
+function maybe_next_until!(@nospecialize(predicate), @nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
+    predicate(frame) && return frame.pc
+    return next_until!(predicate, recurse, frame, istoplevel)
+end
+maybe_next_until!(@nospecialize(predicate), frame::Frame, istoplevel::Bool=false) =
+    maybe_next_until!(predicate, finish_and_return!, frame, istoplevel)
+
+"""
     pc = next_call!(recurse, frame, istoplevel=false)
     pc = next_call!(frame, istoplevel=false)
 
@@ -110,7 +124,7 @@ Execute the current statement. Continue stepping through `frame` until the next
 `:return` or `:call` expression.
 """
 next_call!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false) =
-    next_until!(is_call_or_return, recurse, frame, istoplevel)
+    next_until!(frame -> is_call_or_return(pc_expr(frame)), recurse, frame, istoplevel)
 next_call!(frame::Frame, istoplevel::Bool=false) = next_call!(finish_and_return!, frame, istoplevel)
 
 """
@@ -120,13 +134,9 @@ next_call!(frame::Frame, istoplevel::Bool=false) = next_call!(finish_and_return!
 Return the current program counter of `frame` if it is a `:return` or `:call` expression.
 Otherwise, step through the statements of `frame` until the next `:return` or `:call` expression.
 """
-function maybe_next_call!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
-    pc = frame.pc
-    is_call_or_return(pc_expr(frame, pc)) && return pc
-    return next_call!(recurse, frame, istoplevel)
-end
-maybe_next_call!(frame::Frame, istoplevel::Bool=false) =
-    maybe_next_call!(finish_and_return!, frame, istoplevel)
+maybe_next_call!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false) =
+    maybe_next_until!(frame -> is_call_or_return(pc_expr(frame)), recurse, frame, istoplevel)
+maybe_next_call!(frame::Frame, istoplevel::Bool=false) = maybe_next_call!(finish_and_return!, frame, istoplevel)
 
 """
     pc = through_methoddef_or_done!(recurse, frame)
@@ -136,7 +146,7 @@ Runs `frame` at top level until it either finishes (e.g., hits a `return` statem
 or defines a new method.
 """
 function through_methoddef_or_done!(@nospecialize(recurse), frame::Frame)
-    predicate(stmt) = isexpr(stmt, :method, 3) || isexpr(stmt, :thunk)
+    predicate(frame) = (stmt = pc_expr(frame); isexpr(stmt, :method, 3) || isexpr(stmt, :thunk))
     pc = next_until!(predicate, recurse, frame, true)
     (pc === nothing || isa(pc, BreakpointRef)) && return pc
     return step_expr!(recurse, frame, true)  # define the method and return
@@ -162,17 +172,9 @@ to obtain the new execution frame.
 function next_line!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
     pc = frame.pc
     initialline, initialfile = linenumber(frame, pc), getfile(frame, pc)
-    first = true
-    while linenumber(frame, pc) == initialline && getfile(frame, pc) == initialfile
-        # If this is a return node, interrupt execution
-        expr = pc_expr(frame, pc)
-        (!first && isexpr(expr, :return)) && return pc
-        first = false
-
-        pc = step_expr!(recurse, frame, istoplevel)
-        (pc === nothing || isa(pc, BreakpointRef)) && return pc
-        shouldbreak(frame, pc) && return BreakpointRef(frame.framecode, pc)
-    end
+    predicate(frame) = isexpr(pc_expr(frame), :return) || (linenumber(frame) != initialline || getfile(frame) != initialfile)
+    pc = next_until!(predicate, frame, istoplevel)
+    (pc === nothing || isa(pc, BreakpointRef)) && return pc
     maybe_step_through_kwprep!(recurse, frame, istoplevel)
     maybe_next_call!(recurse, frame, istoplevel)
 end
