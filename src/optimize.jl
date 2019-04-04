@@ -92,15 +92,21 @@ function smallest_ref(stmts, arg, idmin)
     return idmin
 end
 
+function lookup_global_ref(a::GlobalRef)
+    if isdefined(a.mod, a.name) && isconst(a.mod, a.name)
+        r = getfield(a.mod, a.name)
+        return QuoteNode(r)
+    else
+        return a
+    end
+end
+
 function lookup_global_refs!(ex::Expr)
     (ex.head == :isdefined || ex.head == :thunk || ex.head == :toplevel) && return nothing
     for (i, a) in enumerate(ex.args)
         ex.head == :(=) && i == 1 && continue # Don't look up globalrefs on the LHS of an assignment (issue #98)
         if isa(a, GlobalRef)
-            if isdefined(a.mod, a.name) && isconst(a.mod, a.name)
-                r = getfield(a.mod, a.name)
-                ex.args[i] = QuoteNode(r)
-            end
+            ex.args[i] = lookup_global_ref(a)
         elseif isa(a, Expr)
             lookup_global_refs!(a)
         end
@@ -130,7 +136,7 @@ function optimize!(code::CodeInfo, scope)
     ## Replace GlobalRefs with QuoteNodes
     for (i, stmt) in enumerate(code.code)
         if isa(stmt, GlobalRef)
-            code.code[i] = QuoteNode(getfield(stmt.mod, stmt.name))
+            code.code[i] = lookup_global_ref(stmt)
         elseif isa(stmt, Expr)
             if stmt.head == :call && stmt.args[1] == :cglobal  # cglobal requires literals
                 continue

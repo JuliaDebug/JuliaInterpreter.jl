@@ -373,6 +373,17 @@ end
         return q_gf
     end
     @test @interpret h_gf() == 2
+
+    # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/267
+    function test_never_different(x)
+        if x < 5
+            for g in never_defined
+                print(g)
+            end
+        end
+    end
+    @test @interpret(test_never_different(10)) === nothing
+  
 end
 
 # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/130
