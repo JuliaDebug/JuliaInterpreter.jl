@@ -127,15 +127,15 @@ struct B{T} end
             cos(x)
         end
         frame = JuliaInterpreter.enter_call_expr(:($(optional)()))
-        # First call steps in and executes the first statement
-        f, pc = debug_command(frame, :n)
+        # Step through the wrapper
+        f = JuliaInterpreter.maybe_step_through_wrapper!(frame)
         @test frame !== f
+        # asin(n)
+        f, pc = debug_command(f, :n)
         # cos(1.0)
-        debug_command(f, :n)
+        f, pc = debug_command(f, :n)
         # return
-        f2, pc = debug_command(f, :n)
-        @test f2 === frame
-        @test debug_command(frame, :n) === nothing
+        @test debug_command(f, :n) === nothing
     end
 
     @testset "Keyword arguments" begin
