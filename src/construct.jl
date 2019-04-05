@@ -26,13 +26,18 @@ rather than recursed into via the interpreter.
 """
 const compiled_modules = Set{Module}()
 
-
 const junk = FrameData[] # to allow re-use of allocated memory (this is otherwise a bottleneck)
 const debug_recycle = Base.RefValue(false)
 @noinline _check_frame_not_in_junk(frame) = @assert frame.framedata ∉ junk
 @inline function recycle(frame)
     debug_recycle[] && _check_frame_not_in_junk(frame)
     push!(junk, frame.framedata)
+end
+
+function clear_caches()
+    empty!(junk)
+    empty!(framedict)
+    empty!(genframedict)
 end
 
 const empty_svec = Core.svec()
@@ -528,7 +533,7 @@ T = Float64
 See [`enter_call`](@ref) for a similar approach not based on expressions.
 """
 function enter_call_expr(expr; enter_generated = false)
-    empty!(junk)
+    clear_caches()
     r = determine_method_for_expr(expr; enter_generated = enter_generated)
     if isa(r, Tuple)
         return prepare_frame(r[1:end-1]...)
@@ -570,7 +575,7 @@ would be created by the generator.
 See [`enter_call_expr`](@ref) for a similar approach based on expressions.
 """
 function enter_call(@nospecialize(finfo), @nospecialize(args...); kwargs...)
-    empty!(junk)
+    clear_caches()
     if isa(finfo, Tuple)
         f = finfo[1]
         enter_generated = finfo[2]::Bool
