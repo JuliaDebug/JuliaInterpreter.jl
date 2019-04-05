@@ -38,13 +38,14 @@ JuliaInterpreter.finish_and_return!
 JuliaInterpreter.finish_stack!
 JuliaInterpreter.get_return
 JuliaInterpreter.next_until!
+JuliaInterpreter.maybe_next_until!
 JuliaInterpreter.through_methoddef_or_done!
 JuliaInterpreter.evaluate_call!
 JuliaInterpreter.evaluate_foreigncall
 JuliaInterpreter.maybe_evaluate_builtin
+JuliaInterpreter.next_call!
 JuliaInterpreter.maybe_next_call!
 JuliaInterpreter.next_line!
-JuliaInterpreter.next_call!
 JuliaInterpreter.maybe_reset_frame!
 JuliaInterpreter.maybe_step_through_wrapper!
 JuliaInterpreter.maybe_step_through_kwprep!
