@@ -470,4 +470,16 @@ struct B{T} end
             break_off(:error)
         end
     end
+
+    @testset "breakpoint in next line" begin
+        function f(a, b)
+            a == 0 && return abs(b)
+            @bp
+            return b
+        end
+        
+        frame = JuliaInterpreter.enter_call(f, 5, 10)
+        frame, pc = JuliaInterpreter.debug_command(frame, :n)
+        @test pc isa BreakpointRef
+    end
 # end
