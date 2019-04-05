@@ -86,7 +86,7 @@ finish_stack!(frame::Frame, istoplevel::Bool=false) = finish_stack!(finish_and_r
     pc = next_until!(predicate, frame, istoplevel=false)
 
 Execute the current statement. Then step through statements of `frame` until the next
-statement satifies `predicate(frame)`. `pc` will be the index of the statement at which
+statement satisfies `predicate(frame)`. `pc` will be the index of the statement at which
 evaluation terminates, `nothing` (if the frame reached a `return`), or a `BreakpointRef`.
 """
 function next_until!(@nospecialize(predicate), @nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
