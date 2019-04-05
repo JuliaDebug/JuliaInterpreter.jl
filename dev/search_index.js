@@ -293,7 +293,15 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.next_until!",
     "category": "function",
-    "text": "pc = next_until!(predicate, recurse, frame, istoplevel=false)\npc = next_until!(predicate, frame, istoplevel=false)\n\nExecute the current statement. Then step through statements of frame until the next statement satifies predicate(stmt). pc will be the index of the statement at which evaluation terminates, nothing (if the frame reached a return), or a BreakpointRef.\n\n\n\n\n\n"
+    "text": "pc = next_until!(predicate, recurse, frame, istoplevel=false)\npc = next_until!(predicate, frame, istoplevel=false)\n\nExecute the current statement. Then step through statements of frame until the next statement satisfies predicate(frame). pc will be the index of the statement at which evaluation terminates, nothing (if the frame reached a return), or a BreakpointRef.\n\n\n\n\n\n"
+},
+
+{
+    "location": "dev_reference/#JuliaInterpreter.maybe_next_until!",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.maybe_next_until!",
+    "category": "function",
+    "text": "pc = maybe_next_until!(predicate, recurse, frame, istoplevel=false)\npc = maybe_next_until!(predicate, frame, istoplevel=false)\n\nLike next_until! except checks predicate before executing the current statment.\n\n\n\n\n\n"
 },
 
 {
@@ -329,6 +337,14 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
+    "location": "dev_reference/#JuliaInterpreter.next_call!",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.next_call!",
+    "category": "function",
+    "text": "pc = next_call!(recurse, frame, istoplevel=false)\npc = next_call!(frame, istoplevel=false)\n\nExecute the current statement. Continue stepping through frame until the next :return or :call expression.\n\n\n\n\n\n"
+},
+
+{
     "location": "dev_reference/#JuliaInterpreter.maybe_next_call!",
     "page": "Function reference",
     "title": "JuliaInterpreter.maybe_next_call!",
@@ -342,14 +358,6 @@ var documenterSearchIndex = {"docs": [
     "title": "JuliaInterpreter.next_line!",
     "category": "function",
     "text": "pc = next_line!(recurse, frame, istoplevel=false)\npc = next_line!(frame, istoplevel=false)\n\nExecute until reaching the first call of the next line of the source code. Upon return, pc is either the new program counter, nothing if a return is reached, or a BreakpointRef if it encountered a wrapper call. In the latter case, call leaf(frame) to obtain the new execution frame.\n\n\n\n\n\n"
-},
-
-{
-    "location": "dev_reference/#JuliaInterpreter.next_call!",
-    "page": "Function reference",
-    "title": "JuliaInterpreter.next_call!",
-    "category": "function",
-    "text": "pc = next_call!(recurse, frame, istoplevel=false)\npc = next_call!(frame, istoplevel=false)\n\nExecute the current statement. Continue stepping through frame until the next :return or :call expression.\n\n\n\n\n\n"
 },
 
 {
@@ -397,7 +405,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "Frame execution",
     "category": "section",
-    "text": "JuliaInterpreter.Compiled\nJuliaInterpreter.step_expr!\nJuliaInterpreter.finish!\nJuliaInterpreter.finish_and_return!\nJuliaInterpreter.finish_stack!\nJuliaInterpreter.get_return\nJuliaInterpreter.next_until!\nJuliaInterpreter.through_methoddef_or_done!\nJuliaInterpreter.evaluate_call!\nJuliaInterpreter.evaluate_foreigncall\nJuliaInterpreter.maybe_evaluate_builtin\nJuliaInterpreter.maybe_next_call!\nJuliaInterpreter.next_line!\nJuliaInterpreter.next_call!\nJuliaInterpreter.maybe_reset_frame!\nJuliaInterpreter.maybe_step_through_wrapper!\nJuliaInterpreter.maybe_step_through_kwprep!\nJuliaInterpreter.handle_err\nJuliaInterpreter.debug_command"
+    "text": "JuliaInterpreter.Compiled\nJuliaInterpreter.step_expr!\nJuliaInterpreter.finish!\nJuliaInterpreter.finish_and_return!\nJuliaInterpreter.finish_stack!\nJuliaInterpreter.get_return\nJuliaInterpreter.next_until!\nJuliaInterpreter.maybe_next_until!\nJuliaInterpreter.through_methoddef_or_done!\nJuliaInterpreter.evaluate_call!\nJuliaInterpreter.evaluate_foreigncall\nJuliaInterpreter.maybe_evaluate_builtin\nJuliaInterpreter.next_call!\nJuliaInterpreter.maybe_next_call!\nJuliaInterpreter.next_line!\nJuliaInterpreter.maybe_reset_frame!\nJuliaInterpreter.maybe_step_through_wrapper!\nJuliaInterpreter.maybe_step_through_kwprep!\nJuliaInterpreter.handle_err\nJuliaInterpreter.debug_command"
 },
 
 {
