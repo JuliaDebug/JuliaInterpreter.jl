@@ -361,6 +361,14 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
+    "location": "dev_reference/#JuliaInterpreter.until_line!",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.until_line!",
+    "category": "function",
+    "text": "pc = until_line!(recurse, frame, line=nothing istoplevel=false)\npc = until_line!(frame, line=nothing, istoplevel=false)\n\nExecute until the current frame reaches a line greater than line. If line == nothing execute until the current frame reaches any line greater than the current line.\n\n\n\n\n\n"
+},
+
+{
     "location": "dev_reference/#JuliaInterpreter.maybe_reset_frame!",
     "page": "Function reference",
     "title": "JuliaInterpreter.maybe_reset_frame!",
@@ -397,7 +405,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.debug_command",
     "category": "function",
-    "text": "ret = debug_command(recurse, frame, cmd, rootistoplevel=false)\nret = debug_command(frame, cmd, rootistoplevel=false)\n\nPerform one \"debugger\" command. cmd should be one of:\n\n:n: advance to the next line\n:s: step into the next call\n:c: continue execution until termination or reaching a breakpoint\n:finish: finish the current frame and return to the parent\n\nor one of the \'advanced\' commands\n\n:nc: step forward to the next call\n:se: execute a single statement\n:si: execute a single statement, stepping in if it\'s a call\n:sg: step into the generator of a generated function\n\nrootistoplevel and ret are as described for JuliaInterpreter.maybe_reset_frame!.\n\n\n\n\n\n"
+    "text": "ret = debug_command(recurse, frame, cmd, rootistoplevel=false; line=nothing)\nret = debug_command(frame, cmd, rootistoplevel=false; line=nothing)\n\nPerform one \"debugger\" command. The keyword arguments are not used for all debug commands. cmd should be one of:\n\n:n: advance to the next line\n:s: step into the next call\n:until: advance the frame to line line if given, otherwise advance to the line after the current line\n:c: continue execution until termination or reaching a breakpoint\n:finish: finish the current frame and return to the parent\n\nor one of the \'advanced\' commands\n\n:nc: step forward to the next call\n:se: execute a single statement\n:si: execute a single statement, stepping in if it\'s a call\n:sg: step into the generator of a generated function\n\nrootistoplevel and ret are as described for JuliaInterpreter.maybe_reset_frame!.\n\n\n\n\n\n"
 },
 
 {
@@ -405,7 +413,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "Frame execution",
     "category": "section",
-    "text": "JuliaInterpreter.Compiled\nJuliaInterpreter.step_expr!\nJuliaInterpreter.finish!\nJuliaInterpreter.finish_and_return!\nJuliaInterpreter.finish_stack!\nJuliaInterpreter.get_return\nJuliaInterpreter.next_until!\nJuliaInterpreter.maybe_next_until!\nJuliaInterpreter.through_methoddef_or_done!\nJuliaInterpreter.evaluate_call!\nJuliaInterpreter.evaluate_foreigncall\nJuliaInterpreter.maybe_evaluate_builtin\nJuliaInterpreter.next_call!\nJuliaInterpreter.maybe_next_call!\nJuliaInterpreter.next_line!\nJuliaInterpreter.maybe_reset_frame!\nJuliaInterpreter.maybe_step_through_wrapper!\nJuliaInterpreter.maybe_step_through_kwprep!\nJuliaInterpreter.handle_err\nJuliaInterpreter.debug_command"
+    "text": "JuliaInterpreter.Compiled\nJuliaInterpreter.step_expr!\nJuliaInterpreter.finish!\nJuliaInterpreter.finish_and_return!\nJuliaInterpreter.finish_stack!\nJuliaInterpreter.get_return\nJuliaInterpreter.next_until!\nJuliaInterpreter.maybe_next_until!\nJuliaInterpreter.through_methoddef_or_done!\nJuliaInterpreter.evaluate_call!\nJuliaInterpreter.evaluate_foreigncall\nJuliaInterpreter.maybe_evaluate_builtin\nJuliaInterpreter.next_call!\nJuliaInterpreter.maybe_next_call!\nJuliaInterpreter.next_line!\nJuliaInterpreter.until_line!\nJuliaInterpreter.maybe_reset_frame!\nJuliaInterpreter.maybe_step_through_wrapper!\nJuliaInterpreter.maybe_step_through_kwprep!\nJuliaInterpreter.handle_err\nJuliaInterpreter.debug_command"
 },
 
 {
