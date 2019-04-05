@@ -92,9 +92,8 @@ evaluation terminates, `nothing` (if the frame reached a `return`), or a `Breakp
 function next_until!(@nospecialize(predicate), @nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
     pc = step_expr!(recurse, frame, istoplevel)
     while pc !== nothing && !isa(pc, BreakpointRef)
-        if predicate(frame) || shouldbreak(frame, pc)
-            return pc
-        end
+        shouldbreak(frame, pc) && return BreakpointRef(frame.framecode, pc)
+        predicate(frame) && return pc
         pc = step_expr!(recurse, frame, istoplevel)
     end
     return pc
