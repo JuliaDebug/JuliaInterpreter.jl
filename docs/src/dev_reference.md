@@ -46,6 +46,7 @@ JuliaInterpreter.maybe_evaluate_builtin
 JuliaInterpreter.next_call!
 JuliaInterpreter.maybe_next_call!
 JuliaInterpreter.next_line!
+JuliaInterpreter.until_line!
 JuliaInterpreter.maybe_reset_frame!
 JuliaInterpreter.maybe_step_through_wrapper!
 JuliaInterpreter.maybe_step_through_kwprep!

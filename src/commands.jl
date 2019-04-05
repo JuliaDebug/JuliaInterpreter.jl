@@ -181,6 +181,25 @@ end
 next_line!(frame::Frame, istoplevel::Bool=false) = next_line!(finish_and_return!, frame, istoplevel)
 
 """
+    pc = until_line!(recurse, frame, line=nothing istoplevel=false)
+    pc = until_line!(frame, line=nothing, istoplevel=false)
+
+Execute until the current frame reaches a line greater than `line`. If `line == nothing`
+execute until the current frame reaches any line greater than the current line.
+"""
+function until_line!(@nospecialize(recurse), frame::Frame, line::Union{Nothing, Integer}=nothing, istoplevel::Bool=false)
+    pc = frame.pc
+    initialline, initialfile = linenumber(frame, pc), getfile(frame, pc)
+    line === nothing && (line = initialline + 1)
+    predicate(frame) = isexpr(pc_expr(frame), :return) || (linenumber(frame) >= line && getfile(frame) == initialfile)
+    pc = next_until!(predicate, frame, istoplevel)
+    (pc === nothing || isa(pc, BreakpointRef)) && return pc
+    maybe_step_through_kwprep!(recurse, frame, istoplevel)
+    maybe_next_call!(recurse, frame, istoplevel)
+end
+until_line!(frame::Frame, line::Union{Nothing, Integer}=nothing, istoplevel::Bool=false) = until_line!(finish_and_return!, frame, line, istoplevel)
+
+"""
     cframe = maybe_step_through_wrapper!(recurse, frame)
     cframe = maybe_step_through_wrapper!(frame)
 
@@ -343,13 +362,15 @@ function unwind_exception(frame::Frame, exc)
 end
 
 """
-    ret = debug_command(recurse, frame, cmd, rootistoplevel=false)
-    ret = debug_command(frame, cmd, rootistoplevel=false)
+    ret = debug_command(recurse, frame, cmd, rootistoplevel=false; line=nothing)
+    ret = debug_command(frame, cmd, rootistoplevel=false; line=nothing)
 
-Perform one "debugger" command. `cmd` should be one of:
+Perform one "debugger" command. The keyword arguments are not used for all debug commands.
+`cmd` should be one of:
 
 - `:n`: advance to the next line
 - `:s`: step into the next call
+- `:until`: advance the frame to line `line` if given, otherwise advance to the line after the current line
 - `:c`: continue execution until termination or reaching a breakpoint
 - `:finish`: finish the current frame and return to the parent
 
@@ -362,7 +383,7 @@ or one of the 'advanced' commands
 
 `rootistoplevel` and `ret` are as described for [`JuliaInterpreter.maybe_reset_frame!`](@ref).
 """
-function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootistoplevel::Bool=false)
+function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootistoplevel::Bool=false; line=nothing)
     function nicereturn!(@nospecialize(recurse), frame, pc, rootistoplevel)
         if pc === nothing || isa(pc, BreakpointRef)
             return maybe_reset_frame!(recurse, frame, pc, rootistoplevel)
@@ -383,6 +404,7 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootis
         cmd == :nc && return nicereturn!(recurse, frame, next_call!(recurse, frame, istoplevel), rootistoplevel)
         cmd == :n && return maybe_reset_frame!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
         cmd == :se && return maybe_reset_frame!(recurse, frame, step_expr!(recurse, frame, istoplevel), rootistoplevel)
+        cmd == :until && return maybe_reset_frame!(recurse, frame, until_line!(recurse, frame, line, istoplevel), rootistoplevel)
 
         enter_generated = false
         if cmd == :sg
@@ -434,5 +456,5 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootis
     end
     throw(ArgumentError("command $cmd not recognized"))
 end
-debug_command(frame::Frame, cmd::Symbol, rootistoplevel::Bool=false) =
-    debug_command(finish_and_return!, frame, cmd, rootistoplevel)
+debug_command(frame::Frame, cmd::Symbol, rootistoplevel::Bool=false; kwargs...) =
+    debug_command(finish_and_return!, frame, cmd, rootistoplevel; kwargs...)
