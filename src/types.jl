@@ -314,6 +314,11 @@ function Base.show(io::IO, bp::BreakpointSignature)
 end
 
 struct BreakpointFileLocation <: AbstractBreakpoint
+    # Both the input path and the absolute path is stored to handle the case
+    # where a user sets a breakpoint on a relative path e.g. `../foo.jl`. The absolute path is needed
+    # to handle the case where the current working directory change, and
+    # the input path is needed to do "partial path matches", e.g match "src/foo.jl" against
+    # "Package/src/foo.jl".
     path::String
     abspath::String
     line::Int

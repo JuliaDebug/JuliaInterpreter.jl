@@ -225,10 +225,29 @@ mktemp() do path, io
     breakpoint(path, 3)
     include(path)
     frame, bp = @interpret somefunc(2, 3)
+    @test bp isa BreakpointRef
     @test JuliaInterpreter.whereis(frame) == (path, 3)
     breakpoint(path, 2)
     frame, bp = @interpret somefunc(2, 3)
+    @test bp isa BreakpointRef
     @test JuliaInterpreter.whereis(frame) == (path, 2)
+    remove()
+    # Test relative paths
+    mktempdir(dirname(path)) do tmp
+        cd(tmp) do
+            breakpoint(joinpath("..", basename(path)), 3)
+            frame, bp = @interpret somefunc(2, 3)
+            @test bp isa BreakpointRef
+            @test JuliaInterpreter.whereis(frame) == (path, 3)
+            remove()
+            breakpoint(joinpath("..", basename(path)), 3)
+            cd(homedir()) do
+                frame, bp = @interpret somefunc(2, 3)
+                @test bp isa BreakpointRef
+                @test JuliaInterpreter.whereis(frame) == (path, 3)
+            end
+        end
+    end
 end
 
 if tmppath != ""
