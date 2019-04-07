@@ -72,8 +72,18 @@ end
 # `io` is for the generated source file
 # `intrinsicsfile` is the path to Julia's `src/intrinsics.h` file
 function generate_builtins(file::String)
-    open(file, "w") do io
-        generate_builtins(io::IO)
+    has_write_permissions = try
+        open(file, "w") do io
+        end
+        true
+    catch e
+        @warn("ignoring exception: ", e,)
+        false
+    end
+    if has_write_permissions
+        open(file, "w") do io
+            generate_builtins(io::IO)
+        end
     end
 end
 function generate_builtins(io::IO)
