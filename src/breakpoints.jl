@@ -81,7 +81,9 @@ Absolute paths only matches against the file with that exact absolute path.
 """
 function breakpoint(file::AbstractString, line::Integer, condition::Condition=nothing)
     file = normpath(file)
-    bp = BreakpointFileLocation(file, CodeTracking.maybe_fix_path(abspath(file)), line, condition, Ref(true), BreakpointRef[])
+    apath = CodeTracking.maybe_fix_path(abspath(file))
+    ispath(apath) && (apath = realpath(apath))
+    bp = BreakpointFileLocation(file, apath, line, condition, Ref(true), BreakpointRef[])
     add_to_existing_framecodes(bp)
     idx = findfirst(bp2 -> same_location(bp, bp2), _breakpoints)
     idx === nothing ? push!(_breakpoints, bp) : (_breakpoints[idx] = bp)
@@ -92,6 +94,7 @@ function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointFileLo
     framecode.scope isa Method || return false
     meth = framecode.scope
     methpath = CodeTracking.maybe_fix_path(String(meth.file))
+    ispath(methpath) && (methpath = realpath(methpath))
     if bp.abspath == methpath || endswith(methpath, bp.path)
         return method_contains_line(meth, bp.line)
     else

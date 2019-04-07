@@ -202,7 +202,7 @@ struct Squarer end
     @breakpoint Int(5.0)
     frame, bp = @interpret g()
     @test bp isa BreakpointRef
-    @test leaf(frame).framecode.scope === @which Int(5.0) 
+    @test leaf(frame).framecode.scope === @which Int(5.0)
 
     # Breakpoint on call overloads
     (::Squarer)(x) = x^2
