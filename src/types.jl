@@ -316,7 +316,7 @@ end
 struct BreakpointFileLocation <: AbstractBreakpoint
     path::String
     abspath::String
-    line::Integer
+    line::Int
     condition::Condition
     enabled::Ref{Bool}
     instances::Vector{BreakpointRef}
