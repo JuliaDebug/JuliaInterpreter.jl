@@ -11,7 +11,7 @@ function add_breakpoint_if_match!(framecode::FrameCode, bp::AbstractBreakpoint)
     if framecode_matches_breakpoint(framecode, bp)
         stmtidx = bp.line === 0 ? 1 : statementnumber(framecode, bp.line)
         breakpoint!(framecode, stmtidx, bp.condition, bp.enabled[])
-        push!(bp.applications, BreakpointRef(framecode, stmtidx))
+        push!(bp.instances, BreakpointRef(framecode, stmtidx))
     end
 end
 
@@ -152,7 +152,7 @@ end
 breakpoint!(frame::Frame, pc=frame.pc, condition::Condition=nothing) =
     breakpoint!(frame.framecode, pc, condition)
 
-update_states!(bp::AbstractBreakpoint) = foreach(bpref -> update_state!(bpref, bp.enabled[]), bp.applications)
+update_states!(bp::AbstractBreakpoint) = foreach(bpref -> update_state!(bpref, bp.enabled[]), bp.instances)
 update_state!(bp::BreakpointRef, v::Bool) = bp[] = v
 
 """
@@ -180,7 +180,7 @@ Remove (delete) breakpoint `bp`. Removed breakpoints cannot be re-enabled.
 function remove(bp::AbstractBreakpoint)
     idx = findfirst(isequal(bp), _breakpoints)
     idx === nothing || deleteat!(_breakpoints, idx)
-    foreach(remove, bp.applications)
+    foreach(remove, bp.instances)
 end
 function remove(bp::BreakpointRef)
     bp.framecode.breakpoints[bp.stmtidx] = BreakpointState(false, falsecondition)
@@ -219,7 +219,7 @@ Remove all breakpoints.
 """
 function remove()
     for bp in _breakpoints
-        foreach(remove, bp.applications)
+        foreach(remove, bp.instances)
     end
     empty!(_breakpoints)
 end
