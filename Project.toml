@@ -1,6 +1,6 @@
 name = "JuliaInterpreter"
 uuid = "aa1ae85d-cabe-5617-a682-6adf51b2e16a"
-version = "0.4.1"
+version = "0.5.0"
 
 [deps]
 CodeTracking = "da1fd8a2-8d9e-5ec2-8556-3022fb5608a2"
@@ -14,10 +14,9 @@ CodeTracking = "0.3.2, 0.4, 0.5"
 [extras]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
+Mmap = "a63ad114-7e13-5084-954f-fe012c677804"
 SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-Mmap = "a63ad114-7e13-5084-954f-fe012c677804"
-
 
 [targets]
 test = ["Test", "Distributed", "Dates", "SHA", "Mmap"]
