@@ -21,16 +21,6 @@ module CompiledCalls
 # This module is for handling intrinsics that must be compiled (llvmcall)
 end
 
-const BUILTIN_FILE = joinpath(@__DIR__, "builtins-julia$(Int(VERSION.major)).$(Int(VERSION.minor)).jl")
-
-@info "Generating builtins for this julia version..."
-gen_builtins_file = joinpath(@__DIR__, "generate_builtins.jl")
-# Run as separate command to prevent including the generate_builtins into the precompile cache
-withenv("JULIA_LOAD_PATH" => joinpath(@__DIR__, "..")) do
-    run(`$(Base.julia_cmd()) --startup-file=no $gen_builtins_file`)
-end
-include_dependency(gen_builtins_file)
-
 # "Backport" of https://github.com/JuliaLang/julia/pull/31536
 if VERSION < v"1.2.0-DEV.572"
     Base.convert(::Type{Some{T}}, x::Some{T}) where {T} = x
@@ -43,7 +33,7 @@ include("utils.jl")
 include("construct.jl")
 include("localmethtable.jl")
 include("interpret.jl")
-include(BUILTIN_FILE)
+include("builtins.jl")
 include("optimize.jl")
 include("commands.jl")
 include("breakpoints.jl")
