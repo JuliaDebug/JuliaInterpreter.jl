@@ -236,4 +236,4 @@ end
 """)
 end
 
-generate_builtins(joinpath(@__DIR__, "builtins-julia$(Int(VERSION.major)).$(Int(VERSION.minor)).jl"))
+generate_builtins(joinpath(@__DIR__, "..", "src", "builtins.jl"))
