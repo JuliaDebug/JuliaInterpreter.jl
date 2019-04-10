@@ -76,7 +76,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         return Some{Any}(Core._apply_pure(getargs(args, frame)...))
     elseif f === Core._expr
         return Some{Any}(Core._expr(getargs(args, frame)...))
-    elseif (@static isdefined(Core, :_typevar) ? true : false) && f === Core._typevar
+    elseif @static isdefined(Core, :_typevar) ? f === Core._typevar : false
         if nargs == 3
             return Some{Any}(Core._typevar(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
         else
@@ -124,7 +124,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(Core.arraysize(getargs(args, frame)...))
         end
-    elseif (@static isdefined(Core, :const_arrayref) ? true : false) && f === Core.const_arrayref
+    elseif @static isdefined(Core, :const_arrayref) ? f === Core.const_arrayref : false
         return Some{Any}(Core.const_arrayref(getargs(args, frame)...))
     elseif f === Core.sizeof
         if nargs == 1
