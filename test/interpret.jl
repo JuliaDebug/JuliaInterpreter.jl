@@ -337,7 +337,7 @@ f113(;x) = x
     end
     frame = JuliaInterpreter.enter_call(f_multi, 1)
     nlocals = length(frame.framedata.locals)
-    @test_throws UndefVarError JuliaInterpreter.lookup_var(frame, Core.SlotNumber(nlocals))
+    @test_throws UndefVarError JuliaInterpreter.lookup_var(frame, JuliaInterpreter.SlotNumber(nlocals))
     stack = [frame]
     locals = JuliaInterpreter.locals(frame)
     @test length(locals) == 2
@@ -383,7 +383,7 @@ end
         end
     end
     @test @interpret(test_never_different(10)) === nothing
-  
+
 end
 
 # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/130

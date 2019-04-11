@@ -11,6 +11,15 @@ struct NewSSAValue
     id::Int
 end
 
+# Our own replacements for Core types. We need to do this to ensure we can tell the difference
+# between "data" (Core types) and "code" (our types) if we step into Core.Compiler
+struct SSAValue
+    id::Int
+end
+struct SlotNumber
+    id::Int
+end
+
 # Breakpoint support
 truecondition(frame) = true
 falsecondition(frame) = false
@@ -70,7 +79,7 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
     if optimize
         src, methodtables = optimize!(copy_codeinfo(src), scope)
     else
-        src = copy_codeinfo(src)
+        src = replace_coretypes!(copy_codeinfo(src))
         methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(src.code))
     end
     breakpoints = Vector{BreakpointState}(undef, length(src.code))

@@ -129,6 +129,7 @@ function optimize!(code::CodeInfo, scope)
     mod = moduleof(scope)
     sparams = scope isa Method ? Symbol[sparam_syms(scope)...] : Symbol[]
     code.inferred && error("optimization of inferred code not implemented")
+    replace_coretypes!(code)
     # TODO: because of builtins.jl, for CodeInfos like
     #   %1 = Core.apply_type
     #   %2 = (%1)(args...)
@@ -239,7 +240,7 @@ end
 function parametric_type_to_expr(t::Type)
     t isa Core.TypeofBottom && return t
     t isa UnionAll && (t = t.body)
-    if t <: Vararg 
+    if t <: Vararg
         return Expr(:(...), t.parameters[1])
     end
     return t.hasfreetypevars ? Expr(:curly, t.name.name, ((tv-> tv isa TypeVar ? tv.name : tv).(t.parameters))...) : t
@@ -332,3 +333,24 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
     return delete_idx
 end
 
+function replace_coretypes!(src)
+    if isa(src, CodeInfo)
+        replace_coretypes_list!(src.code)
+    elseif isa(src, Expr)
+        replace_coretypes_list!(src.args)
+    end
+    return src
+end
+
+function replace_coretypes_list!(list)
+    for (i, stmt) in enumerate(list)
+        if isa(stmt, Core.SSAValue)
+            list[i] = SSAValue(stmt.id)
+        elseif isa(stmt, Core.SlotNumber)
+            list[i] = SlotNumber(stmt.id)
+        elseif isa(stmt, Expr)
+            replace_coretypes!(stmt)
+        end
+    end
+    return nothing
+end

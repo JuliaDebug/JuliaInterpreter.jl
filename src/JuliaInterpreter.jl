@@ -2,7 +2,7 @@ module JuliaInterpreter
 
 using Base.Meta
 import Base: +, -, convert, isless
-using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfoNode, GotoNode, Slot,
+using Core: CodeInfo, TypeMapEntry, SimpleVector, LineInfoNode, GotoNode, Slot,
             GeneratedFunctionStub, MethodInstance, NewvarNode, TypeName
 
 using UUIDs
@@ -18,7 +18,7 @@ export @interpret, Compiled, Frame, root, leaf,
        debug_command, @bp, break_on, break_off
 
 module CompiledCalls
-# This module is for handling intrinsics that must be compiled (llvmcall)
+# This module is for handling intrinsics that must be compiled (llvmcall) as well as ccalls
 end
 
 # "Backport" of https://github.com/JuliaLang/julia/pull/31536
@@ -70,7 +70,6 @@ function set_compiled_methods()
     push!(compiled_methods, which(subtypes, Tuple{Module, Type}))
     push!(compiled_methods, which(subtypes, Tuple{Type}))
 
-    push!(compiled_modules, Core.Compiler)
     push!(compiled_modules, Base.Threads)
 end
 
