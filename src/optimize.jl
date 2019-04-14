@@ -127,6 +127,7 @@ which this will run) and ensures that no statement includes nested `:call` expre
 """
 function optimize!(code::CodeInfo, scope)
     mod = moduleof(scope)
+    evalmod = mod == Core.Compiler ? Core.Compiler : CompiledCalls
     sparams = scope isa Method ? Symbol[sparam_syms(scope)...] : Symbol[]
     code.inferred && error("optimization of inferred code not implemented")
     replace_coretypes!(code)
@@ -164,7 +165,7 @@ function optimize!(code::CodeInfo, scope)
                 ustr = replace(string(uuid), '-'=>'_')
                 methname = Symbol("llvmcall_", ustr)
                 nargs = length(stmt.args)-4
-                delete_idx = build_compiled_call!(stmt, methname, Base.llvmcall, stmt.args[2:4], code, idx, nargs, sparams)
+                delete_idx = build_compiled_call!(stmt, methname, Base.llvmcall, stmt.args[2:4], code, idx, nargs, sparams, evalmod)
                 push!(foreigncalls_idx, idx)
                 append!(delete_idxs, delete_idx)
             end
@@ -190,7 +191,7 @@ function optimize!(code::CodeInfo, scope)
             ustr = replace(string(uuid), '-'=>'_')
             methname = Symbol("ccall", '_', f, '_', ustr)
             nargs = stmt.args[5]
-            delete_idx = build_compiled_call!(stmt, methname, :ccall, stmt.args[1:3], code, idx, nargs, sparams)
+            delete_idx = build_compiled_call!(stmt, methname, :ccall, stmt.args[1:3], code, idx, nargs, sparams, evalmod)
             push!(foreigncalls_idx, idx)
             append!(delete_idxs, delete_idx)
         end
@@ -247,7 +248,7 @@ function parametric_type_to_expr(t::Type)
 end
 
 # Handle :llvmcall & :foreigncall (issue #28)
-function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, sparams)
+function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, sparams, evalmod)
     argnames = Any[Symbol("arg", string(i)) for i = 1:nargs]
     delete_idx = Int[]
     if fcall == :ccall
@@ -322,13 +323,14 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
                 return $fcall($cfunc, $RetType, $ArgType, $(argnames...))
             end)
     end
-    f = Core.eval(CompiledCalls, def)
+    f = Core.eval(evalmod, def)
     stmt.args[1] = QuoteNode(f)
     stmt.head = :call
     deleteat!(stmt.args, 2:length(stmt.args))
     append!(stmt.args, args)
+    TVal = evalmod == Core.Compiler ? Core.Compiler.Val : Val
     for i in 1:length(sparams)
-        push!(stmt.args, :($Val($(Expr(:static_parameter, i)))))
+        push!(stmt.args, :($TVal($(Expr(:static_parameter, i)))))
     end
     return delete_idx
 end
