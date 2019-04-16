@@ -1,5 +1,7 @@
 const calllike = Set([:call, :foreigncall])
 
+const compiled_calls = Dict{Any,Any}()
+
 function extract_inner_call!(stmt, idx, once::Bool=false)
     isa(stmt, Expr) || return nothing
     (stmt.head == :toplevel || stmt.head == :thunk) && return nothing
@@ -289,41 +291,46 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
         cfunc, RetType, ArgType = @lookup(frame, stmt.args[2]), @lookup(frame, stmt.args[3]), @lookup(frame, stmt.args[4])
         args = stmt.args[5:end]
     end
-    if isa(cfunc, Expr)
+    if isa(cfunc, Expr)   # specification by tuple, e.g., (:clock, "libc")
         cfunc = eval(cfunc)
     end
     if isa(cfunc, Symbol)
         cfunc = QuoteNode(cfunc)
     end
-    if fcall == :ccall
-        ArgType = Expr(:tuple, [parametric_type_to_expr(t) for t in ArgType]...)
-    end
     if isa(RetType, SimpleVector)
         @assert length(RetType) == 1
         RetType = RetType[1]
     end
-    RetType = parametric_type_to_expr(RetType)
-    wrapargs = copy(argnames)
-    for sparam in sparams
-        push!(wrapargs, :(::Val{$sparam}))
+    cc_key = (cfunc, RetType, ArgType)  # compiled call key
+    f = get(compiled_calls, cc_key, nothing)
+    if f === nothing
+        if fcall == :ccall
+            ArgType = Expr(:tuple, [parametric_type_to_expr(t) for t in ArgType]...)
+        end
+        RetType = parametric_type_to_expr(RetType)
+        wrapargs = copy(argnames)
+        for sparam in sparams
+            push!(wrapargs, :(::Val{$sparam}))
+        end
+        if stmt.args[4] == :(:llvmcall)
+            def = :(
+                function $methname($(wrapargs...)) where {$(sparams...)}
+                    return $fcall($cfunc, llvmcall, $RetType, $ArgType, $(argnames...))
+                end)
+        elseif stmt.args[4] == :(:stdcall)
+            def = :(
+                function $methname($(wrapargs...)) where {$(sparams...)}
+                    return $fcall($cfunc, stdcall, $RetType, $ArgType, $(argnames...))
+                end)
+        else
+            def = :(
+                function $methname($(wrapargs...)) where {$(sparams...)}
+                    return $fcall($cfunc, $RetType, $ArgType, $(argnames...))
+                end)
+        end
+        f = Core.eval(evalmod, def)
+        compiled_calls[cc_key] = f
     end
-    if stmt.args[4] == :(:llvmcall)
-        def = :(
-            function $methname($(wrapargs...)) where {$(sparams...)}
-                return $fcall($cfunc, llvmcall, $RetType, $ArgType, $(argnames...))
-            end)
-    elseif stmt.args[4] == :(:stdcall)
-        def = :(
-            function $methname($(wrapargs...)) where {$(sparams...)}
-                return $fcall($cfunc, stdcall, $RetType, $ArgType, $(argnames...))
-            end)
-    else
-        def = :(
-            function $methname($(wrapargs...)) where {$(sparams...)}
-                return $fcall($cfunc, $RetType, $ArgType, $(argnames...))
-            end)
-    end
-    f = Core.eval(evalmod, def)
     stmt.args[1] = QuoteNode(f)
     stmt.head = :call
     deleteat!(stmt.args, 2:length(stmt.args))
