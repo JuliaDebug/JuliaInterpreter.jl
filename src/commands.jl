@@ -213,7 +213,7 @@ function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
     last = stmts[end-1]
     isexpr(last, :(=)) && (last = last.args[2])
     is_kw = isa(scope, Method) && startswith(String(Base.unwrap_unionall(Base.unwrap_unionall(scope.sig).parameters[1]).name.name), "#kw")
-    if is_kw || isexpr(last, :call) && any(isequal(Core.SlotNumber(1)), last.args)
+    if is_kw || isexpr(last, :call) && any(isequal(SlotNumber(1)), last.args)
         # If the last expr calls #self# or passes it to an implementation method,
         # this is a wrapper function that we might want to step through
         while frame.pc != length(stmts)-1
