@@ -251,6 +251,7 @@ end
 
 # Handle :llvmcall & :foreigncall (issue #28)
 function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, sparams, evalmod)
+    TVal = evalmod == Core.Compiler ? Core.Compiler.Val : Val
     argnames = Any[Symbol("arg", string(i)) for i = 1:nargs]
     delete_idx = Int[]
     if fcall == :ccall
@@ -301,7 +302,7 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
         @assert length(RetType) == 1
         RetType = RetType[1]
     end
-    cc_key = (cfunc, RetType, ArgType)  # compiled call key
+    cc_key = (cfunc, RetType, ArgType, evalmod)  # compiled call key
     f = get(compiled_calls, cc_key, nothing)
     if f === nothing
         if fcall == :ccall
@@ -310,7 +311,7 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
         RetType = parametric_type_to_expr(RetType)
         wrapargs = copy(argnames)
         for sparam in sparams
-            push!(wrapargs, :(::Val{$sparam}))
+            push!(wrapargs, :(::$TVal{$sparam}))
         end
         if stmt.args[4] == :(:llvmcall)
             def = :(
@@ -335,7 +336,6 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
     stmt.head = :call
     deleteat!(stmt.args, 2:length(stmt.args))
     append!(stmt.args, args)
-    TVal = evalmod == Core.Compiler ? Core.Compiler.Val : Val
     for i in 1:length(sparams)
         push!(stmt.args, :($TVal($(Expr(:static_parameter, i)))))
     end
