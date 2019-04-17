@@ -2,7 +2,7 @@ module JuliaInterpreter
 
 using Base.Meta
 import Base: +, -, convert, isless
-using Core: CodeInfo, SSAValue, SlotNumber, TypeMapEntry, SimpleVector, LineInfoNode, GotoNode, Slot,
+using Core: CodeInfo, TypeMapEntry, SimpleVector, LineInfoNode, GotoNode, Slot,
             GeneratedFunctionStub, MethodInstance, NewvarNode, TypeName
 
 using UUIDs
@@ -18,7 +18,7 @@ export @interpret, Compiled, Frame, root, leaf,
        debug_command, @bp, break_on, break_off
 
 module CompiledCalls
-# This module is for handling intrinsics that must be compiled (llvmcall)
+# This module is for handling intrinsics that must be compiled (llvmcall) as well as ccalls
 end
 
 # "Backport" of https://github.com/JuliaLang/julia/pull/31536
@@ -70,12 +70,43 @@ function set_compiled_methods()
     push!(compiled_methods, which(subtypes, Tuple{Module, Type}))
     push!(compiled_methods, which(subtypes, Tuple{Type}))
 
-    push!(compiled_modules, Core.Compiler)
+    # Anything that ccalls jl_typeinf_begin cannot currently be handled
+    for finf in (Core.Compiler.typeinf_code, Core.Compiler.typeinf_ext, Core.Compiler.typeinf_type)
+        for m in methods(finf)
+            push!(compiled_methods, m)
+        end
+    end
+
     push!(compiled_modules, Base.Threads)
 end
 
 function __init__()
     set_compiled_methods()
+    # If we interpret into Core.Compiler, we need to take precautions to avoid needing
+    # inference of JuliaInterpreter methods in the middle of a `ccall(:jl_typeinf_begin, ...)`
+    # block.
+    # for (sym, RT, AT) in ((:jl_typeinf_begin, Cvoid, ()),
+    #                       (:jl_typeinf_end, Cvoid, ()),
+    #                       (:jl_isa_compileable_sig, Int32, (Any, Any)),
+    #                       (:jl_compress_ast, Any, (Any, Any)),
+    #                       # (:jl_set_method_inferred, Ref{Core.CodeInstance}, (Any, Any, Any, Any, Int32, UInt, UInt)),
+    #                       (:jl_method_instance_add_backedge, Cvoid, (Any, Any)),
+    #                       (:jl_method_table_add_backedge, Cvoid, (Any, Any, Any)),
+    #                       (:jl_new_code_info_uninit, Ref{CodeInfo}, ()),
+    #                       (:jl_uncompress_argnames, Vector{Symbol}, (Any,)),
+    #                       (:jl_get_tls_world_age, UInt, ()),
+    #                       (:jl_call_in_typeinf_world, Any, (Ptr{Ptr{Cvoid}}, Cint)),
+    #                       (:jl_value_ptr, Any, (Ptr{Cvoid},)),
+    #                       (:jl_value_ptr, Ptr{Cvoid}, (Any,)))
+    #     fname = Symbol(:ccall_, sym)
+    #     qsym = QuoteNode(sym)
+    #     argnames = [Symbol(:arg_, string(i)) for i = 1:length(AT)]
+    #     TAT = Expr(:tuple, [parametric_type_to_expr(t) for t in AT]...)
+    #     def = :($fname($(argnames...)) = ccall($qsym, $RT, $TAT, $(argnames...)))
+    #     f = Core.eval(Core.Compiler, def)
+    #     compiled_calls[(qsym, RT, Core.svec(AT...), Core.Compiler)] = f
+    #     precompile(f, AT)
+    # end
 end
 
 include("precompile.jl")

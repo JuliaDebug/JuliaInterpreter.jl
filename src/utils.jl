@@ -61,14 +61,30 @@ function find_used(code::CodeInfo)
     used = BitSet()
     stmts = code.code
     for stmt in stmts
-        Core.Compiler.scan_ssa_use!(push!, used, stmt)
-        if isexpr(stmt, :struct_type)  # this one is missed
+        scan_ssa_use!(used, stmt)
+        if isexpr(stmt, :struct_type)  # this one is missed by Core.Compiler.userefs
             for a in stmt.args
-                Core.Compiler.scan_ssa_use!(push!, used, a)
+                scan_ssa_use!(used, a)
             end
         end
     end
     return used
+end
+
+function scan_ssa_use!(used::BitSet, @nospecialize(stmt))
+    if isa(stmt, SSAValue)
+        push!(used, stmt.id)
+    end
+    iter = Core.Compiler.userefs(stmt)
+    iterval = Core.Compiler.iterate(iter)
+    while iterval !== nothing
+        useref, state = iterval
+        val = Core.Compiler.getindex(useref)
+        if isa(val, SSAValue)
+            push!(used, val.id)
+        end
+        iterval = Core.Compiler.iterate(iter, state)
+    end
 end
 
 ## Predicates
@@ -265,7 +281,9 @@ function print_framecode(io::IO, framecode::FrameCode; pc=0, range=1:nstatements
     offset = lineoffset(framecode)
     ndline = isempty(lt) ? 0 : ndigits(getline(lt[end]) + offset)
     nullline = " "^ndline
-    code = framecode_lines(framecode)
+    src = copy_codeinfo(framecode.src)
+    replace_coretypes!(src; rev=true)
+    code = framecode_lines(src)
     isfirst = true
     for (stmtidx, stmtline) in enumerate(code)
         stmtidx ∈ range || continue

@@ -1,5 +1,7 @@
 const calllike = Set([:call, :foreigncall])
 
+const compiled_calls = Dict{Any,Any}()
+
 function extract_inner_call!(stmt, idx, once::Bool=false)
     isa(stmt, Expr) || return nothing
     (stmt.head == :toplevel || stmt.head == :thunk) && return nothing
@@ -127,8 +129,10 @@ which this will run) and ensures that no statement includes nested `:call` expre
 """
 function optimize!(code::CodeInfo, scope)
     mod = moduleof(scope)
+    evalmod = mod == Core.Compiler ? Core.Compiler : CompiledCalls
     sparams = scope isa Method ? Symbol[sparam_syms(scope)...] : Symbol[]
     code.inferred && error("optimization of inferred code not implemented")
+    replace_coretypes!(code)
     # TODO: because of builtins.jl, for CodeInfos like
     #   %1 = Core.apply_type
     #   %2 = (%1)(args...)
@@ -163,7 +167,7 @@ function optimize!(code::CodeInfo, scope)
                 ustr = replace(string(uuid), '-'=>'_')
                 methname = Symbol("llvmcall_", ustr)
                 nargs = length(stmt.args)-4
-                delete_idx = build_compiled_call!(stmt, methname, Base.llvmcall, stmt.args[2:4], code, idx, nargs, sparams)
+                delete_idx = build_compiled_call!(stmt, methname, Base.llvmcall, stmt.args[2:4], code, idx, nargs, sparams, evalmod)
                 push!(foreigncalls_idx, idx)
                 append!(delete_idxs, delete_idx)
             end
@@ -189,7 +193,7 @@ function optimize!(code::CodeInfo, scope)
             ustr = replace(string(uuid), '-'=>'_')
             methname = Symbol("ccall", '_', f, '_', ustr)
             nargs = stmt.args[5]
-            delete_idx = build_compiled_call!(stmt, methname, :ccall, stmt.args[1:3], code, idx, nargs, sparams)
+            delete_idx = build_compiled_call!(stmt, methname, :ccall, stmt.args[1:3], code, idx, nargs, sparams, evalmod)
             push!(foreigncalls_idx, idx)
             append!(delete_idxs, delete_idx)
         end
@@ -239,14 +243,15 @@ end
 function parametric_type_to_expr(t::Type)
     t isa Core.TypeofBottom && return t
     t isa UnionAll && (t = t.body)
-    if t <: Vararg 
+    if t <: Vararg
         return Expr(:(...), t.parameters[1])
     end
     return t.hasfreetypevars ? Expr(:curly, t.name.name, ((tv-> tv isa TypeVar ? tv.name : tv).(t.parameters))...) : t
 end
 
 # Handle :llvmcall & :foreigncall (issue #28)
-function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, sparams)
+function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, sparams, evalmod)
+    TVal = evalmod == Core.Compiler ? Core.Compiler.Val : Val
     argnames = Any[Symbol("arg", string(i)) for i = 1:nargs]
     delete_idx = Int[]
     if fcall == :ccall
@@ -287,48 +292,74 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
         cfunc, RetType, ArgType = @lookup(frame, stmt.args[2]), @lookup(frame, stmt.args[3]), @lookup(frame, stmt.args[4])
         args = stmt.args[5:end]
     end
-    if isa(cfunc, Expr)
+    if isa(cfunc, Expr)   # specification by tuple, e.g., (:clock, "libc")
         cfunc = eval(cfunc)
     end
     if isa(cfunc, Symbol)
         cfunc = QuoteNode(cfunc)
     end
-    if fcall == :ccall
-        ArgType = Expr(:tuple, [parametric_type_to_expr(t) for t in ArgType]...)
-    end
     if isa(RetType, SimpleVector)
         @assert length(RetType) == 1
         RetType = RetType[1]
     end
-    RetType = parametric_type_to_expr(RetType)
-    wrapargs = copy(argnames)
-    for sparam in sparams
-        push!(wrapargs, :(::Val{$sparam}))
+    cc_key = (cfunc, RetType, ArgType, evalmod)  # compiled call key
+    f = get(compiled_calls, cc_key, nothing)
+    if f === nothing
+        if fcall == :ccall
+            ArgType = Expr(:tuple, [parametric_type_to_expr(t) for t in ArgType]...)
+        end
+        RetType = parametric_type_to_expr(RetType)
+        wrapargs = copy(argnames)
+        for sparam in sparams
+            push!(wrapargs, :(::$TVal{$sparam}))
+        end
+        if stmt.args[4] == :(:llvmcall)
+            def = :(
+                function $methname($(wrapargs...)) where {$(sparams...)}
+                    return $fcall($cfunc, llvmcall, $RetType, $ArgType, $(argnames...))
+                end)
+        elseif stmt.args[4] == :(:stdcall)
+            def = :(
+                function $methname($(wrapargs...)) where {$(sparams...)}
+                    return $fcall($cfunc, stdcall, $RetType, $ArgType, $(argnames...))
+                end)
+        else
+            def = :(
+                function $methname($(wrapargs...)) where {$(sparams...)}
+                    return $fcall($cfunc, $RetType, $ArgType, $(argnames...))
+                end)
+        end
+        f = Core.eval(evalmod, def)
+        compiled_calls[cc_key] = f
     end
-    if stmt.args[4] == :(:llvmcall)
-        def = :(
-            function $methname($(wrapargs...)) where {$(sparams...)}
-                return $fcall($cfunc, llvmcall, $RetType, $ArgType, $(argnames...))
-            end)
-    elseif stmt.args[4] == :(:stdcall)
-        def = :(
-            function $methname($(wrapargs...)) where {$(sparams...)}
-                return $fcall($cfunc, stdcall, $RetType, $ArgType, $(argnames...))
-            end)
-    else
-        def = :(
-            function $methname($(wrapargs...)) where {$(sparams...)}
-                return $fcall($cfunc, $RetType, $ArgType, $(argnames...))
-            end)
-    end
-    f = Core.eval(CompiledCalls, def)
     stmt.args[1] = QuoteNode(f)
     stmt.head = :call
     deleteat!(stmt.args, 2:length(stmt.args))
     append!(stmt.args, args)
     for i in 1:length(sparams)
-        push!(stmt.args, :($Val($(Expr(:static_parameter, i)))))
+        push!(stmt.args, :($TVal($(Expr(:static_parameter, i)))))
     end
     return delete_idx
 end
 
+function replace_coretypes!(src; rev::Bool=false)
+    if isa(src, CodeInfo)
+        replace_coretypes_list!(src.code; rev=rev)
+    elseif isa(src, Expr)
+        replace_coretypes_list!(src.args; rev=rev)
+    end
+    return src
+end
+
+function replace_coretypes_list!(list; rev::Bool)
+    for (i, stmt) in enumerate(list)
+        if isa(stmt, rev ? SSAValue : Core.SSAValue)
+            list[i] = rev ? Core.SSAValue(stmt.id) : SSAValue(stmt.id)
+        elseif isa(stmt, rev ? SlotNumber : Core.SlotNumber)
+            list[i] = rev ? Core.SlotNumber(stmt.id) : SlotNumber(stmt.id)
+        elseif isa(stmt, Expr)
+            replace_coretypes!(stmt; rev=rev)
+        end
+    end
+    return nothing
+end
