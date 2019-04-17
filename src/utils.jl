@@ -281,7 +281,9 @@ function print_framecode(io::IO, framecode::FrameCode; pc=0, range=1:nstatements
     offset = lineoffset(framecode)
     ndline = isempty(lt) ? 0 : ndigits(getline(lt[end]) + offset)
     nullline = " "^ndline
-    code = framecode_lines(framecode)
+    src = copy_codeinfo(framecode.src)
+    replace_coretypes!(src; rev=true)
+    code = framecode_lines(src)
     isfirst = true
     for (stmtidx, stmtline) in enumerate(code)
         stmtidx ∈ range || continue

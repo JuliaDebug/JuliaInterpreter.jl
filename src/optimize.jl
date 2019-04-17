@@ -342,23 +342,23 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
     return delete_idx
 end
 
-function replace_coretypes!(src)
+function replace_coretypes!(src; rev::Bool=false)
     if isa(src, CodeInfo)
-        replace_coretypes_list!(src.code)
+        replace_coretypes_list!(src.code; rev=rev)
     elseif isa(src, Expr)
-        replace_coretypes_list!(src.args)
+        replace_coretypes_list!(src.args; rev=rev)
     end
     return src
 end
 
-function replace_coretypes_list!(list)
+function replace_coretypes_list!(list; rev::Bool)
     for (i, stmt) in enumerate(list)
-        if isa(stmt, Core.SSAValue)
-            list[i] = SSAValue(stmt.id)
-        elseif isa(stmt, Core.SlotNumber)
-            list[i] = SlotNumber(stmt.id)
+        if isa(stmt, rev ? SSAValue : Core.SSAValue)
+            list[i] = rev ? Core.SSAValue(stmt.id) : SSAValue(stmt.id)
+        elseif isa(stmt, rev ? SlotNumber : Core.SlotNumber)
+            list[i] = rev ? Core.SlotNumber(stmt.id) : SlotNumber(stmt.id)
         elseif isa(stmt, Expr)
-            replace_coretypes!(stmt)
+            replace_coretypes!(stmt; rev=rev)
         end
     end
     return nothing
