@@ -287,7 +287,7 @@ abstract type AbstractBreakpoint end
 same_location(::AbstractBreakpoint, ::AbstractBreakpoint) = false
 
 struct BreakpointSignature <: AbstractBreakpoint
-    f # Method or function
+    f::Union{Method, Function}
     sig::Union{Nothing, Type}
     line::Int # 0 is a sentinel for first statement
     condition::Condition

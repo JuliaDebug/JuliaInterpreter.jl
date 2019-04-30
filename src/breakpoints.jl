@@ -58,7 +58,7 @@ end
 breakpoint(radius2, Tuple{Int,Int}, :(y > x))
 ```
 """
-function breakpoint(f, sig=nothing, line::Integer=0, condition::Condition=nothing)
+function breakpoint(f::Union{Method, Function}, sig=nothing, line::Integer=0, condition::Condition=nothing)
     sig !== nothing && (sig = Base.to_tuple_type(sig))
     bp = BreakpointSignature(f, sig, line, condition, Ref(true), BreakpointRef[])
     add_to_existing_framecodes(bp)
@@ -66,9 +66,9 @@ function breakpoint(f, sig=nothing, line::Integer=0, condition::Condition=nothin
     idx === nothing ? push!(_breakpoints, bp) : (_breakpoints[idx] = bp)
     return bp
 end
-breakpoint(f, sig, condition::Condition) = breakpoint(f, sig, 0, condition)
-breakpoint(f, line::Integer, condition::Condition=nothing) = breakpoint(f, nothing, line, condition)
-breakpoint(f, condition::Condition) = breakpoint(f, nothing, 0, condition)
+breakpoint(f::Union{Method, Function}, sig, condition::Condition) = breakpoint(f, sig, 0, condition)
+breakpoint(f::Union{Method, Function}, line::Integer, condition::Condition=nothing) = breakpoint(f, nothing, line, condition)
+breakpoint(f::Union{Method, Function}, condition::Condition) = breakpoint(f, nothing, 0, condition)
 
 
 """
