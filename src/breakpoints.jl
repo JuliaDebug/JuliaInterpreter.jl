@@ -1,5 +1,5 @@
 const _breakpoints = AbstractBreakpoint[]
-breakpoints() = copy(_breakpoints)
+breakpoints() = _breakpoints
 
 function add_to_existing_framecodes(bp::AbstractBreakpoint)
     for framecode in values(framedict)
@@ -79,7 +79,7 @@ For example, `file = foo.jl` will match against all files with the name `foo.jl`
 `file = src/foo.jl` will match against all paths containing `src/foo.jl`, e.g. both `Foo/src/foo.jl` and `Bar/src/foo.jl`.
 Absolute paths only matches against the file with that exact absolute path.
 """
-function breakpoint(file::String, line::Integer, condition::Condition=nothing)
+function breakpoint(file::AbstractString, line::Integer, condition::Condition=nothing)
     file = normpath(file)
     bp = BreakpointFileLocation(file, CodeTracking.maybe_fix_path(abspath(file)), line, condition, Ref(true), BreakpointRef[])
     add_to_existing_framecodes(bp)
