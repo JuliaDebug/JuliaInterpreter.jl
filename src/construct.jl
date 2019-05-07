@@ -38,6 +38,9 @@ function clear_caches()
     empty!(junk)
     empty!(framedict)
     empty!(genframedict)
+    for bp in breakpoints()
+        empty!(bp.instances)
+    end
 end
 
 const empty_svec = Core.svec()
