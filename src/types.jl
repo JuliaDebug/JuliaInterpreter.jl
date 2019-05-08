@@ -58,11 +58,11 @@ end
 One `FrameCode` can be shared by many calling `Frame`s.
 
 Important fields:
-- `scope`: the `Method` or `Module` in which this frame is to be evaluated
-- `src`: the `CodeInfo` object storing (optimized) lowered source code
+- `scope`: the `Method` or `Module` in which this frame is to be evaluated.
+- `src`: the `CodeInfo` object storing (optimized) lowered source code.
 - `methodtables`: a vector, each entry potentially stores a "local method table" for the corresponding
   `:call` expression in `src` (undefined entries correspond to statements that do not
-  contain `:call` expressions)
+  contain `:call` expressions).
 - `used`: a `BitSet` storing the list of SSAValues that get referenced by later statements.
 """
 struct FrameCode
@@ -115,8 +115,8 @@ Base.show(io::IO, framecode::FrameCode) = print_framecode(io, framecode)
 `FrameInstance` represents a method specialized for particular argument types.
 
 Fields:
-- `framecode`: the [`FrameCode`](@ref) for the method
-- `sparam_vals`: the static parameter values for the method
+- `framecode`: the [`FrameCode`](@ref) for the method.
+- `sparam_vals`: the static parameter values for the method.
 """
 struct FrameInstance
     framecode::FrameCode
@@ -137,7 +137,7 @@ Important fields:
   to extract the current value of local variables.
 - `ssavalues`: a vector containing the
   [Static Single Assignment](https://en.wikipedia.org/wiki/Static_single_assignment_form)
-  values produced at the current state of execution
+  values produced at the current state of execution.
 - `sparams`: the static type parameters, e.g., for `f(x::Vector{T}) where T` this would store
   the value of `T` given the particular input `x`.
 - `exception_frames`: a list of indexes to `catch` blocks for handling exceptions within
@@ -161,11 +161,11 @@ end
 """
 `Frame` represents the current execution state in a particular call frame.
 Fields:
-- `framecode`: the [`FrameCode`] for this frame
-- `framedata`: the [`FrameData`] for this frame
-- `pc`: the program counter (integer index of the next statment to be evaluated) for this frame
-- `caller`: the parent caller of this frame, or `nothing`
-- `callee`: the frame called by this one, or `nothing`
+- `framecode`: the [`FrameCode`] for this frame.
+- `framedata`: the [`FrameData`] for this frame.
+- `pc`: the program counter (integer index of the next statment to be evaluated) for this frame.
+- `caller`: the parent caller of this frame, or `nothing`.
+- `callee`: the frame called by this one, or `nothing`.
 
 The `Base` functions `show_backtrace` and `display_error` are overloaded such that
 `show_backtrace(io::IO, frame::Frame)` and `display_error(io::IO, er, frame::Frame)`
@@ -229,9 +229,9 @@ By calling the function `locals`[@ref] on a `Frame`[@ref] a
 `Vector` of `Variable`'s is returned.
 
 Important fields:
-- `value::Any`: the value of the local variable
-- `name::Symbol`: the name of the variable as given in the source code
-- `isparam::Bool`: if the variable is a type parameter, for example `T` in `f(x::T) where {T} = x` .
+- `value::Any`: the value of the local variable.
+- `name::Symbol`: the name of the variable as given in the source code.
+- `isparam::Bool`: if the variable is a type parameter, for example `T` in `f(x::T) where {T} = x`.
 """
 struct Variable
     value::Any
@@ -289,11 +289,11 @@ exist.
 
 Common fields shared by the concrete breakpoints:
 
-- `condition::Union{Nothing,Expr,Tuple{Module,Expr}}`: the condition when the breakpoint applies
-`nothing` means unconditionally, otherwise when the `Expr` (optionally in `Module`)
-- `enabled::Ref{Bool}`: If the breakpoint is enabled (should not be directly modified, use `[enable]`(@ref) or `[disable]`(@ref))
-- `instances::Vector{BreakpointRef}`: All the [`BreakpointRef`](@ref) that the breakpoint has applied to
-- `line::Int` The line of the breakpoint (equal to 0 if unset)
+- `condition::Union{Nothing,Expr,Tuple{Module,Expr}}`: the condition when the breakpoint applies .
+  `nothing` means unconditionally, otherwise when the `Expr` (optionally in `Module`).
+- `enabled::Ref{Bool}`: If the breakpoint is enabled (should not be directly modified, use [`enable()`](@ref) or [`disable()`](@ref)).
+- `instances::Vector{BreakpointRef}`: All the [`BreakpointRef`](@ref) that the breakpoint has applied to.
+- `line::Int` The line of the breakpoint (equal to 0 if unset).
 
 See [`BreakpointSignature`](@ref) and [`BreakpointFileLocation`](@ref) for additional fields in the concrete types.
 """
@@ -319,7 +319,7 @@ Fields:
 
 - `f::Union{Method, Function}`: A method or function that the breakpoint should apply to.
 - `sig::Union{Nothing, Type}`: if `f` is a `Method`, always equal to `nothing`. Otherwise, contains the method signature
-as a tuple type for what methods the breakpoint should apply to.
+   as a tuple type for what methods the breakpoint should apply to.
 
 For common fields shared by all breakpoints, see [`AbstractBreakpoint`](@ref).
 """
@@ -351,9 +351,8 @@ end
 A `BreakpointFileLocation` is a breakpoint that is set on a line in a file.
 
 Fields:
-
-- `path::String`: The literal string that was used to create the breakpoint, e.g. `"path/file.jl"`
-- `abspath`::String: The absolute path to the file when the breakpoint was created, e.g. `"/Users/Someone/path/file.jl"`
+- `path::String`: The literal string that was used to create the breakpoint, e.g. `"path/file.jl"`.
+- `abspath`::String: The absolute path to the file when the breakpoint was created, e.g. `"/Users/Someone/path/file.jl"`.
 
 For common fields shared by all breakpoints, see [`AbstractBreakpoint`](@ref).
 """
