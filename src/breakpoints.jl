@@ -1,4 +1,10 @@
 const _breakpoints = AbstractBreakpoint[]
+
+"""
+    breakpoints()::Vector{AbstractBreakpoint}
+
+Return an array with all breakpoints.
+"""
 breakpoints() = _breakpoints
 
 function add_to_existing_framecodes(bp::AbstractBreakpoint)

@@ -66,6 +66,7 @@ remove
 toggle
 break_on
 break_off
+breakpoints
 JuliaInterpreter.dummy_breakpoint
 ```
 
@@ -78,6 +79,9 @@ JuliaInterpreter.FrameData
 JuliaInterpreter.FrameInstance
 JuliaInterpreter.BreakpointState
 JuliaInterpreter.BreakpointRef
+JuliaInterpreter.AbstractBreakpoint
+JuliaInterpreter.BreakpointSignature
+JuliaInterpreter.BreakpointFileLocation
 ```
 
 ## Internal storage

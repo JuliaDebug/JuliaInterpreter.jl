@@ -282,10 +282,47 @@ end
 # Possible types for breakpoint condition
 const Condition = Union{Nothing,Expr,Tuple{Module,Expr}}
 
+"""
+`AbstractBreakpoint` is the abstract type that is the supertype for breakpoints. Currently,
+the concrete breakpoint types [`BreakpointSignature`](@ref) and [`BreakpointFileLocation`](@ref)
+exist.
+
+Common fields shared by the concrete breakpoints:
+
+- `condition::Union{Nothing,Expr,Tuple{Module,Expr}}`: the condition when the breakpoint applies
+`nothing` means unconditionally, otherwise when the `Expr` (optionally in `Module`)
+- `enabled::Ref{Bool}`: If the breakpoint is enabled (should not be directly modified, use `[enable]`(@ref) or `[disable]`(@ref))
+- `instances::Vector{BreakpointRef}`: All the [`BreakpointRef`](@ref) that the breakpoint has applied to
+- `line::Int` The line of the breakpoint (equal to 0 if unset)
+
+See [`BreakpointSignature`](@ref) and [`BreakpointFileLocation`](@ref) for additional fields in the concrete types.
+"""
 abstract type AbstractBreakpoint end
 
 same_location(::AbstractBreakpoint, ::AbstractBreakpoint) = false
 
+function print_bp_condition(io::IO, cond::Condition)
+    if cond !== nothing
+        if isa(cond, Tuple{Module, Expr}) && (expr = expr[2])
+            cond = (cond[1], Base.remove_linenums!(copy(cond[2])))
+        elseif isa(expr, Expr)
+            cond = Base.remove_linenums!(copy(cond))
+        end
+        print(io, " ", cond)
+    end
+end
+
+"""
+A `BreakpointSignature` is a breakpoint that is set on methods or functions.
+
+Fields:
+
+- `f::Union{Method, Function}`: A method or function that the breakpoint should apply to.
+- `sig::Union{Nothing, Type}`: if `f` is a `Method`, always equal to `nothing`. Otherwise, contains the method signature
+as a tuple type for what methods the breakpoint should apply to.
+
+For common fields shared by all breakpoints, see [`AbstractBreakpoint`](@ref).
+"""
 struct BreakpointSignature <: AbstractBreakpoint
     f::Union{Method, Function}
     sig::Union{Nothing, Type}
@@ -297,7 +334,6 @@ end
 same_location(bp2::BreakpointSignature, bp::BreakpointSignature) = 
     bp2.f == bp.f && bp2.sig == bp.sig && bp2.line == bp.line
 function Base.show(io::IO, bp::BreakpointSignature)
-    print(io, "BreakpointSignature: ")
     print(io, bp.f)
     if bp.sig !== nothing
         print(io, '(', join("::" .* string.(bp.sig.types), ", "), ')')
@@ -305,14 +341,22 @@ function Base.show(io::IO, bp::BreakpointSignature)
     if bp.line !== 0
         print(io, bp.line)
     end
-    if bp.condition !== nothing
-        print(io, " ", Base.remove_linenums!(copy(bp.condition)))
-    end
+    print_bp_condition(io, bp.condition)
     if !bp.enabled[]
         print(io, " [disabled]")
     end
 end
 
+"""
+A `BreakpointFileLocation` is a breakpoint that is set on a line in a file.
+
+Fields:
+
+- `path::String`: The literal string that was used to create the breakpoint, e.g. `"path/file.jl"`
+- `abspath`::String: The absolute path to the file when the breakpoint was created, e.g. `"/Users/Someone/path/file.jl"`
+
+For common fields shared by all breakpoints, see [`AbstractBreakpoint`](@ref).
+"""
 struct BreakpointFileLocation <: AbstractBreakpoint
     # Both the input path and the absolute path is stored to handle the case
     # where a user sets a breakpoint on a relative path e.g. `../foo.jl`. The absolute path is needed
@@ -329,11 +373,8 @@ end
 same_location(bp2::BreakpointFileLocation, bp::BreakpointFileLocation) = 
     bp2.path == bp.path && bp2.abspath == bp.abspath && bp2.line == bp.line
 function Base.show(io::IO, bp::BreakpointFileLocation)
-    print(io, "BreakpointFileLocation: ")
     print(io, bp.path, ':', bp.line)
-    if bp.condition !== nothing
-        print(io, " ", Base.remove_linenums!(copy(bp.condition)))
-    end
+    print_bp_condition(io, bp.condition)
     if !bp.enabled[]
         print(io, " [disabled]")
     end
