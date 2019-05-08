@@ -339,7 +339,7 @@ function Base.show(io::IO, bp::BreakpointSignature)
         print(io, '(', join("::" .* string.(bp.sig.types), ", "), ')')
     end
     if bp.line !== 0
-        print(io, bp.line)
+        print(io, ":", bp.line)
     end
     print_bp_condition(io, bp.condition)
     if !bp.enabled[]
