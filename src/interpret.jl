@@ -294,14 +294,23 @@ function set_structtype_const(mod::Module, name::Symbol)
 end
 
 function evaluate_structtype(@nospecialize(recurse), frame, node)
+    grsvec!(ex::Expr) = (ex.args[1] = GlobalRef(Core, :svec); return ex)
+
     name, mod = structname(frame, node)
-    params = lookup_or_eval(recurse, frame, node.args[2])::SimpleVector
-    fieldnames = lookup_or_eval(recurse, frame, node.args[3])::SimpleVector
     supertype = lookup_or_eval(recurse, frame, node.args[4])::Type
-    fieldtypes = lookup_or_eval(recurse, frame, node.args[5])::SimpleVector
     ismutable = node.args[6]
     ninit = node.args[7]
-    Core.eval(mod, Expr(:struct_type, name, params, fieldnames, supertype, fieldtypes, ismutable, ninit))
+    newstructexpr = Expr(:struct_type, name, nothing, nothing, supertype, nothing, ismutable, ninit)
+    for idx in (2, 3, 5)
+        ex = newstructexpr.args[idx] = grsvec!(copy(node.args[idx]))
+        for i = 2:length(ex.args)
+            a = ex.args[i]
+            if isa(a, SSAValue) || isa(a, SlotNumber)
+                ex.args[i] = lookup_var(frame, a)
+            end
+        end
+    end
+    Core.eval(mod, newstructexpr)
     VERSION < v"1.2.0-DEV.239" && set_structtype_const(mod, name)
 end
 
