@@ -29,7 +29,7 @@ function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointSignat
         if ft <: Function && isa(ft, DataType) && isdefined(ft, :instance)
             return ft.instance
         elseif isa(ft, DataType) && ft.name === Type.body.name
-            f = ft.parameters[1]
+            return ft.parameters[1]
         else
             return ft
         end
