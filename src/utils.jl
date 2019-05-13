@@ -233,6 +233,20 @@ function codelocation(code::CodeInfo, idx)
     return codeloc
 end
 
+function compute_corrected_linerange(method::Method)
+    _, line1 = whereis(method)
+    offset = line1 - method.line
+    src = JuliaInterpreter.get_source(method)
+    lastline = src.linetable[end]
+    return line1:getline(lastline) + offset
+end
+
+function method_contains_line(method::Method, line::Integer)
+    # Check to see if this method really contains that line. Methods that fill in a default positional argument,
+    # keyword arguments, and @generated sections may not contain the line.
+    return line in compute_corrected_linerange(method)
+end
+
 """
     stmtidx = statementnumber(frame, line)
 

@@ -523,3 +523,10 @@ function f()
     repr(z[1])
 end
 @test @interpret f() == f()
+
+# Test JuliaInterpreter version of #265
+f(x) = x
+g(x) = f(x)
+@test (@interpret g(5)) == g(5)
+f(x) = x*x
+@test (@interpret g(5)) == g(5)

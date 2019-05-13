@@ -14,7 +14,7 @@ using InteractiveUtils
 using CodeTracking
 
 export @interpret, Compiled, Frame, root, leaf,
-       BreakpointRef, breakpoint, @breakpoint, breakpoints, enable, disable, remove,
+       BreakpointRef, breakpoint, @breakpoint, breakpoints, enable, disable, remove, toggle,
        debug_command, @bp, break_on, break_off
 
 module CompiledCalls
@@ -39,6 +39,9 @@ include("commands.jl")
 include("breakpoints.jl")
 
 function set_compiled_methods()
+    ###########
+    # Methods #
+    ###########
     # Work around #28 by preventing interpretation of all Base methods that have a ccall to memcpy
     push!(compiled_methods, which(vcat, (Vector,)))
     push!(compiled_methods, first(methods(Base._getindex_ra)))
@@ -69,6 +72,7 @@ function set_compiled_methods()
     # These are currently extremely slow to interpret (https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/193)
     push!(compiled_methods, which(subtypes, Tuple{Module, Type}))
     push!(compiled_methods, which(subtypes, Tuple{Type}))
+    push!(compiled_methods, which(match, Tuple{Regex, String, Int, UInt32}))
 
     # Anything that ccalls jl_typeinf_begin cannot currently be handled
     for finf in (Core.Compiler.typeinf_code, Core.Compiler.typeinf_ext, Core.Compiler.typeinf_type)
@@ -77,6 +81,9 @@ function set_compiled_methods()
         end
     end
 
+    ###########
+    # Modules #
+    ###########
     push!(compiled_modules, Base.Threads)
 end
 

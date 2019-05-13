@@ -58,11 +58,11 @@ end
 One `FrameCode` can be shared by many calling `Frame`s.
 
 Important fields:
-- `scope`: the `Method` or `Module` in which this frame is to be evaluated
-- `src`: the `CodeInfo` object storing (optimized) lowered source code
+- `scope`: the `Method` or `Module` in which this frame is to be evaluated.
+- `src`: the `CodeInfo` object storing (optimized) lowered source code.
 - `methodtables`: a vector, each entry potentially stores a "local method table" for the corresponding
   `:call` expression in `src` (undefined entries correspond to statements that do not
-  contain `:call` expressions)
+  contain `:call` expressions).
 - `used`: a `BitSet` storing the list of SSAValues that get referenced by later statements.
 """
 struct FrameCode
@@ -90,7 +90,21 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
         end
     end
     used = find_used(src)
-    return FrameCode(scope, src, methodtables, breakpoints, used, generator)
+    framecode = FrameCode(scope, src, methodtables, breakpoints, used, generator)
+    if scope isa Method
+        for bp in _breakpoints
+            # Manual union splitting
+            if bp isa BreakpointSignature
+                add_breakpoint_if_match!(framecode, bp)
+            elseif bp isa BreakpointFileLocation
+                add_breakpoint_if_match!(framecode, bp)
+            else
+                error("unhandled breakpoint type")
+            end
+        end
+    end
+
+    return framecode
 end
 
 nstatements(framecode::FrameCode) = length(framecode.src.code)
@@ -101,8 +115,8 @@ Base.show(io::IO, framecode::FrameCode) = print_framecode(io, framecode)
 `FrameInstance` represents a method specialized for particular argument types.
 
 Fields:
-- `framecode`: the [`FrameCode`](@ref) for the method
-- `sparam_vals`: the static parameter values for the method
+- `framecode`: the [`FrameCode`](@ref) for the method.
+- `sparam_vals`: the static parameter values for the method.
 """
 struct FrameInstance
     framecode::FrameCode
@@ -123,7 +137,7 @@ Important fields:
   to extract the current value of local variables.
 - `ssavalues`: a vector containing the
   [Static Single Assignment](https://en.wikipedia.org/wiki/Static_single_assignment_form)
-  values produced at the current state of execution
+  values produced at the current state of execution.
 - `sparams`: the static type parameters, e.g., for `f(x::Vector{T}) where T` this would store
   the value of `T` given the particular input `x`.
 - `exception_frames`: a list of indexes to `catch` blocks for handling exceptions within
@@ -147,11 +161,11 @@ end
 """
 `Frame` represents the current execution state in a particular call frame.
 Fields:
-- `framecode`: the [`FrameCode`] for this frame
-- `framedata`: the [`FrameData`] for this frame
-- `pc`: the program counter (integer index of the next statment to be evaluated) for this frame
-- `caller`: the parent caller of this frame, or `nothing`
-- `callee`: the frame called by this one, or `nothing`
+- `framecode`: the [`FrameCode`] for this frame.
+- `framedata`: the [`FrameData`] for this frame.
+- `pc`: the program counter (integer index of the next statment to be evaluated) for this frame.
+- `caller`: the parent caller of this frame, or `nothing`.
+- `callee`: the frame called by this one, or `nothing`.
 
 The `Base` functions `show_backtrace` and `display_error` are overloaded such that
 `show_backtrace(io::IO, frame::Frame)` and `display_error(io::IO, er, frame::Frame)`
@@ -215,9 +229,9 @@ By calling the function `locals`[@ref] on a `Frame`[@ref] a
 `Vector` of `Variable`'s is returned.
 
 Important fields:
-- `value::Any`: the value of the local variable
-- `name::Symbol`: the name of the variable as given in the source code
-- `isparam::Bool`: if the variable is a type parameter, for example `T` in `f(x::T) where {T} = x` .
+- `value::Any`: the value of the local variable.
+- `name::Symbol`: the name of the variable as given in the source code.
+- `isparam::Bool`: if the variable is a type parameter, for example `T` in `f(x::T) where {T} = x`.
 """
 struct Variable
     value::Any
@@ -248,6 +262,9 @@ struct BreakpointRef
     err
 end
 BreakpointRef(framecode, stmtidx) = BreakpointRef(framecode, stmtidx, nothing)
+Base.getindex(bp::BreakpointRef) = bp.framecode.breakpoints[bp.stmtidx]
+Base.setindex!(bp::BreakpointRef, isactive::Bool) =
+    bp.framecode.breakpoints[bp.stmtidx] = BreakpointState(isactive, bp[].condition)
 
 function Base.show(io::IO, bp::BreakpointRef)
     if checkbounds(Bool, bp.framecode.breakpoints, bp.stmtidx)
@@ -261,3 +278,104 @@ function Base.show(io::IO, bp::BreakpointRef)
     end
     print(io, ')')
 end
+
+# Possible types for breakpoint condition
+const Condition = Union{Nothing,Expr,Tuple{Module,Expr}}
+
+"""
+`AbstractBreakpoint` is the abstract type that is the supertype for breakpoints. Currently,
+the concrete breakpoint types [`BreakpointSignature`](@ref) and [`BreakpointFileLocation`](@ref)
+exist.
+
+Common fields shared by the concrete breakpoints:
+
+- `condition::Union{Nothing,Expr,Tuple{Module,Expr}}`: the condition when the breakpoint applies .
+  `nothing` means unconditionally, otherwise when the `Expr` (optionally in `Module`).
+- `enabled::Ref{Bool}`: If the breakpoint is enabled (should not be directly modified, use [`enable()`](@ref) or [`disable()`](@ref)).
+- `instances::Vector{BreakpointRef}`: All the [`BreakpointRef`](@ref) that the breakpoint has applied to.
+- `line::Int` The line of the breakpoint (equal to 0 if unset).
+
+See [`BreakpointSignature`](@ref) and [`BreakpointFileLocation`](@ref) for additional fields in the concrete types.
+"""
+abstract type AbstractBreakpoint end
+
+same_location(::AbstractBreakpoint, ::AbstractBreakpoint) = false
+
+function print_bp_condition(io::IO, cond::Condition)
+    if cond !== nothing
+        if isa(cond, Tuple{Module, Expr}) && (expr = expr[2])
+            cond = (cond[1], Base.remove_linenums!(copy(cond[2])))
+        elseif isa(cond, Expr)
+            cond = Base.remove_linenums!(copy(cond))
+        end
+        print(io, " ", cond)
+    end
+end
+
+"""
+A `BreakpointSignature` is a breakpoint that is set on methods or functions.
+
+Fields:
+
+- `f::Union{Method, Function}`: A method or function that the breakpoint should apply to.
+- `sig::Union{Nothing, Type}`: if `f` is a `Method`, always equal to `nothing`. Otherwise, contains the method signature
+   as a tuple type for what methods the breakpoint should apply to.
+
+For common fields shared by all breakpoints, see [`AbstractBreakpoint`](@ref).
+"""
+struct BreakpointSignature <: AbstractBreakpoint
+    f::Union{Method, Function}
+    sig::Union{Nothing, Type}
+    line::Int # 0 is a sentinel for first statement
+    condition::Condition
+    enabled::Ref{Bool}
+    instances::Vector{BreakpointRef}
+end
+same_location(bp2::BreakpointSignature, bp::BreakpointSignature) = 
+    bp2.f == bp.f && bp2.sig == bp.sig && bp2.line == bp.line
+function Base.show(io::IO, bp::BreakpointSignature)
+    print(io, bp.f)
+    if bp.sig !== nothing
+        print(io, '(', join("::" .* string.(bp.sig.types), ", "), ')')
+    end
+    if bp.line !== 0
+        print(io, ":", bp.line)
+    end
+    print_bp_condition(io, bp.condition)
+    if !bp.enabled[]
+        print(io, " [disabled]")
+    end
+end
+
+"""
+A `BreakpointFileLocation` is a breakpoint that is set on a line in a file.
+
+Fields:
+- `path::String`: The literal string that was used to create the breakpoint, e.g. `"path/file.jl"`.
+- `abspath`::String: The absolute path to the file when the breakpoint was created, e.g. `"/Users/Someone/path/file.jl"`.
+
+For common fields shared by all breakpoints, see [`AbstractBreakpoint`](@ref).
+"""
+struct BreakpointFileLocation <: AbstractBreakpoint
+    # Both the input path and the absolute path is stored to handle the case
+    # where a user sets a breakpoint on a relative path e.g. `../foo.jl`. The absolute path is needed
+    # to handle the case where the current working directory change, and
+    # the input path is needed to do "partial path matches", e.g match "src/foo.jl" against
+    # "Package/src/foo.jl".
+    path::String
+    abspath::String
+    line::Int
+    condition::Condition
+    enabled::Ref{Bool}
+    instances::Vector{BreakpointRef}
+end
+same_location(bp2::BreakpointFileLocation, bp::BreakpointFileLocation) = 
+    bp2.path == bp.path && bp2.abspath == bp.abspath && bp2.line == bp.line
+function Base.show(io::IO, bp::BreakpointFileLocation)
+    print(io, bp.path, ':', bp.line)
+    print_bp_condition(io, bp.condition)
+    if !bp.enabled[]
+        print(io, " [disabled]")
+    end
+end
+
