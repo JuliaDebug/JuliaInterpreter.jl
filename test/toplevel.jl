@@ -391,3 +391,11 @@ end
     @test length(docexprs[Toplevel]) == 2
     @test length(docexprs[Toplevel.Sub]) == 1
 end
+
+@testset "Self referential" begin
+    # Revise issue #304
+    ex = :(mutable struct Node t :: Node end)
+    frame = JuliaInterpreter.prepare_thunk(Toplevel, ex)
+    JuliaInterpreter.finish!(frame, true)
+    @test Toplevel.Node isa Type
+end
