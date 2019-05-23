@@ -11,23 +11,20 @@ julia&gt; sum(list)
 8
 
 julia&gt; @interpret sum(list)
-8</code></pre><h2><a class="nav-anchor" id="Breakpoints-1" href="#Breakpoints-1">Breakpoints</a></h2><p>You can interrupt execution by setting breakpoints. You can set breakpoints via packages that explicitly target debugging, like <a href="http://junolab.org/">Juno</a>, <a href="https://github.com/JuliaDebug/Debugger.jl">Debugger</a>, and <a href="https://github.com/timholy/Rebugger.jl">Rebugger</a>. But all of these just leverage the core functionality defined in JuliaInterpreter, so here we&#39;ll illustrate it without using any of these other packages.</p><p>Let&#39;s set a conditional breakpoint, to be triggered any time one of the elements in the argument to <code>sum</code> is bigger than 4:</p><pre><code class="language-julia-repl">julia&gt; @breakpoint sum([1, 2]) any(x-&gt;x&gt;4, a)
-breakpoint(sum(a::AbstractArray) in Base at reducedim.jl:648, line 648)</code></pre><p>Note that in writing the condition, we used <code>a</code>, the name of the argument to the relevant method of <code>sum</code>. Conditionals should be written using a combination of argument and parameter names of the method into which you&#39;re inserting a breakpoint; you can also use any globally-available name (as used here with the <code>any</code> function).</p><p>Now let&#39;s see what happens:</p><pre><code class="language-julia-repl">julia&gt; @interpret sum([1,2,3])  # no element bigger than 4, breakpoint should not trigger
+8</code></pre><h2><a class="nav-anchor" id="Breakpoints-1" href="#Breakpoints-1">Breakpoints</a></h2><p>You can interrupt execution by setting breakpoints. You can set breakpoints via packages that explicitly target debugging, like <a href="https://junolab.org/">Juno</a>, <a href="https://github.com/JuliaDebug/Debugger.jl">Debugger</a>, and <a href="https://github.com/timholy/Rebugger.jl">Rebugger</a>. But all of these just leverage the core functionality defined in JuliaInterpreter, so here we&#39;ll illustrate it without using any of these other packages.</p><p>Let&#39;s set a conditional breakpoint, to be triggered any time one of the elements in the argument to <code>sum</code> is bigger than 4:</p><pre><code class="language-julia-repl">julia&gt; bp = @breakpoint sum([1, 2]) any(x-&gt;x&gt;4, a);</code></pre><p>Note that in writing the condition, we used <code>a</code>, the name of the argument to the relevant method of <code>sum</code>. Conditionals should be written using a combination of argument and parameter names of the method into which you&#39;re inserting a breakpoint; you can also use any globally-available name (as used here with the <code>any</code> function).</p><p>Now let&#39;s see what happens:</p><pre><code class="language-julia-repl">julia&gt; @interpret sum([1,2,3])  # no element bigger than 4, breakpoint should not trigger
 6
 
-julia&gt; frame, bp = @interpret sum([1,2,5])  # should trigger breakpoint
+julia&gt; frame, bpref = @interpret sum([1,2,5])  # should trigger breakpoint
 (Frame for sum(a::AbstractArray) in Base at reducedim.jl:648
 c 1* 648  1 ─      nothing
   2  648  │   %2 = (Base.#sum#550)(Colon(), #self#, a)
   3  648  └──      return %2
-a = [1, 2, 5], breakpoint(sum(a::AbstractArray) in Base at reducedim.jl:648, line 648))</code></pre><p><code>frame</code> is described in more detail on the next page; for now, suffice it to say that the <code>c</code> in the leftmost column indicates the presence of a conditional breakpoint upon entry to <code>sum</code>. <code>bp</code> is a reference to the breakpoint. You can manipulate these at the command line:</p><pre><code class="language-julia-repl">julia&gt; disable(bp)
-false
+a = [1, 2, 5], breakpoint(sum(a::AbstractArray) in Base at reducedim.jl:648, line 648))</code></pre><p><code>frame</code> is described in more detail on the next page; for now, suffice it to say that the <code>c</code> in the leftmost column indicates the presence of a conditional breakpoint upon entry to <code>sum</code>. <code>bpref</code> is a reference to the breakpoint of type <a href="dev_reference/#JuliaInterpreter.BreakpointRef"><code>BreakpointRef</code></a>. The breakpoint <code>bp</code> we created can be manipulated at the command line</p><pre><code class="language-julia-repl">julia&gt; disable(bp)
 
 julia&gt; @interpret sum([1,2,5])
 8
 
 julia&gt; enable(bp)
-true
 
 julia&gt; @interpret sum([1,2,5])
 (Frame for sum(a::AbstractArray) in Base at reducedim.jl:648

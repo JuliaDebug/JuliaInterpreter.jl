@@ -29,7 +29,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Home",
     "title": "Breakpoints",
     "category": "section",
-    "text": "You can interrupt execution by setting breakpoints. You can set breakpoints via packages that explicitly target debugging, like Juno, Debugger, and Rebugger. But all of these just leverage the core functionality defined in JuliaInterpreter, so here we\'ll illustrate it without using any of these other packages.Let\'s set a conditional breakpoint, to be triggered any time one of the elements in the argument to sum is bigger than 4:julia> @breakpoint sum([1, 2]) any(x->x>4, a)\nbreakpoint(sum(a::AbstractArray) in Base at reducedim.jl:648, line 648)Note that in writing the condition, we used a, the name of the argument to the relevant method of sum. Conditionals should be written using a combination of argument and parameter names of the method into which you\'re inserting a breakpoint; you can also use any globally-available name (as used here with the any function).Now let\'s see what happens:julia> @interpret sum([1,2,3])  # no element bigger than 4, breakpoint should not trigger\n6\n\njulia> frame, bp = @interpret sum([1,2,5])  # should trigger breakpoint\n(Frame for sum(a::AbstractArray) in Base at reducedim.jl:648\nc 1* 648  1 ─      nothing\n  2  648  │   %2 = (Base.#sum#550)(Colon(), #self#, a)\n  3  648  └──      return %2\na = [1, 2, 5], breakpoint(sum(a::AbstractArray) in Base at reducedim.jl:648, line 648))frame is described in more detail on the next page; for now, suffice it to say that the c in the leftmost column indicates the presence of a conditional breakpoint upon entry to sum. bp is a reference to the breakpoint. You can manipulate these at the command line:julia> disable(bp)\nfalse\n\njulia> @interpret sum([1,2,5])\n8\n\njulia> enable(bp)\ntrue\n\njulia> @interpret sum([1,2,5])\n(Frame for sum(a::AbstractArray) in Base at reducedim.jl:648\nc 1* 648  1 ─      nothing\n  2  648  │   %2 = (Base.#sum#550)(Colon(), #self#, a)\n  3  648  └──      return %2\na = [1, 2, 5], breakpoint(sum(a::AbstractArray) in Base at reducedim.jl:648, line 648))disable and enable allow you to turn breakpoints off and on without losing any conditional statements you may have provided; remove allows a permanent removal of the breakpoint. You can use remove() to remove all breakpoints in all methods.@breakpoint allows you to optionally specify a line number at which the breakpoint is to be set. You can also use a functional form, breakpoint, to specify file/line combinations or that you want to break on entry to any method of a particular function. At present, note that some of this functionality requires that you be running Revise.jl.It is, in addition, possible to halt execution when otherwise an error would be thrown. This functionality is enabled using break_on and disabled with break_off:julia> function f_outer()\n           println(\"before error\")\n           f_inner()\n           println(\"after error\")\n       end;\n\njulia> f_inner() = error(\"inner error\");\n\njulia> break_on(:error)\n\njulia> fr, pc = @interpret f_outer()\nbefore error\n(Frame for f_outer() in Main at none:2\n  1  2  1 ─      (println)(\"before error\")\n  2* 3  │        (f_inner)()\n  3  4  │   %3 = (println)(\"after error\")\n  4  4  └──      return %3\ncallee: f_inner() in Main at none:1, breakpoint(error(s::AbstractString) in Base at error.jl:33, line 33, ErrorException(\"inner error\")))\n\njulia> leaf(fr)\nFrame for error(s::AbstractString) in Base at error.jl:33\n  1  33  1 ─ %1 = (ErrorException)(s)\n  2* 33  │   %2 = (throw)(%1)\n  3  33  └──      return %2\ns = \"inner error\"\ncaller: f_inner() in Main at none:1\n\njulia> typeof(pc)\nBreakpointRef\n\njulia> pc.err\nErrorException(\"inner error\")\n\njulia> break_off(:error)\n\njulia> @interpret f_outer()\nbefore error\nERROR: inner error\nStacktrace:\n[...]Finally, you can set breakpoints using @bp:julia> function myfunction(x, y)\n           a = 1\n           b = 2\n           x > 3 && @bp\n           return a + b + x + y\n       end\nmyfunction (generic function with 1 method)\n\njulia> @interpret myfunction(1, 2)\n6\n\njulia> @interpret myfunction(5, 6)\n(Frame for myfunction(x, y) in Main at none:2\n⋮\n  3  4  │   %3 = (>)(x, 3)\n  4  4  └──      goto #3 if not %3\nb 5* 4  2 ─      nothing\n  6  4  └──      goto #3\n  7  5  3 ┄ %7 = (+)(a, b, x, y)\n⋮\nx = 5\ny = 6\na = 1\nb = 2, breakpoint(myfunction(x, y) in Main at none:2, line 4))Here the breakpoint is marked with a b indicating that it is an unconditional breakpoint. Because we placed it inside the condition x > 3, we\'ve achieved a conditional outcome.When using @bp in source-code files, the use of Revise is recommended, since it allows you to add breakpoints, test code, and then remove the breakpoints from the code without restarting Julia."
+    "text": "You can interrupt execution by setting breakpoints. You can set breakpoints via packages that explicitly target debugging, like Juno, Debugger, and Rebugger. But all of these just leverage the core functionality defined in JuliaInterpreter, so here we\'ll illustrate it without using any of these other packages.Let\'s set a conditional breakpoint, to be triggered any time one of the elements in the argument to sum is bigger than 4:julia> bp = @breakpoint sum([1, 2]) any(x->x>4, a);Note that in writing the condition, we used a, the name of the argument to the relevant method of sum. Conditionals should be written using a combination of argument and parameter names of the method into which you\'re inserting a breakpoint; you can also use any globally-available name (as used here with the any function).Now let\'s see what happens:julia> @interpret sum([1,2,3])  # no element bigger than 4, breakpoint should not trigger\n6\n\njulia> frame, bpref = @interpret sum([1,2,5])  # should trigger breakpoint\n(Frame for sum(a::AbstractArray) in Base at reducedim.jl:648\nc 1* 648  1 ─      nothing\n  2  648  │   %2 = (Base.#sum#550)(Colon(), #self#, a)\n  3  648  └──      return %2\na = [1, 2, 5], breakpoint(sum(a::AbstractArray) in Base at reducedim.jl:648, line 648))frame is described in more detail on the next page; for now, suffice it to say that the c in the leftmost column indicates the presence of a conditional breakpoint upon entry to sum. bpref is a reference to the breakpoint of type BreakpointRef. The breakpoint bp we created can be manipulated at the command linejulia> disable(bp)\n\njulia> @interpret sum([1,2,5])\n8\n\njulia> enable(bp)\n\njulia> @interpret sum([1,2,5])\n(Frame for sum(a::AbstractArray) in Base at reducedim.jl:648\nc 1* 648  1 ─      nothing\n  2  648  │   %2 = (Base.#sum#550)(Colon(), #self#, a)\n  3  648  └──      return %2\na = [1, 2, 5], breakpoint(sum(a::AbstractArray) in Base at reducedim.jl:648, line 648))disable and enable allow you to turn breakpoints off and on without losing any conditional statements you may have provided; remove allows a permanent removal of the breakpoint. You can use remove() to remove all breakpoints in all methods.@breakpoint allows you to optionally specify a line number at which the breakpoint is to be set. You can also use a functional form, breakpoint, to specify file/line combinations or that you want to break on entry to any method of a particular function. At present, note that some of this functionality requires that you be running Revise.jl.It is, in addition, possible to halt execution when otherwise an error would be thrown. This functionality is enabled using break_on and disabled with break_off:julia> function f_outer()\n           println(\"before error\")\n           f_inner()\n           println(\"after error\")\n       end;\n\njulia> f_inner() = error(\"inner error\");\n\njulia> break_on(:error)\n\njulia> fr, pc = @interpret f_outer()\nbefore error\n(Frame for f_outer() in Main at none:2\n  1  2  1 ─      (println)(\"before error\")\n  2* 3  │        (f_inner)()\n  3  4  │   %3 = (println)(\"after error\")\n  4  4  └──      return %3\ncallee: f_inner() in Main at none:1, breakpoint(error(s::AbstractString) in Base at error.jl:33, line 33, ErrorException(\"inner error\")))\n\njulia> leaf(fr)\nFrame for error(s::AbstractString) in Base at error.jl:33\n  1  33  1 ─ %1 = (ErrorException)(s)\n  2* 33  │   %2 = (throw)(%1)\n  3  33  └──      return %2\ns = \"inner error\"\ncaller: f_inner() in Main at none:1\n\njulia> typeof(pc)\nBreakpointRef\n\njulia> pc.err\nErrorException(\"inner error\")\n\njulia> break_off(:error)\n\njulia> @interpret f_outer()\nbefore error\nERROR: inner error\nStacktrace:\n[...]Finally, you can set breakpoints using @bp:julia> function myfunction(x, y)\n           a = 1\n           b = 2\n           x > 3 && @bp\n           return a + b + x + y\n       end\nmyfunction (generic function with 1 method)\n\njulia> @interpret myfunction(1, 2)\n6\n\njulia> @interpret myfunction(5, 6)\n(Frame for myfunction(x, y) in Main at none:2\n⋮\n  3  4  │   %3 = (>)(x, 3)\n  4  4  └──      goto #3 if not %3\nb 5* 4  2 ─      nothing\n  6  4  └──      goto #3\n  7  5  3 ┄ %7 = (+)(a, b, x, y)\n⋮\nx = 5\ny = 6\na = 1\nb = 2, breakpoint(myfunction(x, y) in Main at none:2, line 4))Here the breakpoint is marked with a b indicating that it is an unconditional breakpoint. Because we placed it inside the condition x > 3, we\'ve achieved a conditional outcome.When using @bp in source-code files, the use of Revise is recommended, since it allows you to add breakpoints, test code, and then remove the breakpoints from the code without restarting Julia."
 },
 
 {
@@ -437,7 +437,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.breakpoint",
     "category": "function",
-    "text": "breakpoint(f, sig)\nbreakpoint(f, sig, line)\nbreakpoint(f, sig, condition)\nbreakpoint(f, sig, line, condition)\nbreakpoint(...; enter_generated=false)\n\nAdd a breakpoint to f with the specified argument types sig. Optionally specify an absolute line number line in the source file; the default is to break upon entry at the first line of the body. Without condition, the breakpoint will be triggered every time it is encountered; the second only if condition evaluates to true. condition should be written in terms of the arguments and local variables of f.\n\nExample\n\nfunction radius2(x, y)\n    return x^2 + y^2\nend\n\nbreakpoint(radius2, Tuple{Int,Int}, :(y > x))\n\n\n\n\n\nbreakpoint(method::Method)\nbreakpoint(method::Method, line)\nbreakpoint(method::Method, condition::Expr)\nbreakpoint(method::Method, line, condition::Expr)\n\nAdd a breakpoint to method.\n\n\n\n\n\nbreakpoint(f)\nbreakpoint(f, condition)\n\nBreak-on-entry to all methods of f.\n\n\n\n\n\nbreakpoint(filename, line)\nbreakpoint(filename, line, condition)\n\nSet a breakpoint at the specified file and line number.\n\n\n\n\n\n"
+    "text": "breakpoint(f, [sig], [line], [condition])\n\nAdd a breakpoint to f with the specified argument types sig.¨ If sig is not given, the breakpoint will apply to all methods of f. If f is a method, the breakpoint will only apply to that method. Optionally specify an absolute line number line in the source file; the default is to break upon entry at the first line of the body. Without condition, the breakpoint will be triggered every time it is encountered; the second only if condition evaluates to true. condition should be written in terms of the arguments and local variables of f.\n\nExample\n\nfunction radius2(x, y)\n    return x^2 + y^2\nend\n\nbreakpoint(radius2, Tuple{Int,Int}, :(y > x))\n\n\n\n\n\nbreakpoint(file, line, [condition])\n\nSet a breakpoint in file at line. The argument file can be a filename, a partial path or absolute path. For example, file = foo.jl will match against all files with the name foo.jl, file = src/foo.jl will match against all paths containing src/foo.jl, e.g. both Foo/src/foo.jl and Bar/src/foo.jl. Absolute paths only matches against the file with that exact absolute path.\n\n\n\n\n\n"
 },
 
 {
@@ -445,7 +445,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.enable",
     "category": "function",
-    "text": "enable(bp::BreakpointRef)\n\nEnable breakpoint bp.\n\n\n\n\n\nenable()\n\nEnable all breakpoints.\n\n\n\n\n\n"
+    "text": "enable(bp::AbstractBreakpoint)\n\nEnable breakpoint bp.\n\n\n\n\n\nenable()\n\nEnable all breakpoints.\n\n\n\n\n\n"
 },
 
 {
@@ -453,7 +453,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.disable",
     "category": "function",
-    "text": "disable(bp::BreakpointRef)\n\nDisable breakpoint bp. Disabled breakpoints can be re-enabled with enable.\n\n\n\n\n\ndisable()\n\nDisable all breakpoints.\n\n\n\n\n\n"
+    "text": "disable(bp::AbstractBreakpoint)\n\nDisable breakpoint bp. Disabled breakpoints can be re-enabled with enable.\n\n\n\n\n\ndisable()\n\nDisable all breakpoints.\n\n\n\n\n\n"
 },
 
 {
@@ -461,7 +461,15 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.remove",
     "category": "function",
-    "text": "remove(bp::BreakpointRef)\n\nRemove (delete) breakpoint bp. Removed breakpoints cannot be re-enabled.\n\n\n\n\n\nremove()\n\nRemove all breakpoints.\n\n\n\n\n\n"
+    "text": "remove(bp::AbstractBreakpoint)\n\nRemove (delete) breakpoint bp. Removed breakpoints cannot be re-enabled.\n\n\n\n\n\nremove()\n\nRemove all breakpoints.\n\n\n\n\n\n"
+},
+
+{
+    "location": "dev_reference/#JuliaInterpreter.toggle",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.toggle",
+    "category": "function",
+    "text": "toggle(bp::AbstractBreakpoint)\n\nToggle breakpoint bp.\n\n\n\n\n\n"
 },
 
 {
@@ -481,6 +489,14 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
+    "location": "dev_reference/#JuliaInterpreter.breakpoints",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.breakpoints",
+    "category": "function",
+    "text": "breakpoints()::Vector{AbstractBreakpoint}\n\nReturn an array with all breakpoints.\n\n\n\n\n\n"
+},
+
+{
     "location": "dev_reference/#JuliaInterpreter.dummy_breakpoint",
     "page": "Function reference",
     "title": "JuliaInterpreter.dummy_breakpoint",
@@ -493,7 +509,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "Breakpoints",
     "category": "section",
-    "text": "@breakpoint\n@bp\nbreakpoint\nenable\ndisable\nremove\nbreak_on\nbreak_off\nJuliaInterpreter.dummy_breakpoint"
+    "text": "@breakpoint\n@bp\nbreakpoint\nenable\ndisable\nremove\ntoggle\nbreak_on\nbreak_off\nbreakpoints\nJuliaInterpreter.dummy_breakpoint"
 },
 
 {
@@ -501,7 +517,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.Frame",
     "category": "type",
-    "text": "Frame represents the current execution state in a particular call frame. Fields:\n\nframecode: the [FrameCode] for this frame\nframedata: the [FrameData] for this frame\npc: the program counter (integer index of the next statment to be evaluated) for this frame\ncaller: the parent caller of this frame, or nothing\ncallee: the frame called by this one, or nothing\n\nThe Base functions show_backtrace and display_error are overloaded such that show_backtrace(io::IO, frame::Frame) and display_error(io::IO, er, frame::Frame) shows a backtrace or error, respectively, in a similar way as to how Base shows them.\n\n\n\n\n\n"
+    "text": "Frame represents the current execution state in a particular call frame. Fields:\n\nframecode: the [FrameCode] for this frame.\nframedata: the [FrameData] for this frame.\npc: the program counter (integer index of the next statment to be evaluated) for this frame.\ncaller: the parent caller of this frame, or nothing.\ncallee: the frame called by this one, or nothing.\n\nThe Base functions show_backtrace and display_error are overloaded such that show_backtrace(io::IO, frame::Frame) and display_error(io::IO, er, frame::Frame) shows a backtrace or error, respectively, in a similar way as to how Base shows them.\n\n\n\n\n\n"
 },
 
 {
@@ -509,7 +525,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.FrameCode",
     "category": "type",
-    "text": "FrameCode holds static information about a method or toplevel code. One FrameCode can be shared by many calling Frames.\n\nImportant fields:\n\nscope: the Method or Module in which this frame is to be evaluated\nsrc: the CodeInfo object storing (optimized) lowered source code\nmethodtables: a vector, each entry potentially stores a \"local method table\" for the corresponding :call expression in src (undefined entries correspond to statements that do not contain :call expressions)\nused: a BitSet storing the list of SSAValues that get referenced by later statements.\n\n\n\n\n\n"
+    "text": "FrameCode holds static information about a method or toplevel code. One FrameCode can be shared by many calling Frames.\n\nImportant fields:\n\nscope: the Method or Module in which this frame is to be evaluated.\nsrc: the CodeInfo object storing (optimized) lowered source code.\nmethodtables: a vector, each entry potentially stores a \"local method table\" for the corresponding :call expression in src (undefined entries correspond to statements that do not contain :call expressions).\nused: a BitSet storing the list of SSAValues that get referenced by later statements.\n\n\n\n\n\n"
 },
 
 {
@@ -517,7 +533,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.FrameData",
     "category": "type",
-    "text": "FrameData holds the arguments, local variables, and intermediate execution state in a particular call frame.\n\nImportant fields:\n\nlocals: a vector containing the input arguments and named local variables for this frame. The indexing corresponds to the names in the slotnames of the src. Use locals to extract the current value of local variables.\nssavalues: a vector containing the Static Single Assignment values produced at the current state of execution\nsparams: the static type parameters, e.g., for f(x::Vector{T}) where T this would store the value of T given the particular input x.\nexception_frames: a list of indexes to catch blocks for handling exceptions within the current frame. The active handler is the last one on the list.\nlast_exception: the exception thrown by this frame or one of its callees.\n\n\n\n\n\n"
+    "text": "FrameData holds the arguments, local variables, and intermediate execution state in a particular call frame.\n\nImportant fields:\n\nlocals: a vector containing the input arguments and named local variables for this frame. The indexing corresponds to the names in the slotnames of the src. Use locals to extract the current value of local variables.\nssavalues: a vector containing the Static Single Assignment values produced at the current state of execution.\nsparams: the static type parameters, e.g., for f(x::Vector{T}) where T this would store the value of T given the particular input x.\nexception_frames: a list of indexes to catch blocks for handling exceptions within the current frame. The active handler is the last one on the list.\nlast_exception: the exception thrown by this frame or one of its callees.\n\n\n\n\n\n"
 },
 
 {
@@ -525,7 +541,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.FrameInstance",
     "category": "type",
-    "text": "FrameInstance represents a method specialized for particular argument types.\n\nFields:\n\nframecode: the FrameCode for the method\nsparam_vals: the static parameter values for the method\n\n\n\n\n\n"
+    "text": "FrameInstance represents a method specialized for particular argument types.\n\nFields:\n\nframecode: the FrameCode for the method.\nsparam_vals: the static parameter values for the method.\n\n\n\n\n\n"
 },
 
 {
@@ -545,11 +561,35 @@ var documenterSearchIndex = {"docs": [
 },
 
 {
+    "location": "dev_reference/#JuliaInterpreter.AbstractBreakpoint",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.AbstractBreakpoint",
+    "category": "type",
+    "text": "AbstractBreakpoint is the abstract type that is the supertype for breakpoints. Currently, the concrete breakpoint types BreakpointSignature and BreakpointFileLocation exist.\n\nCommon fields shared by the concrete breakpoints:\n\ncondition::Union{Nothing,Expr,Tuple{Module,Expr}}: the condition when the breakpoint applies . nothing means unconditionally, otherwise when the Expr (optionally in Module).\nenabled::Ref{Bool}: If the breakpoint is enabled (should not be directly modified, use enable() or disable()).\ninstances::Vector{BreakpointRef}: All the BreakpointRef that the breakpoint has applied to.\nline::Int The line of the breakpoint (equal to 0 if unset).\n\nSee BreakpointSignature and BreakpointFileLocation for additional fields in the concrete types.\n\n\n\n\n\n"
+},
+
+{
+    "location": "dev_reference/#JuliaInterpreter.BreakpointSignature",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.BreakpointSignature",
+    "category": "type",
+    "text": "A BreakpointSignature is a breakpoint that is set on methods or functions.\n\nFields:\n\nf::Union{Method, Function}: A method or function that the breakpoint should apply to.\nsig::Union{Nothing, Type}: if f is a Method, always equal to nothing. Otherwise, contains the method signature  as a tuple type for what methods the breakpoint should apply to.\n\nFor common fields shared by all breakpoints, see AbstractBreakpoint.\n\n\n\n\n\n"
+},
+
+{
+    "location": "dev_reference/#JuliaInterpreter.BreakpointFileLocation",
+    "page": "Function reference",
+    "title": "JuliaInterpreter.BreakpointFileLocation",
+    "category": "type",
+    "text": "A BreakpointFileLocation is a breakpoint that is set on a line in a file.\n\nFields:\n\npath::String: The literal string that was used to create the breakpoint, e.g. \"path/file.jl\".\nabspath::String: The absolute path to the file when the breakpoint was created, e.g. \"/Users/Someone/path/file.jl\".\n\nFor common fields shared by all breakpoints, see AbstractBreakpoint.\n\n\n\n\n\n"
+},
+
+{
     "location": "dev_reference/#Types-1",
     "page": "Function reference",
     "title": "Types",
     "category": "section",
-    "text": "JuliaInterpreter.Frame\nJuliaInterpreter.FrameCode\nJuliaInterpreter.FrameData\nJuliaInterpreter.FrameInstance\nJuliaInterpreter.BreakpointState\nJuliaInterpreter.BreakpointRef"
+    "text": "JuliaInterpreter.Frame\nJuliaInterpreter.FrameCode\nJuliaInterpreter.FrameData\nJuliaInterpreter.FrameInstance\nJuliaInterpreter.BreakpointState\nJuliaInterpreter.BreakpointRef\nJuliaInterpreter.AbstractBreakpoint\nJuliaInterpreter.BreakpointSignature\nJuliaInterpreter.BreakpointFileLocation"
 },
 
 {
@@ -653,7 +693,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.Variable",
     "category": "type",
-    "text": "Variable is a struct representing a variable with an asigned value. By calling the function locals[@ref] on a Frame[@ref] a Vector of Variable\'s is returned.\n\nImportant fields:\n\nvalue::Any: the value of the local variable\nname::Symbol: the name of the variable as given in the source code\nisparam::Bool: if the variable is a type parameter, for example T in f(x::T) where {T} = x .\n\n\n\n\n\n"
+    "text": "Variable is a struct representing a variable with an asigned value. By calling the function locals[@ref] on a Frame[@ref] a Vector of Variable\'s is returned.\n\nImportant fields:\n\nvalue::Any: the value of the local variable.\nname::Symbol: the name of the variable as given in the source code.\nisparam::Bool: if the variable is a type parameter, for example T in f(x::T) where {T} = x.\n\n\n\n\n\n"
 },
 
 {
