@@ -147,7 +147,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         end
         new_expr = Expr(:call, argswrapped[1])
         popfirst!(argswrapped)
-        argsflat = Base.append_any(argswrapped...)
+        argsflat = append_any(argswrapped...)
         for x in argsflat
             push!(new_expr.args, (isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode)) ? QuoteNode(x) : x)
         end
