@@ -122,7 +122,7 @@ function prepare_args(@nospecialize(f), allargs, kwargs)
         allargs = [f, namedtuple(kwargs), allargs...]
     elseif f === Core._apply
         f = to_function(allargs[2])
-        allargs = Base.append_any((allargs[2],), allargs[3:end]...)
+        allargs = append_any((allargs[2],), allargs[3:end]...)
     end
     return f, allargs
 end
