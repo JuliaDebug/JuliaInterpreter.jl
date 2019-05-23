@@ -28,6 +28,12 @@ end
 
 const SlotNamesType = VERSION < v"1.2.0-DEV.606" ? Vector{Any} : Vector{Symbol}
 
+@static if VERSION < v"1.3.0-DEV.179"
+    const append_any = Base.append_any
+else
+    append_any(@nospecialize x...) = append!([], Core.svec((x...)...))
+end
+
 include("types.jl")
 include("utils.jl")
 include("construct.jl")
