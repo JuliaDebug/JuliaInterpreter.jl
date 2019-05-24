@@ -593,3 +593,18 @@ end
 @noinline f_345() = 1
 frame = JuliaInterpreter.enter_call(f_345)
 @test JuliaInterpreter.whereis(frame) == (@__FILE__(), @__LINE__() - 2)
+
+# issue #285
+using LinearAlgebra, SparseArrays, Random
+@testset "issue 285" begin
+    function solveit(A,b)
+        return A\b .+ det(A)
+    end
+
+    Random.seed!(123456)
+    n = 5
+    A = sprand(n,n,0.5)
+    A = A'*A
+    b = rand(n)
+    @test @interpret(solveit(A, b)) == solveit(A, b)
+end
