@@ -513,6 +513,36 @@ function f_mmap()
 end
 @interpret f_mmap()
 
+# parametric llvmcall (issues #112 and #288)
+module VecTest
+    using Tensors
+    Vec{N,T} = NTuple{N,VecElement{T}}
+    # The following test mimic SIMD.jl
+    const _llvmtypes = Dict{DataType, String}(
+        Float64 => "double",
+        Float32 => "float",
+        Int32 => "i32",
+        Int64 => "i64"
+    )
+    @generated function vecadd(x::Vec{N, T}, y::Vec{N, T}) where {N, T}
+        llvmT = _llvmtypes[T]
+        func = T <: AbstractFloat ? "fadd" : "add"
+        exp = """
+        %3 = $(func) <$(N) x $(llvmT)> %0, %1
+        ret <$(N) x $(llvmT)> %3
+        """
+        return quote
+            Base.@_inline_meta
+            Core.getfield(Base, :llvmcall)($exp, Vec{$N, $T}, Tuple{Vec{$N, $T}, Vec{$N, $T}}, x, y)
+        end
+    end
+    f() = 1.0 * one(Tensor{2,3})
+end
+let a = (VecElement{Float64}(1.0), VecElement{Float64}(2.0))
+    @test @interpret(VecTest.vecadd(a, a)) == VecTest.vecadd(a, a)
+end
+@test @interpret(VecTest.f()) == [1 0 0; 0 1 0; 0 0 1]
+
 # Test exception type for undefined variables
 f() = s = s + 1
 @test_throws UndefVarError @interpret f()

@@ -87,6 +87,19 @@ function scan_ssa_use!(used::BitSet, @nospecialize(stmt))
     end
 end
 
+function hasarg(predicate, args)
+    predicate(args) && return true
+    for a in args
+        predicate(a) && return true
+        if isa(a, Expr)
+            hasarg(predicate, a.args) && return true
+        elseif isa(a, QuoteNode)
+            predicate(a.value) && return true
+        end
+    end
+    return false
+end
+
 ## Predicates
 
 is_goto_node(@nospecialize(node)) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
