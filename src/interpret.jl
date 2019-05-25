@@ -411,6 +411,9 @@ function check_isdefined(frame, @nospecialize(node))
     error("unrecognized isdefined node ", node)
 end
 
+# For "profiling" where JuliaIntepreter spends its time. See the commented-out block
+# in `step_expr!`
+const _location = Dict{Tuple{Method,Int},Int}()
 
 function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplevel::Bool)
     pc, code, data = frame.pc, frame.framecode, frame.framedata
@@ -420,8 +423,12 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
     end
     @assert is_leaf(frame)
     local rhs
+    # For debugging:
     # show_stackloc(frame)
     # @show node
+    # For profiling:
+    # location_key = (scopeof(frame), pc)
+    # _location[location_key] = get(_location, location_key, 0) + 1
     try
         if isa(node, Expr)
             if node.head == :(=)
