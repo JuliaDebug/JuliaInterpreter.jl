@@ -172,7 +172,7 @@ function next_line!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false
     pc = frame.pc
     initialline, initialfile = linenumber(frame, pc), getfile(frame, pc)
     predicate(frame) = isexpr(pc_expr(frame), :return) || (linenumber(frame) != initialline || getfile(frame) != initialfile)
-    pc = next_until!(predicate, frame, istoplevel)
+    pc = next_until!(predicate, recurse, frame, istoplevel)
     (pc === nothing || isa(pc, BreakpointRef)) && return pc
     maybe_step_through_kwprep!(recurse, frame, istoplevel)
     maybe_next_call!(recurse, frame, istoplevel)
