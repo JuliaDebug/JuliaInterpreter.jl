@@ -489,7 +489,7 @@ end
     framecode, frameargs, lenv, argtypes = determine_method_for_expr(expr; enter_generated = false)
 
 Prepare all the information needed to execute a particular `:call` expression `expr`.
-For example, try `JuliaInterpreter.determine_method_for_expr(:($(sum)([1,2])))`.
+For example, try `JuliaInterpreter.determine_method_for_expr(:(\$sum([1,2])))`.
 See [`JuliaInterpreter.prepare_call`](@ref) for information about the outputs.
 """
 function determine_method_for_expr(expr; enter_generated = false)
