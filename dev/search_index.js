@@ -157,7 +157,7 @@ var documenterSearchIndex = {"docs": [
     "page": "Function reference",
     "title": "JuliaInterpreter.determine_method_for_expr",
     "category": "function",
-    "text": "framecode, frameargs, lenv, argtypes = determine_method_for_expr(expr; enter_generated = false)\n\nPrepare all the information needed to execute a particular :call expression expr. For example, try JuliaInterpreter.determine_method_for_expr(:(sum([1,2]))). See JuliaInterpreter.prepare_call for information about the outputs.\n\n\n\n\n\n"
+    "text": "framecode, frameargs, lenv, argtypes = determine_method_for_expr(expr; enter_generated = false)\n\nPrepare all the information needed to execute a particular :call expression expr. For example, try JuliaInterpreter.determine_method_for_expr(:($sum([1,2]))). See JuliaInterpreter.prepare_call for information about the outputs.\n\n\n\n\n\n"
 },
 
 {
