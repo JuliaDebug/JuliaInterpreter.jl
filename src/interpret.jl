@@ -229,7 +229,7 @@ function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr:
         if lenv === nothing
             if isa(framecode, Compiled)
                 popfirst!(fargs)  # now it's really just `args`
-                return f(fargs...)
+                return Base.invokelatest(f, fargs...)
             end
             return framecode  # this was a Builtin
         end
