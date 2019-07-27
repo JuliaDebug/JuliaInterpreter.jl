@@ -335,16 +335,24 @@ end
 Return the local variables as a vector of `Variable`[@ref].
 """
 function locals(frame::Frame)
-    vars = Variable[]
+    vars, var_counter = Variable[], Int[]
+    varlookup = Dict{Symbol,Int}()
     data, code = frame.framedata, frame.framecode
-    added = Set{Symbol}()
     slotnames = code.src.slotnames::SlotNamesType
-    for sym in slotnames
-        sym ∈ added && continue
-        idx = get(data.last_reference, sym, 0)
-        idx == 0 && continue
-        push!(vars, Variable(something(data.locals[idx]), sym, false))
-        push!(added, sym)
+    for (sym, counter, val) in zip(slotnames, data.last_reference, data.locals)
+        counter == 0 && continue
+        var = Variable(something(val), sym, false)
+        idx = get(varlookup, sym, 0)
+        if idx > 0
+            if counter > var_counter[idx]
+                vars[idx] = var
+                var_counter[idx] = counter
+            end
+        else
+            varlookup[sym] = length(vars)+1
+            push!(vars, var)
+            push!(var_counter, counter)
+        end
     end
     if code.scope isa Method
         syms = sparam_syms(code.scope)
@@ -424,7 +432,8 @@ function eval_code end
 eval_code(frame::Frame, command::AbstractString) = eval_code(frame, Base.parse_input_line(command))
 function eval_code(frame::Frame, expr)
     maybe_quote(x) = (isa(x, Expr) || isa(x, Symbol)) ? QuoteNode(x) : x
-
+    code = frame.framecode
+    data = frame.framedata
     isexpr(expr, :toplevel) && (expr = expr.args[end])
 
     if isexpr(expr, :toplevel)
@@ -443,10 +452,14 @@ function eval_code(frame::Frame, expr)
     j = 1
     for (i, v) in enumerate(vars)
         if v.isparam
-            frame.framedata.sparams[j] = res[i]
+            data.sparams[j] = res[i]
             j += 1
         else
-            frame.framedata.locals[frame.framedata.last_reference[v.name]] = Some{Any}(v.value isa Core.Box ? Core.Box(res[i]) : res[i])
+            slot_indices = code.slotnamelists[v.name]
+            idx = argmax(data.last_reference[slot_indices])
+            slot_idx = slot_indices[idx]
+            data.last_reference[slot_idx] = (frame.assignment_counter += 1)
+            data.locals[slot_idx] = Some{Any}(v.value isa Core.Box ? Core.Box(res[i]) : res[i])
         end
     end
     eval_res
