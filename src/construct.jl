@@ -258,56 +258,49 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
 end
 
 function prepare_framedata(framecode, argvals::Vector{Any}, caller_will_catch_err::Bool=false)
-    if isa(framecode.scope, Method)
-        meth, src = framecode.scope::Method, framecode.src
-        slotnames = src.slotnames::SlotNamesType
-        ssavt = src.ssavaluetypes
-        ng = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any})
-        nargs, meth_nargs = length(argvals), Int(meth.nargs)
-        if length(junk) > 0
-            olddata = pop!(junk)
-            locals, ssavalues, sparams = olddata.locals, olddata.ssavalues, olddata.sparams
-            exception_frames, last_reference = olddata.exception_frames, olddata.last_reference
-            last_exception = olddata.last_exception
-            callargs = olddata.callargs
-            resize!(locals, length(src.slotflags))
-            resize!(ssavalues, ng)
-            # for check_isdefined to work properly, we need sparams to start out unassigned
-            resize!(sparams, 0)
-            empty!(exception_frames)
-            empty!(last_reference)
-            last_exception[] = nothing
-        else
-            locals = Vector{Union{Nothing,Some{Any}}}(undef, length(src.slotflags))
-            ssavalues = Vector{Any}(undef, ng)
-            sparams = Vector{Any}(undef, 0)
-            exception_frames = Int[]
-            last_reference = Dict{Symbol,Int}()
-            callargs = Any[]
-            last_exception = Ref{Any}(nothing)
-        end
-        for i = 1:meth_nargs
-            last_reference[slotnames[i]::Symbol] = i
-            if meth.isva && i == meth_nargs
-                locals[i] = nargs < i ? Some{Any}(()) : (let i=i; Some{Any}(ntuple(k->argvals[i+k-1], nargs-i+1)); end)
-                break
-            end
-            locals[i] = nargs >= i ? Some{Any}(argvals[i]) : Some{Any}(())
-        end
-        # add local variables initially undefined
-        for i = (meth_nargs+1):length(slotnames)
-            locals[i] = nothing
-        end
-    else
-        src = framecode.src
-        locals = Vector{Union{Nothing,Some{Any}}}(undef, length(src.slotflags))  # src.slotflags is concretely typed, unlike slotnames
+    src = framecode.src
+    slotnames = src.slotnames::SlotNamesType
+    ssavt = src.ssavaluetypes
+    ng, ns = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any}), length(src.slotflags)
+    if length(junk) > 0
+        olddata = pop!(junk)
+        locals, ssavalues, sparams = olddata.locals, olddata.ssavalues, olddata.sparams
+        exception_frames, last_reference = olddata.exception_frames, olddata.last_reference
+        last_exception = olddata.last_exception
+        callargs = olddata.callargs
+        resize!(locals, ns)
         fill!(locals, nothing)
-        ssavalues = Vector{Any}(undef, length(src.code))
-        sparams = Any[]
+        resize!(ssavalues, ng)
+        # for check_isdefined to work properly, we need sparams to start out unassigned
+        resize!(sparams, 0)
+        empty!(exception_frames)
+        resize!(last_reference, ns)
+        last_exception[] = nothing
+    else
+        locals = Vector{Union{Nothing,Some{Any}}}(nothing, ns)
+        ssavalues = Vector{Any}(undef, ng)
+        sparams = Vector{Any}(undef, 0)
         exception_frames = Int[]
-        last_reference = Dict{Symbol,Int}()
+        last_reference = Vector{Int}(undef, ns)
         callargs = Any[]
         last_exception = Ref{Any}(nothing)
+    end
+    fill!(last_reference, 0)
+    if isa(framecode.scope, Method)
+        meth = framecode.scope::Method
+        nargs, meth_nargs = length(argvals), Int(meth.nargs)
+        islastva = meth.isva && nargs >= meth_nargs
+        for i = 1:meth_nargs-islastva
+            if nargs >= i
+                locals[i], last_reference[i] = Some{Any}(argvals[i]), 1
+            else
+                locals[i] = Some{Any}(())
+            end
+        end
+        if islastva
+            locals[meth_nargs] =  (let i=meth_nargs; Some{Any}(ntuple(k->argvals[i+k-1], nargs-i+1)); end)
+            last_reference[meth_nargs] = 1
+        end
     end
     FrameData(locals, ssavalues, sparams, exception_frames, last_exception, caller_will_catch_err, last_reference, callargs)
 end
