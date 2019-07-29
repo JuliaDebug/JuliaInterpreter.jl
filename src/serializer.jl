@@ -1,17 +1,15 @@
 module Serializer
 
-using Core: CodeInfo, GotoNode, MethodInstance
+using Core: CodeInfo, GotoNode, MethodInstance, SimpleVector
 using Base.Meta: isexpr
 using ..JuliaInterpreter:
     BreakpointState,
     FrameData,
-    get_call_framecode,
-    prepare_frame_caller,
-    finish_and_return!,
+    Unassigned,
+    find_used,
     lookup_global_ref,
     pc_from_spc,
-    compiled_calls,
-    find_used
+    prepare_framedata
 
 export serialize
 
@@ -126,6 +124,7 @@ end
 MethodListHead() = MethodListHead(nothing)
 
 struct SerializedCode
+    scope::Union{Method,Module}
     src::CodeInfo
     ser::Vector{TokenT}
     serindex::Vector{Int}           # lookup from pc -> spc
@@ -138,8 +137,9 @@ struct SerializedCode
     serargs::Vector{Vector{Any}}    # `args` stores in `ser`
     sermeth::Vector{MethodListHead} # local method tables in `ser`
 
-    function SerializedCode(src::CodeInfo; generator::Bool=false)
-        serialize!(new(src,
+    function SerializedCode(scope, src::CodeInfo; generator::Bool=false)
+        serialize!(new(scope,
+                       src,
                        TokenT[],
                        Int[],
                        BreakpointState[],
@@ -159,7 +159,20 @@ mutable struct SerializedFrame
     caller::Union{SerializedFrame,Nothing}
     callee::Union{SerializedFrame,Nothing}
 end
-SerializedFrame(framecode, framedata, pc=1, caller=nothing) = SerializedFrame(framecode, framedata, pc, 1, caller, nothing)
+SerializedFrame(framecode, framedata, pc=1, caller=nothing) =
+    SerializedFrame(framecode, framedata, pc, framecode.serindex[pc], 1, caller, nothing)
+
+function prepare_frame(framecode::SerializedCode, args::Vector{Any}, lenv::SimpleVector, caller_will_catch_err::Bool=false)
+    framedata = prepare_framedata(framecode, args, caller_will_catch_err)
+    resize!(framedata.sparams, length(lenv))
+    # Add static parameters to environment
+    for i = 1:length(lenv)
+        T = lenv[i]
+        isa(T, TypeVar) && continue  # only fill concrete types
+        framedata.sparams[i] = T
+    end
+    return SerializedFrame(framecode, framedata)
+end
 
 # Functions cannot be serialized via pointer, so we use a list/Dict pair
 const functionlist = []
@@ -622,15 +635,15 @@ function step_ser!(@nospecialize(recurse), frame, spc::Int, istoplevel::Bool)
     end
     if !isa(ans, Unassigned) && spc <= length(code.ser)
         # peek at the next token without advancing
-        nexttok = InterpretToken(code.ser[spc])
+        nexttok, spctmp = deserialize_token(code, spc)
         if nexttok == storessa
-            id, spc = deserialize_raw(Int, code.ser, spc)
+            id, spc = deserialize_raw(Int, code.ser, spctmp)
             data.ssavalues[id] = ans
         elseif nexttok == storeslot
-            id, spc = deserialize_raw(Int, code.ser, spc)
+            id, spc = deserialize_raw(Int, code.ser, spctmp)
             data.locals[id] = Some{Any}(ans)
         elseif nexttok == storeglobalref
-            gr, spc = deserialize_rawptr(GlobalRef, code.ser, spc)
+            gr, spc = deserialize_rawptr(GlobalRef, code.ser, spctmp)
             Core.eval(gr.mod, :($(gr.name) = $(QuoteNode(ans))))
         end
     end
