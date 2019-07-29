@@ -42,6 +42,8 @@ include("interpret.jl")
 include("builtins.jl")
 include("optimize.jl")
 include("commands.jl")
+# include("serializer.jl")
+# using .Serializer
 include("breakpoints.jl")
 
 function set_compiled_methods()

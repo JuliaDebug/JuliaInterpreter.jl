@@ -72,7 +72,7 @@ function find_used(code::CodeInfo)
 end
 
 function scan_ssa_use!(used::BitSet, @nospecialize(stmt))
-    if isa(stmt, SSAValue)
+    if isa(stmt, SSAValue) || isa(stmt, Core.SSAValue)
         push!(used, stmt.id)
     end
     iter = Core.Compiler.userefs(stmt)
@@ -80,7 +80,7 @@ function scan_ssa_use!(used::BitSet, @nospecialize(stmt))
     while iterval !== nothing
         useref, state = iterval
         val = Core.Compiler.getindex(useref)
-        if isa(val, SSAValue)
+        if isa(val, SSAValue) || isa(val, Core.SSAValue)
             push!(used, val.id)
         end
         iterval = Core.Compiler.iterate(iter, state)
@@ -99,6 +99,9 @@ function hasarg(predicate, args)
     end
     return false
 end
+
+pc_from_spc(framecode::FrameCode, spc) = searchsortedfirst(framecode.serindex, spc) - 1
+pc_from_spc(frame::Frame, spc) = pc_from_spc(frame.framecode, spc)
 
 ## Predicates
 
