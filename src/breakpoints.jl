@@ -132,8 +132,27 @@ function prepare_slotfunction(framecode::FrameCode, body::Union{Symbol,Expr})
     for i = 1:length(slotnames)
         slotname = framecode.src.slotnames[i]
         qslotname = QuoteNode(slotname)
-        getexpr = :(something($dataname.locals[$dataname.last_reference[$qslotname]]))
-        push!(assignments, Expr(:(=), slotname, :(haskey($dataname.last_reference, $qslotname) ? $getexpr : $default)))
+        list = framecode.slotnamelists[slotname]
+        if length(list) == 1
+            maxexpr = :($dataname.last_reference[$(list[1])] > 0 ? $(list[1]) : 0)
+        else
+            maxcounter, maxidx = gensym("maxcounter"), gensym("maxidx")
+            maxexpr = quote
+                begin
+                    $maxcounter, $maxidx = 0, 0
+                    for l in $list
+                        counter = $dataname.last_reference[l]
+                        if counter > $maxcounter
+                            $maxcounter, $maxidx = counter, l
+                        end
+                    end
+                    $maxidx
+                end
+            end
+        end
+        maxexsym = gensym("slotid")
+        push!(assignments, :($maxexsym = $maxexpr))
+        push!(assignments, :($slotname = $maxexsym > 0 ? something($dataname.locals[$maxexsym]) : $default))
     end
     if ismeth
         syms = sparam_syms(framecode.scope)

@@ -72,7 +72,7 @@ function find_used(code::CodeInfo)
 end
 
 function scan_ssa_use!(used::BitSet, @nospecialize(stmt))
-    if isa(stmt, SSAValue)
+    if isa(stmt, SSAValue) || isa(stmt, Core.SSAValue)
         push!(used, stmt.id)
     end
     iter = Core.Compiler.userefs(stmt)
@@ -80,7 +80,7 @@ function scan_ssa_use!(used::BitSet, @nospecialize(stmt))
     while iterval !== nothing
         useref, state = iterval
         val = Core.Compiler.getindex(useref)
-        if isa(val, SSAValue)
+        if isa(val, SSAValue) || isa(val, Core.SSAValue)
             push!(used, val.id)
         end
         iterval = Core.Compiler.iterate(iter, state)
@@ -99,6 +99,9 @@ function hasarg(predicate, args)
     end
     return false
 end
+
+pc_from_spc(framecode::FrameCode, spc) = searchsortedfirst(framecode.serindex, spc) - 1
+pc_from_spc(frame::Frame, spc) = pc_from_spc(frame.framecode, spc)
 
 ## Predicates
 
@@ -335,16 +338,24 @@ end
 Return the local variables as a vector of `Variable`[@ref].
 """
 function locals(frame::Frame)
-    vars = Variable[]
+    vars, var_counter = Variable[], Int[]
+    varlookup = Dict{Symbol,Int}()
     data, code = frame.framedata, frame.framecode
-    added = Set{Symbol}()
     slotnames = code.src.slotnames::SlotNamesType
-    for sym in slotnames
-        sym ∈ added && continue
-        idx = get(data.last_reference, sym, 0)
-        idx == 0 && continue
-        push!(vars, Variable(something(data.locals[idx]), sym, false))
-        push!(added, sym)
+    for (sym, counter, val) in zip(slotnames, data.last_reference, data.locals)
+        counter == 0 && continue
+        var = Variable(something(val), sym, false)
+        idx = get(varlookup, sym, 0)
+        if idx > 0
+            if counter > var_counter[idx]
+                vars[idx] = var
+                var_counter[idx] = counter
+            end
+        else
+            varlookup[sym] = length(vars)+1
+            push!(vars, var)
+            push!(var_counter, counter)
+        end
     end
     if code.scope isa Method
         syms = sparam_syms(code.scope)
