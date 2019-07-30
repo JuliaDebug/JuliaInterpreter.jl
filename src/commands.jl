@@ -59,10 +59,8 @@ function finish_stack!(@nospecialize(recurse), frame::Frame, rootistoplevel::Boo
         ret = finish_and_return!(recurse, frame, istoplevel)
         isa(ret, BreakpointRef) && return ret
         frame === frame0 && return ret
-        recycle(frame)
-        frame = caller(frame)
+        frame = return_from(frame)
         frame === nothing && return ret
-        frame.callee = nothing
         pc = frame.pc
         if isassign(frame, pc)
             lhs = getlhs(pc)
@@ -325,10 +323,8 @@ function maybe_reset_frame!(@nospecialize(recurse), frame::Frame, @nospecialize(
     isa(pc, BreakpointRef) && return leaf(frame), pc
     if pc === nothing
         val = get_return(frame)
-        recycle(frame)
-        frame = caller(frame)
+        frame = return_from(frame)
         frame === nothing && return nothing
-        frame.callee = nothing
         ssavals = frame.framedata.ssavalues
         is_wrapper = isassigned(ssavals, frame.pc) && ssavals[frame.pc] === Wrapper()
         maybe_assign!(frame, val)
@@ -353,9 +349,7 @@ function unwind_exception(frame::Frame, exc)
             frame.framedata.last_exception[] = exc
             return frame
         end
-        recycle(frame)
-        frame = caller(frame)
-        frame === nothing || (frame.callee = nothing)
+        frame = return_from(frame)
     end
     rethrow(exc)
 end
