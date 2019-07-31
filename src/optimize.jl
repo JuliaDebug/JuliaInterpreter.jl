@@ -163,37 +163,14 @@ function optimize!(code::CodeInfo, scope)
             # Check for :llvmcall
             arg1 = stmt.args[1]
             if (arg1 == :llvmcall || lookup_stmt(code.code, arg1) == Base.llvmcall) && isempty(sparams) && scope isa Method
-                uuid = uuid1(rng)
-                ustr = replace(string(uuid), '-'=>'_')
-                methname = Symbol("llvmcall_", ustr)
                 nargs = length(stmt.args)-4
-                delete_idx = build_compiled_call!(stmt, methname, Base.llvmcall, stmt.args[2:4], code, idx, nargs, sparams, evalmod)
+                delete_idx = build_compiled_call!(stmt, Base.llvmcall, stmt.args[2:4], code, idx, nargs, sparams, evalmod)
                 push!(foreigncalls_idx, idx)
                 append!(delete_idxs, delete_idx)
             end
         elseif isexpr(stmt, :foreigncall) && scope isa Method
-            f = lookup_stmt(code.code, stmt.args[1])
-            if isa(f, Ptr)
-                f = string(uuid1(rng))
-            elseif isexpr(f, :call)
-                length(f.args) == 3 || continue
-                if !(f.args[1] === tuple || f.args[1] == :($(QuoteNode(tuple))))
-                    continue
-                end
-                lib = f.args[3] isa String ? f.args[3] : f.args[3].value
-                prefix = f.args[2] isa String ? f.args[2] : f.args[2].value
-                f = Symbol(prefix, '_', lib)
-            end
-            # Punt on non literal ccall arguments for now
-            if !(isa(f, String) || isa(f, Symbol) || isa(f, Ptr))
-                continue
-            end
-            # TODO: Only compile one ccall per call and argument types
-            uuid = uuid1(rng)
-            ustr = replace(string(uuid), '-'=>'_')
-            methname = Symbol("ccall", '_', f, '_', ustr)
             nargs = stmt.args[5]
-            delete_idx = build_compiled_call!(stmt, methname, :ccall, stmt.args[1:3], code, idx, nargs, sparams, evalmod)
+            delete_idx = build_compiled_call!(stmt, :ccall, stmt.args[1:3], code, idx, nargs, sparams, evalmod)
             push!(foreigncalls_idx, idx)
             append!(delete_idxs, delete_idx)
         end
@@ -250,7 +227,7 @@ function parametric_type_to_expr(t::Type)
 end
 
 # Handle :llvmcall & :foreigncall (issue #28)
-function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, sparams, evalmod)
+function build_compiled_call!(stmt, fcall, typargs, code, idx, nargs, sparams, evalmod)
     TVal = evalmod == Core.Compiler ? Core.Compiler.Val : Val
     argnames = Any[Symbol("arg", string(i)) for i = 1:nargs]
     delete_idx = Int[]
@@ -292,17 +269,25 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
         cfunc, RetType, ArgType = @lookup(frame, stmt.args[2]), @lookup(frame, stmt.args[3]), @lookup(frame, stmt.args[4])
         args = stmt.args[5:end]
     end
+    dynamic_ccall = false
     if isa(cfunc, Expr)   # specification by tuple, e.g., (:clock, "libc")
         cfunc = eval(cfunc)
     end
     if isa(cfunc, Symbol)
         cfunc = QuoteNode(cfunc)
+    elseif isa(cfunc, String) || isa(cfunc, Ptr) || isa(cfunc, Tuple)
+        # do nothing
+    else
+        dynamic_ccall = true
+        oldcfunc = cfunc
+        cfunc = gensym("ptr")
     end
     if isa(RetType, SimpleVector)
         @assert length(RetType) == 1
         RetType = RetType[1]
     end
-    cc_key = (cfunc, RetType, ArgType, evalmod)  # compiled call key
+    # When the ccall is dynamic we pass the pointer as an argument so can reuse the function
+    cc_key = (dynamic_ccall ? :ptr : cfunc, RetType, ArgType, evalmod)  # compiled call key
     f = get(compiled_calls, cc_key, nothing)
     if f === nothing
         if fcall == :ccall
@@ -310,9 +295,13 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
         end
         RetType = parametric_type_to_expr(RetType)
         wrapargs = copy(argnames)
+        if dynamic_ccall
+            pushfirst!(wrapargs, cfunc)
+        end
         for sparam in sparams
             push!(wrapargs, :(::$TVal{$sparam}))
         end
+        methname = gensym("compiledcall")
         if stmt.args[4] == :(:llvmcall)
             def = :(
                 function $methname($(wrapargs...)) where {$(sparams...)}
@@ -335,6 +324,9 @@ function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, 
     stmt.args[1] = QuoteNode(f)
     stmt.head = :call
     deleteat!(stmt.args, 2:length(stmt.args))
+    if dynamic_ccall
+        push!(stmt.args, oldcfunc)
+    end
     append!(stmt.args, args)
     for i in 1:length(sparams)
         push!(stmt.args, :($TVal($(Expr(:static_parameter, i)))))
