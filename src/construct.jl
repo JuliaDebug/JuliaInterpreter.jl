@@ -257,7 +257,7 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     return framecode, args, lenv, argtypes
 end
 
-function prepare_framedata(framecode, argvals::Vector{Any}, caller_will_catch_err::Bool=false)
+function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=empty_svec, caller_will_catch_err::Bool=false)
     if isa(framecode.scope, Method)
         meth, src = framecode.scope::Method, framecode.src
         slotnames = src.slotnames::SlotNamesType
@@ -309,6 +309,13 @@ function prepare_framedata(framecode, argvals::Vector{Any}, caller_will_catch_er
         callargs = Any[]
         last_exception = Ref{Any}(nothing)
     end
+    resize!(sparams, length(lenv))
+    # Add static parameters to environment
+    for i = 1:length(lenv)
+        T = lenv[i]
+        isa(T, TypeVar) && continue  # only fill concrete types
+        sparams[i] = T
+    end
     FrameData(locals, ssavalues, sparams, exception_frames, last_exception, caller_will_catch_err, last_reference, callargs)
 end
 
@@ -319,14 +326,7 @@ Construct a new `Frame` for `framecode`, given lowered-code arguments `frameargs
 static parameters `lenv`. See [`JuliaInterpreter.prepare_call`](@ref) for information about how to prepare the inputs.
 """
 function prepare_frame(framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector, caller_will_catch_err::Bool=false)
-    framedata = prepare_framedata(framecode, args, caller_will_catch_err)
-    resize!(framedata.sparams, length(lenv))
-    # Add static parameters to environment
-    for i = 1:length(lenv)
-        T = lenv[i]
-        isa(T, TypeVar) && continue  # only fill concrete types
-        framedata.sparams[i] = T
-    end
+    framedata = prepare_framedata(framecode, args, lenv, caller_will_catch_err)
     return Frame(framecode, framedata)
 end
 
