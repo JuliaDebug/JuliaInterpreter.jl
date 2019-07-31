@@ -53,6 +53,12 @@ function breakpointchar(bps::BreakpointState)
     return bps.condition === falsecondition ? ' ' : 'd'     # no breakpoint : disabled
 end
 
+mutable struct DispatchableMethod
+    next::Union{Nothing,DispatchableMethod}  # linked-list representation
+    frameinstance::Any # really a FrameInstance but we have a cyclic dependency
+    sig::Type # for speed of matching, this is a *concrete* signature. `sig <: frameinstance.framecode.scope.sig`
+end
+
 """
 `FrameCode` holds static information about a method or toplevel code.
 One `FrameCode` can be shared by many calling `Frame`s.
@@ -68,7 +74,7 @@ Important fields:
 struct FrameCode
     scope::Union{Method,Module}
     src::CodeInfo
-    methodtables::Vector{Union{Compiled,TypeMapEntry}} # line-by-line method tables for generic-function :call Exprs
+    methodtables::Vector{Union{Compiled,DispatchableMethod}} # line-by-line method tables for generic-function :call Exprs
     breakpoints::Vector{BreakpointState}
     used::BitSet
     generator::Bool   # true if this is for the expression-generator of a @generated function
@@ -80,7 +86,7 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
         src, methodtables = optimize!(copy_codeinfo(src), scope)
     else
         src = replace_coretypes!(copy_codeinfo(src))
-        methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(src.code))
+        methodtables = Vector{Union{Compiled,DispatchableMethod}}(undef, length(src.code))
     end
     breakpoints = Vector{BreakpointState}(undef, length(src.code))
     for (i, pc_expr) in enumerate(src.code)
@@ -331,7 +337,7 @@ struct BreakpointSignature <: AbstractBreakpoint
     enabled::Ref{Bool}
     instances::Vector{BreakpointRef}
 end
-same_location(bp2::BreakpointSignature, bp::BreakpointSignature) = 
+same_location(bp2::BreakpointSignature, bp::BreakpointSignature) =
     bp2.f == bp.f && bp2.sig == bp.sig && bp2.line == bp.line
 function Base.show(io::IO, bp::BreakpointSignature)
     print(io, bp.f)
@@ -369,7 +375,7 @@ struct BreakpointFileLocation <: AbstractBreakpoint
     enabled::Ref{Bool}
     instances::Vector{BreakpointRef}
 end
-same_location(bp2::BreakpointFileLocation, bp::BreakpointFileLocation) = 
+same_location(bp2::BreakpointFileLocation, bp::BreakpointFileLocation) =
     bp2.path == bp.path && bp2.abspath == bp.abspath && bp2.line == bp.line
 function Base.show(io::IO, bp::BreakpointFileLocation)
     print(io, bp.path, ':', bp.line)

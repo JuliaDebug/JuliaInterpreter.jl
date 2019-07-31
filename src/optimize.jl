@@ -232,7 +232,7 @@ function optimize!(code::CodeInfo, scope)
     code.ssavaluetypes = length(new_code)
 
     # Insert the foreigncall wrappers at the updated idxs
-    methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(code.code))
+    methodtables = Vector{Union{Compiled,DispatchableMethod}}(undef, length(code.code))
     for idx in foreigncalls_idx
         methodtables[ssalookup[idx]] = Compiled()
     end
