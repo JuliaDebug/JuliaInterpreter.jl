@@ -46,6 +46,7 @@ function get_call_framecode(fargs::Vector{Any}, parentframe::FrameCode, idx::Int
                     if fi isa Compiled
                         return Compiled(), nothing
                     else
+                        fi = fi::FrameInstance
                         return fi.framecode, fi.sparam_vals
                     end
                 end
