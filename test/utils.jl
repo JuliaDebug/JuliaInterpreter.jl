@@ -1,7 +1,7 @@
 using JuliaInterpreter
 using JuliaInterpreter: Frame, @lookup
 using JuliaInterpreter: finish_and_return!, evaluate_call!, step_expr!, shouldbreak,
-                        do_assignment!, getlhs, isassign, pc_expr, handle_err, get_return,
+                        do_assignment!, SSAValue, isassign, pc_expr, handle_err, get_return,
                         moduleof, prepare_thunk
 using Base.Meta: isexpr
 using Test, Random, SHA
@@ -64,7 +64,7 @@ function evaluate_limited!(@nospecialize(recurse), frame::Frame, nstmts::Int, is
                 try
                     rhs = evaluate_call!(limexec!, frame, stmt)
                     isa(rhs, Aborted) && return rhs, refnstmts[]
-                    lhs = getlhs(pc)
+                    lhs = SSAValue(pc)
                     do_assignment!(frame, lhs, rhs)
                     new_pc = pc + 1
                 catch err

@@ -1,7 +1,5 @@
 # Implements a simple interpreter for julia's lowered AST
 
-getlhs(pc) = SSAValue(pc)
-
 isassign(frame) = isassign(frame, frame.pc)
 isassign(frame, pc) = (pc in frame.framecode.used)
 
@@ -352,7 +350,7 @@ function maybe_assign!(frame, @nospecialize(stmt), @nospecialize(val))
         lhs = stmt.args[1]
         do_assignment!(frame, lhs, val)
     elseif isassign(frame, pc)
-        lhs = getlhs(pc)
+        lhs = SSAValue(pc)
         do_assignment!(frame, lhs, val)
     end
     return nothing
@@ -538,7 +536,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
         if !@isdefined(rhs)
             @show frame node
         end
-        lhs = getlhs(pc)
+        lhs = SSAValue(pc)
         do_assignment!(frame, lhs, rhs)
     end
     return (frame.pc = pc + 1)
