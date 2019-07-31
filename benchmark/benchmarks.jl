@@ -54,3 +54,15 @@ function counter()
     return a
 end
 SUITE["long function 5_000"] = @benchmarkable @interpret counter()
+
+# Ccall
+function ccall_ptr(ptr, x, y)
+    ccall(ptr, Int, (Int, Int), x, y)
+end
+const ptr = @cfunction(+, Int, (Int, Int))
+SUITE["ccall ptr"] = @benchmarkable @interpret ccall_ptr(ptr, 1, 5)
+
+function powf(a, b)
+    ccall(("powf", Base.Math.libm), Float32, (Float32,Float32), a, b)
+end
+SUITE["ccall library"] = @benchmarkable @interpret powf(2, 3)
