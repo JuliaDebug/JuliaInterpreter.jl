@@ -53,9 +53,10 @@ function breakpointchar(bps::BreakpointState)
     return bps.condition === falsecondition ? ' ' : 'd'     # no breakpoint : disabled
 end
 
+abstract type AbstractFrameInstance end
 mutable struct DispatchableMethod
     next::Union{Nothing,DispatchableMethod}  # linked-list representation
-    frameinstance::Any # really a FrameInstance but we have a cyclic dependency
+    frameinstance::Union{Compiled, AbstractFrameInstance} # really a Union{Compiled, FrameInstance} but we have a cyclic dependency
     sig::Type # for speed of matching, this is a *concrete* signature. `sig <: frameinstance.framecode.scope.sig`
 end
 
@@ -124,7 +125,7 @@ Fields:
 - `framecode`: the [`FrameCode`](@ref) for the method.
 - `sparam_vals`: the static parameter values for the method.
 """
-struct FrameInstance
+struct FrameInstance <: AbstractFrameInstance
     framecode::FrameCode
     sparam_vals::SimpleVector
     enter_generated::Bool

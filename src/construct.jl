@@ -248,7 +248,7 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
         # The generator threw an error. Let's generate the same error by calling it.
         f(allargs[2:end]...)
     end
-    isa(ret, Compiled) && return ret
+    isa(ret, Compiled) && return ret, argtypes
     # Typical return
     framecode, lenv = ret
     if is_generated(method) && enter_generated
@@ -543,7 +543,7 @@ See [`enter_call`](@ref) for a similar approach not based on expressions.
 function enter_call_expr(expr; enter_generated = false)
     clear_caches()
     r = determine_method_for_expr(expr; enter_generated = enter_generated)
-    if isa(r, Tuple)
+    if r !== nothing && !isa(r[1], Compiled)
         return prepare_frame(r[1:end-1]...)
     end
     nothing
@@ -597,7 +597,7 @@ function enter_call(@nospecialize(finfo), @nospecialize(args...); kwargs...)
         error(f, " is a builtin or intrinsic")
     end
     r = prepare_call(f, allargs; enter_generated=enter_generated)
-    if isa(r, Tuple)
+    if r !== nothing && !isa(r[1], Compiled)
         return prepare_frame(r[1:end-1]...)
     end
     return nothing

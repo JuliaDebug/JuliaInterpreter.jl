@@ -11,6 +11,7 @@ function get_call_framecode(fargs::Vector{Any}, parentframe::FrameCode, idx::Int
     nargs = length(fargs)  # includes f as the first "argument"
     # Determine whether we can look up the appropriate framecode in the local method table
     if isassigned(parentframe.methodtables, idx)  # if this is the first call, this may not yet be set
+        # The case where `methodtables[idx]` is a `Compiled` has already been handled in `bypass_builtins`
         d_meth = d_meth1 = parentframe.methodtables[idx]::DispatchableMethod
         local d_methprev
         depth = 1
@@ -20,8 +21,12 @@ function get_call_framecode(fargs::Vector{Any}, parentframe::FrameCode, idx::Int
             sig = d_meth.sig.parameters::SimpleVector
             if length(sig) == nargs
                 # If this is generated, match only if `enter_generated` also matches
-                fi = d_meth.frameinstance::FrameInstance
-                matches = !is_generated(scopeof(fi.framecode)) || enter_generated == fi.enter_generated
+                fi = d_meth.frameinstance
+                if fi isa FrameInstance
+                    matches = !is_generated(scopeof(fi.framecode)) || enter_generated == fi.enter_generated
+                else
+                    matches = !enter_generated
+                end
                 if matches
                     for i = 1:nargs
                         if !isa(fargs[i], sig[i])
@@ -38,7 +43,11 @@ function get_call_framecode(fargs::Vector{Any}, parentframe::FrameCode, idx::Int
                         d_methprev.next = d_meth.next
                         d_meth.next = d_meth1
                     end
-                    return fi.framecode, fi.sparam_vals
+                    if fi isa Compiled
+                        return Compiled(), nothing
+                    else
+                        return fi.framecode, fi.sparam_vals
+                    end
                 end
             end
             depth += 1
@@ -52,11 +61,16 @@ function get_call_framecode(fargs::Vector{Any}, parentframe::FrameCode, idx::Int
     fargs[1] = f = to_function(fargs[1])
     ret = prepare_call(f, fargs; enter_generated=enter_generated)
     ret === nothing && return f(fargs[2:end]...), nothing
-    isa(ret, Compiled) && return ret, nothing
-    framecode, args, env, argtypes = ret
-    # Store the results of the method lookup in the local method table
-    fi = FrameInstance(framecode, env, is_generated(scopeof(framecode)) && enter_generated)
-    d_meth = DispatchableMethod(nothing, fi, argtypes)
+    is_compiled = isa(ret[1], Compiled)
+    local framecode
+    if is_compiled
+        d_meth = DispatchableMethod(nothing, Compiled(), ret[2])
+    else
+        framecode, args, env, argtypes = ret
+        # Store the results of the method lookup in the local method table
+        fi = FrameInstance(framecode, env, is_generated(scopeof(framecode)) && enter_generated)
+        d_meth = DispatchableMethod(nothing, fi, argtypes)
+    end
     if isassigned(parentframe.methodtables, idx)
         d_meth.next = parentframe.methodtables[idx]
         # Drop the oldest d_meth, if necessary
@@ -74,5 +88,9 @@ function get_call_framecode(fargs::Vector{Any}, parentframe::FrameCode, idx::Int
         d_meth.next = nothing
     end
     parentframe.methodtables[idx] = d_meth
-    return framecode, env
+    if is_compiled
+        return Compiled(), nothing
+    else
+        return framecode, env
+    end
 end
