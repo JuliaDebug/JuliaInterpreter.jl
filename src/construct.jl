@@ -34,6 +34,13 @@ const debug_recycle = Base.RefValue(false)
     push!(junk, frame.framedata)
 end
 
+function return_from(frame::Frame)
+    recycle(frame)
+    frame = caller(frame)
+    frame === nothing || (frame.callee = nothing)
+    return frame
+end
+
 function clear_caches()
     empty!(junk)
     empty!(framedict)
