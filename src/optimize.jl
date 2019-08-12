@@ -1,4 +1,4 @@
-const calllike = Set([:call, :foreigncall])
+const calllike = (:call, :foreigncall)
 
 const compiled_calls = Dict{Any,Any}()
 
@@ -184,7 +184,7 @@ function optimize!(code::CodeInfo, scope)
                 prefix = f.args[2] isa String ? f.args[2] : f.args[2].value
                 f = Symbol(prefix, '_', lib)
             end
-            # Punt on non literal ccall arguments for now
+            # Punt on non-literal ccall arguments for now
             if !(isa(f, String) || isa(f, Symbol) || isa(f, Ptr))
                 continue
             end
@@ -252,7 +252,7 @@ end
 # Handle :llvmcall & :foreigncall (issue #28)
 function build_compiled_call!(stmt, methname, fcall, typargs, code, idx, nargs, sparams, evalmod)
     TVal = evalmod == Core.Compiler ? Core.Compiler.Val : Val
-    argnames = Any[Symbol("arg", string(i)) for i = 1:nargs]
+    argnames = Any[Symbol(:arg, i) for i = 1:nargs]
     delete_idx = Int[]
     if fcall == :ccall
         cfunc, RetType, ArgType = lookup_stmt(code.code, stmt.args[1]), stmt.args[2], stmt.args[3]

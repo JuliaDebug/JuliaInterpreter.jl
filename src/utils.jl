@@ -19,7 +19,7 @@ function Base.nameof(frame::Frame)
     isa(s, Method) ? s.name : nameof(s)
 end
 
-_Typeof(x) = isa(x,Type) ? Type{x} : typeof(x)
+_Typeof(x) = isa(x, Type) ? Type{x} : typeof(x)
 
 function to_function(@nospecialize(x))
     isa(x, GlobalRef) ? getfield(x.mod, x.name) : x
@@ -128,13 +128,12 @@ function is_quoted_type(@nospecialize(a), name::Symbol)
 end
 
 function is_function_def(@nospecialize(ex))
-    (isexpr(ex, :(=)) && isexpr(ex.args[1], :call)) ||
-    isexpr(ex,:function)
+    (isexpr(ex, :(=)) && isexpr(ex.args[1], :call)) || isexpr(ex, :function)
 end
 
 function is_call(@nospecialize(node))
     isexpr(node, :call) ||
-    (isexpr(node, :(=)) && (isexpr(node.args[2], :call)))
+        (isexpr(node, :(=)) && (isexpr(node.args[2], :call)))
 end
 
 is_call_or_return(@nospecialize(node)) = is_call(node) || isexpr(node, :return)
@@ -150,9 +149,7 @@ function is_wrapper_call(@nospecialize(expr))
     isexpr(expr, :call) && any(x->x==SlotNumber(1), expr.args)
 end
 
-function is_generated(meth::Method)
-    isdefined(meth, :generator)
-end
+is_generated(meth::Method) = isdefined(meth, :generator)
 
 """
     is_doc_expr(ex)

@@ -331,7 +331,7 @@ struct BreakpointSignature <: AbstractBreakpoint
     enabled::Ref{Bool}
     instances::Vector{BreakpointRef}
 end
-same_location(bp2::BreakpointSignature, bp::BreakpointSignature) = 
+same_location(bp2::BreakpointSignature, bp::BreakpointSignature) =
     bp2.f == bp.f && bp2.sig == bp.sig && bp2.line == bp.line
 function Base.show(io::IO, bp::BreakpointSignature)
     print(io, bp.f)
@@ -369,7 +369,7 @@ struct BreakpointFileLocation <: AbstractBreakpoint
     enabled::Ref{Bool}
     instances::Vector{BreakpointRef}
 end
-same_location(bp2::BreakpointFileLocation, bp::BreakpointFileLocation) = 
+same_location(bp2::BreakpointFileLocation, bp::BreakpointFileLocation) =
     bp2.path == bp.path && bp2.abspath == bp.abspath && bp2.line == bp.line
 function Base.show(io::IO, bp::BreakpointFileLocation)
     print(io, bp.path, ':', bp.line)
