@@ -1,5 +1,3 @@
-# Implements a simple interpreter for julia's lowered AST
-
 isassign(frame) = isassign(frame, frame.pc)
 isassign(frame, pc) = (pc in frame.framecode.used)
 
