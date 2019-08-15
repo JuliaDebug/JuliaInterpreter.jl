@@ -364,6 +364,46 @@ function print_vars(io::IO, vars::Vector{Variable})
     end
 end
 
+"""
+    eval_code(frame::Frame, code::Union{String, Expr})
+
+Evaluate `code` in the context of `frame`, updating any local variables
+(including type parameters) that are reassigned in `code`. New local variables
+cannot be introduced.
+"""
+function eval_code end
+
+eval_code(frame::Frame, command::AbstractString) = eval_code(frame, Base.parse_input_line(command))
+function eval_code(frame::Frame, expr)
+    maybe_quote(x) = (isa(x, Expr) || isa(x, Symbol)) ? QuoteNode(x) : x
+
+    isexpr(expr, :toplevel) && (expr = expr.args[end])
+
+    if isexpr(expr, :toplevel)
+      expr = Expr(:block, expr.args...)
+    end
+    # see https://github.com/JuliaLang/julia/issues/31255 for the Symbol("") check
+    vars = filter(v -> v.name != Symbol(""), locals(frame))
+    res = gensym()
+    eval_expr = Expr(:let,
+        Expr(:block, map(x->Expr(:(=), x...), [(v.name, maybe_quote(v.value)) for v in vars])...),
+        Expr(:block,
+            Expr(:(=), res, expr),
+            Expr(:tuple, res, Expr(:tuple, [v.name for v in vars]...))
+        ))
+    eval_res, res = Core.eval(moduleof(frame), eval_expr)
+    j = 1
+    for (i, v) in enumerate(vars)
+        if v.isparam
+            frame.framedata.sparams[j] = res[i]
+            j += 1
+        else
+            frame.framedata.locals[frame.framedata.last_reference[v.name]] = Some{Any}(res[i])
+        end
+    end
+    eval_res
+end
+
 function show_stackloc(io::IO, frame)
     indent = ""
     fr = root(frame)

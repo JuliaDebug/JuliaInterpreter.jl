@@ -13,6 +13,7 @@ JuliaInterpreter.debug_recycle[] = true
     include("interpret.jl")
     include("toplevel.jl")
     include("limits.jl")
+    include("eval_code.jl")
     include("breakpoints.jl")
     remove()
     include("debug.jl")
