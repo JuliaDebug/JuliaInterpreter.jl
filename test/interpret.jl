@@ -480,6 +480,8 @@ function call_cf()
     ccall(cf[1], Int, (Int, Int), 1, 2)
 end
 @test (@interpret call_cf()) == call_cf()
+frame = JuliaInterpreter.enter_call(call_cf)
+@test frame.framecode.methodtables[2] == Compiled()
 
 # ccall with integer static parameter
 f_N() =  Array{Float64, 4}(undef, 1, 3, 2, 1)
@@ -490,8 +492,8 @@ f() = ccall((:clock, "libc"), Int32, ())
 try @interpret f()
 catch
 end
-compiled_calls = names(JuliaInterpreter.CompiledCalls; all=true)
-@test any(x -> startswith(string(x), "ccall_clock_libc"), compiled_calls)
+frame = JuliaInterpreter.enter_call(f)
+@test frame.framecode.methodtables[1] == Compiled()
 
 # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/194
 f() =  Meta.lower(Main, Meta.parse("(a=1,0)"))
