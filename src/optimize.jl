@@ -116,7 +116,8 @@ function lookup_global_refs!(ex::Expr)
     return nothing
 end
 
-const rng = MersenneTwister()
+# See https://github.com/JuliaLang/julia/pull/32800
+const foreigncall_version = VERSION < v"1.3.0-alpha.108" ? 0 : 1
 
 """
     optimize!(code::CodeInfo, mod::Module)
@@ -164,13 +165,13 @@ function optimize!(code::CodeInfo, scope)
             arg1 = stmt.args[1]
             if (arg1 == :llvmcall || lookup_stmt(code.code, arg1) == Base.llvmcall) && isempty(sparams) && scope isa Method
                 nargs = length(stmt.args)-4
-                delete_idx = build_compiled_call!(stmt, Base.llvmcall, stmt.args[2:4], code, idx, nargs, sparams, evalmod)
+                delete_idx = build_compiled_call!(stmt, Base.llvmcall, code, idx, nargs, sparams, evalmod)
                 push!(foreigncalls_idx, idx)
                 append!(delete_idxs, delete_idx)
             end
         elseif isexpr(stmt, :foreigncall) && scope isa Method
-            nargs = stmt.args[5]
-            delete_idx = build_compiled_call!(stmt, :ccall, stmt.args[1:3], code, idx, nargs, sparams, evalmod)
+            nargs = foreigncall_version == 0 ? stmt.args[5] : length(stmt.args[3])
+            delete_idx = build_compiled_call!(stmt, :ccall, code, idx, nargs, sparams, evalmod)
             push!(foreigncalls_idx, idx)
             append!(delete_idxs, delete_idx)
         end
@@ -227,9 +228,8 @@ function parametric_type_to_expr(t::Type)
 end
 
 # Handle :llvmcall & :foreigncall (issue #28)
-function build_compiled_call!(stmt, fcall, typargs, code, idx, nargs, sparams, evalmod)
+function build_compiled_call!(stmt, fcall, code, idx, nargs, sparams, evalmod)
     TVal = evalmod == Core.Compiler ? Core.Compiler.Val : Val
-    argnames = Any[Symbol("arg", string(i)) for i = 1:nargs]
     delete_idx = Int[]
     if fcall == :ccall
         cfunc, RetType, ArgType = lookup_stmt(code.code, stmt.args[1]), stmt.args[2], stmt.args[3]
@@ -289,6 +289,7 @@ function build_compiled_call!(stmt, fcall, typargs, code, idx, nargs, sparams, e
     # When the ccall is dynamic we pass the pointer as an argument so can reuse the function
     cc_key = (dynamic_ccall ? :ptr : cfunc, RetType, ArgType, evalmod)  # compiled call key
     f = get(compiled_calls, cc_key, nothing)
+    argnames = Any[Symbol("arg", string(i)) for i = 1:nargs]
     if f === nothing
         if fcall == :ccall
             ArgType = Expr(:tuple, [parametric_type_to_expr(t) for t in ArgType]...)
@@ -302,12 +303,13 @@ function build_compiled_call!(stmt, fcall, typargs, code, idx, nargs, sparams, e
             push!(wrapargs, :(::$TVal{$sparam}))
         end
         methname = gensym("compiledcall")
-        if stmt.args[4] == :(:llvmcall)
+        calling_convention = stmt.args[foreigncall_version == 0 ? 4 : 5]
+        if calling_convention == :(:llvmcall)
             def = :(
                 function $methname($(wrapargs...)) where {$(sparams...)}
                     return $fcall($cfunc, llvmcall, $RetType, $ArgType, $(argnames...))
                 end)
-        elseif stmt.args[4] == :(:stdcall)
+        elseif calling_convention == :(:stdcall)
             def = :(
                 function $methname($(wrapargs...)) where {$(sparams...)}
                     return $fcall($cfunc, stdcall, $RetType, $ArgType, $(argnames...))
