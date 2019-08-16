@@ -40,3 +40,19 @@ frame = JuliaInterpreter.enter_call(evalfoo1, 1, 2)
 @test eval_code(frame, "x = 1; y = 2") == 2
 @test eval_code(frame, "x") == 1
 @test eval_code(frame, "y") == 2
+
+# https://github.com/JuliaDebug/Debugger.jl/issues/177
+function f()
+    x = 1
+    f = ()->(x = 2)
+    f()
+    x
+end
+frame = JuliaInterpreter.enter_call(f)
+JuliaInterpreter.step_expr!(frame)
+JuliaInterpreter.step_expr!(frame)
+@test eval_code(frame, "x") == 1
+eval_code(frame, "x = 3")
+@test eval_code(frame, "x") == 3
+JuliaInterpreter.finish!(frame)
+@test JuliaInterpreter.get_return(frame) == 2
