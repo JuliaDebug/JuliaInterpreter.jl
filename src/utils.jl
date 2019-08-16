@@ -291,7 +291,7 @@ function framecode_lines(src::CodeInfo)
     buf = IOBuffer()
     show(buf, src)
     code = filter!(split(String(take!(buf)), '\n')) do line
-        !(line == "CodeInfo(" || line == ")" || isempty(line))
+        !(line == "CodeInfo(" || line == ")" || isempty(line) || occursin("within `", line))
     end
     code .= replace.(code, Ref(r"\$\(QuoteNode\((.+?)\)\)" => s"\1"))
     return code
@@ -371,7 +371,7 @@ Evaluate `code` in the context of `frame`, updating any local variables
 (including type parameters) that are reassigned in `code`, however, new local variables
 cannot be introduced.
 
-```jldoctest; setup=(using JuliaInterpreter; empty!(JuliaInterpreter.junk))
+```jldoctest
 julia> foo(x, y) = x + y;
 
 julia> frame = JuliaInterpreter.enter_call(foo, 1, 3);
@@ -383,7 +383,7 @@ julia> JuliaInterpreter.eval_code(frame, "x = 5");
 
 julia> JuliaInterpreter.finish_and_return!(frame)
 8
-````
+```
 
 When variables are captured in closures (and thus gets wrapped in a `Core.Box`)
 they will be automatically unwrapped and rewrapped upon evaluating them:
