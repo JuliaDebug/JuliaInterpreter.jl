@@ -70,6 +70,7 @@ struct FrameCode
     src::CodeInfo
     methodtables::Vector{Union{Compiled,TypeMapEntry}} # line-by-line method tables for generic-function :call Exprs
     breakpoints::Vector{BreakpointState}
+    slotnamelists::Dict{Symbol,Vector{Int}}
     used::BitSet
     generator::Bool   # true if this is for the expression-generator of a @generated function
 end
@@ -89,8 +90,13 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
             src.code[i] = nothing
         end
     end
+    slotnamelists = Dict{Symbol,Vector{Int}}()
+    for (i, sym) in enumerate(src.slotnames)
+        list = get(slotnamelists, sym, Int[])
+        slotnamelists[sym] = push!(list, i)
+    end
     used = find_used(src)
-    framecode = FrameCode(scope, src, methodtables, breakpoints, used, generator)
+    framecode = FrameCode(scope, src, methodtables, breakpoints, slotnamelists, used, generator)
     if scope isa Method
         for bp in _breakpoints
             # Manual union splitting
@@ -151,9 +157,7 @@ struct FrameData
     exception_frames::Vector{Int}
     last_exception::Base.RefValue{Any}
     caller_will_catch_err::Bool
-    # A vector from names to the slotnumber of that name
-    # for which a reference was last encountered.
-    last_reference::Dict{Symbol,Int}
+    last_reference::Vector{Int}
     callargs::Vector{Any}  # a temporary for processing arguments of :call exprs
 end
 
@@ -176,10 +180,11 @@ mutable struct Frame
     framecode::FrameCode
     framedata::FrameData
     pc::Int
+    assignment_counter::Int64
     caller::Union{Frame,Nothing}
     callee::Union{Frame,Nothing}
 end
-Frame(framecode, framedata, pc=1, caller=nothing) = Frame(framecode, framedata, pc, caller, nothing)
+Frame(framecode, framedata, pc=1, caller=nothing) = Frame(framecode, framedata, pc, 1, caller, nothing)
 
 caller(frame) = frame.caller
 callee(frame) = frame.callee
@@ -331,7 +336,7 @@ struct BreakpointSignature <: AbstractBreakpoint
     enabled::Ref{Bool}
     instances::Vector{BreakpointRef}
 end
-same_location(bp2::BreakpointSignature, bp::BreakpointSignature) = 
+same_location(bp2::BreakpointSignature, bp::BreakpointSignature) =
     bp2.f == bp.f && bp2.sig == bp.sig && bp2.line == bp.line
 function Base.show(io::IO, bp::BreakpointSignature)
     print(io, bp.f)
@@ -369,7 +374,7 @@ struct BreakpointFileLocation <: AbstractBreakpoint
     enabled::Ref{Bool}
     instances::Vector{BreakpointRef}
 end
-same_location(bp2::BreakpointFileLocation, bp::BreakpointFileLocation) = 
+same_location(bp2::BreakpointFileLocation, bp::BreakpointFileLocation) =
     bp2.path == bp.path && bp2.abspath == bp.abspath && bp2.line == bp.line
 function Base.show(io::IO, bp::BreakpointFileLocation)
     print(io, bp.path, ':', bp.line)
@@ -378,4 +383,3 @@ function Base.show(io::IO, bp::BreakpointFileLocation)
         print(io, " [disabled]")
     end
 end
-
