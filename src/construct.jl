@@ -109,7 +109,7 @@ keyword-sorter function for `fcall`.
 
 # Example
 
-```jldoctest; setup=(using JuliaInterpreter; empty!(JuliaInterpreter.junk))
+```jldoctest
 julia> mymethod(x) = 1
 mymethod (generic function with 1 method)
 
@@ -213,7 +213,7 @@ this will be the types of `allargs`);
 
 # Example
 
-```jldoctest; setup=(using JuliaInterpreter; empty!(JuliaInterpreter.junk))
+```jldoctest
 julia> mymethod(x::Vector{T}) where T = 1
 mymethod (generic function with 1 method)
 
@@ -520,7 +520,7 @@ would be created by the generator.
 
 # Example
 
-```jldoctest; setup=(using JuliaInterpreter; empty!(JuliaInterpreter.junk))
+```jldoctest
 julia> mymethod(x) = x+1
 mymethod (generic function with 1 method)
 
@@ -563,7 +563,7 @@ Build a `Frame` ready to execute `f` with the specified positional and keyword a
 
 # Example
 
-```jldoctest; setup=(using JuliaInterpreter; empty!(JuliaInterpreter.junk))
+```jldoctest
 julia> mymethod(x) = x+1
 mymethod (generic function with 1 method)
 
@@ -661,7 +661,7 @@ Evaluate `f` on the specified arguments using the interpreter.
 
 # Example
 
-```jldoctest; setup=(using JuliaInterpreter; empty!(JuliaInterpreter.junk))
+```jldoctest
 julia> a = [1, 7]
 2-element Array{Int64,1}:
  1
