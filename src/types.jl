@@ -180,7 +180,7 @@ mutable struct Frame
     framecode::FrameCode
     framedata::FrameData
     pc::Int
-    assignment_counter::Int
+    assignment_counter::Int64
     caller::Union{Frame,Nothing}
     callee::Union{Frame,Nothing}
 end
