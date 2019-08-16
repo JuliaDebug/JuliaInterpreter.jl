@@ -368,8 +368,56 @@ end
     eval_code(frame::Frame, code::Union{String, Expr})
 
 Evaluate `code` in the context of `frame`, updating any local variables
-(including type parameters) that are reassigned in `code`. New local variables
+(including type parameters) that are reassigned in `code`, however, new local variables
 cannot be introduced.
+
+```jldoctest; setup=(using JuliaInterpreter; empty!(JuliaInterpreter.junk))
+julia> foo(x, y) = x + y;
+
+julia> frame = JuliaInterpreter.enter_call(foo, 1, 3);
+
+julia> JuliaInterpreter.eval_code(frame, "x + y")
+4
+
+julia> JuliaInterpreter.eval_code(frame, "x = 5");
+
+julia> JuliaInterpreter.finish_and_return!(frame)
+8
+````
+
+When variables are captured in closures (and thus gets wrapped in a `Core.Box`)
+they will be automatically unwrapped and rewrapped upon evaluating them:
+
+```jldoctest
+julia> function capture()
+           x = 1
+           f = ()->(x = 2) # x captured in closure and is thus a Core.Box
+           f()
+           x
+       end;
+
+julia> frame = JuliaInterpreter.enter_call(capture);
+
+julia> JuliaInterpreter.step_expr!(frame);
+
+julia> JuliaInterpreter.step_expr!(frame);
+
+julia> JuliaInterpreter.locals(frame)
+2-element Array{JuliaInterpreter.Variable,1}:
+ #self# = capture
+ x = Core.Box(1)
+
+julia> JuliaInterpreter.eval_code(frame, "x")
+1
+
+julia> JuliaInterpreter.eval_code(frame, "x = 2")
+2
+
+julia> JuliaInterpreter.locals(frame)
+2-element Array{JuliaInterpreter.Variable,1}:
+ #self# = capture
+ x = Core.Box(2)
+```
 """
 function eval_code end
 
@@ -386,7 +434,7 @@ function eval_code(frame::Frame, expr)
     vars = filter(v -> v.name != Symbol(""), locals(frame))
     res = gensym()
     eval_expr = Expr(:let,
-        Expr(:block, map(x->Expr(:(=), x...), [(v.name, maybe_quote(v.value)) for v in vars])...),
+        Expr(:block, map(x->Expr(:(=), x...), [(v.name, maybe_quote(v.value isa Core.Box ? v.value.contents : v.value)) for v in vars])...),
         Expr(:block,
             Expr(:(=), res, expr),
             Expr(:tuple, res, Expr(:tuple, [v.name for v in vars]...))
@@ -398,7 +446,7 @@ function eval_code(frame::Frame, expr)
             frame.framedata.sparams[j] = res[i]
             j += 1
         else
-            frame.framedata.locals[frame.framedata.last_reference[v.name]] = Some{Any}(res[i])
+            frame.framedata.locals[frame.framedata.last_reference[v.name]] = Some{Any}(v.value isa Core.Box ? Core.Box(res[i]) : res[i])
         end
     end
     eval_res
