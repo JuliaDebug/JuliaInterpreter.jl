@@ -562,3 +562,13 @@ g(x) = f(x)
 @test (@interpret g(5)) == g(5)
 f(x) = x*x
 @test (@interpret g(5)) == g(5)
+
+# Regression test https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/300
+module CSVTest
+    using Test
+    using JuliaInterpreter
+    using TableReader
+    const myfile = "smallcsv.csv"
+    @test (@interpret readcsv(myfile)) == readcsv(myfile)
+end
+

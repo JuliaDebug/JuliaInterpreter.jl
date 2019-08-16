@@ -287,7 +287,7 @@ function build_compiled_call!(stmt, fcall, code, idx, nargs, sparams, evalmod)
         RetType = RetType[1]
     end
     # When the ccall is dynamic we pass the pointer as an argument so can reuse the function
-    cc_key = (dynamic_ccall ? :ptr : cfunc, RetType, ArgType, evalmod)  # compiled call key
+    cc_key = (dynamic_ccall ? :ptr : cfunc, RetType, ArgType, evalmod, length(sparams))  # compiled call key
     f = get(compiled_calls, cc_key, nothing)
     argnames = Any[Symbol("arg", string(i)) for i = 1:nargs]
     if f === nothing
