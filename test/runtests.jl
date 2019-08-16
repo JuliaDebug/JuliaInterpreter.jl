@@ -7,7 +7,7 @@ if !isdefined(@__MODULE__, :read_and_parse)
     include("utils.jl")
 end
 
-JuliaInterpreter.debug_recycle[] = true
+Core.eval(JuliaInterpreter, :(debug_recycle() = true))
 
 @testset "Main tests" begin
     include("interpret.jl")

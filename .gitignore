@@ -4,3 +4,4 @@
 deps/build.log
 docs/build/
 test/results.md
+Manifest.toml

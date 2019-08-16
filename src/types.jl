@@ -184,7 +184,20 @@ mutable struct Frame
     caller::Union{Frame,Nothing}
     callee::Union{Frame,Nothing}
 end
-Frame(framecode, framedata, pc=1, caller=nothing) = Frame(framecode, framedata, pc, 1, caller, nothing)
+function Frame(framecode, framedata, pc=1, caller=nothing)
+    if length(junk_frames) > 0
+        frame = pop!(junk_frames)
+        frame.framecode = framecode
+        frame.framedata = framedata
+        frame.pc = pc
+        frame.assignment_counter = 1
+        frame.caller = caller
+        frame.callee = nothing
+        return frame
+    else
+        return Frame(framecode, framedata, pc, 1, caller, nothing)
+    end
+end
 
 caller(frame) = frame.caller
 callee(frame) = frame.callee
