@@ -146,7 +146,7 @@ Sometimes you might have a whole sequence of expressions you want to run.
 In such cases, your first thought should be `prepare_thunk`.
 Here's a demonstration:
 
-```jldoctest; setup=(using JuliaInterpreter; empty!(JuliaInterpreter.junk))
+```jldoctest; setup=(using JuliaInterpreter; JuliaInterpreter.clear_caches())
 using Test
 
 ex = quote

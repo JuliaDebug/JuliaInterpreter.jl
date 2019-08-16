@@ -26,12 +26,18 @@ rather than recursed into via the interpreter.
 """
 const compiled_modules = Set{Module}()
 
-const junk = FrameData[] # to allow re-use of allocated memory (this is otherwise a bottleneck)
-const debug_recycle = Base.RefValue(false)
-@noinline _check_frame_not_in_junk(frame) = @assert frame.framedata ∉ junk
+const junk_framedata = FrameData[] # to allow re-use of allocated memory (this is otherwise a bottleneck)
+const junk_frames = Frame[]
+debug_recycle() = false
+@noinline function _check_frame_not_in_junk(frame)
+    @assert frame.framedata ∉ junk_framedata
+    @assert frame ∉ junk_frames
+end
+
 @inline function recycle(frame)
-    debug_recycle[] && _check_frame_not_in_junk(frame)
-    push!(junk, frame.framedata)
+    debug_recycle() && _check_frame_not_in_junk(frame)
+    push!(junk_framedata, frame.framedata)
+    push!(junk_frames, frame)
 end
 
 function return_from(frame::Frame)
@@ -42,9 +48,10 @@ function return_from(frame::Frame)
 end
 
 function clear_caches()
-    empty!(junk)
+    empty!(junk_framedata)
     empty!(framedict)
     empty!(genframedict)
+    empty!(junk_frames)
     for bp in breakpoints()
         empty!(bp.instances)
     end
@@ -269,8 +276,8 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
     slotnames = src.slotnames::SlotNamesType
     ssavt = src.ssavaluetypes
     ng, ns = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any}), length(src.slotflags)
-    if length(junk) > 0
-        olddata = pop!(junk)
+    if length(junk_framedata) > 0
+        olddata = pop!(junk_framedata)
         locals, ssavalues, sparams = olddata.locals, olddata.ssavalues, olddata.sparams
         exception_frames, last_reference = olddata.exception_frames, olddata.last_reference
         last_exception = olddata.last_exception
