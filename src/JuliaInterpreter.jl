@@ -2,7 +2,7 @@ module JuliaInterpreter
 
 using Base.Meta
 import Base: +, -, convert, isless
-using Core: CodeInfo, TypeMapEntry, SimpleVector, LineInfoNode, GotoNode, Slot,
+using Core: CodeInfo, SimpleVector, LineInfoNode, GotoNode, Slot,
             GeneratedFunctionStub, MethodInstance, NewvarNode, TypeName
 
 using UUIDs

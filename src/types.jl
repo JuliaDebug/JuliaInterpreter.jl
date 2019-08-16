@@ -53,6 +53,13 @@ function breakpointchar(bps::BreakpointState)
     return bps.condition === falsecondition ? ' ' : 'd'     # no breakpoint : disabled
 end
 
+abstract type AbstractFrameInstance end
+mutable struct DispatchableMethod
+    next::Union{Nothing,DispatchableMethod}  # linked-list representation
+    frameinstance::Union{Compiled, AbstractFrameInstance} # really a Union{Compiled, FrameInstance} but we have a cyclic dependency
+    sig::Type # for speed of matching, this is a *concrete* signature. `sig <: frameinstance.framecode.scope.sig`
+end
+
 """
 `FrameCode` holds static information about a method or toplevel code.
 One `FrameCode` can be shared by many calling `Frame`s.
@@ -68,7 +75,7 @@ Important fields:
 struct FrameCode
     scope::Union{Method,Module}
     src::CodeInfo
-    methodtables::Vector{Union{Compiled,TypeMapEntry}} # line-by-line method tables for generic-function :call Exprs
+    methodtables::Vector{Union{Compiled,DispatchableMethod}} # line-by-line method tables for generic-function :call Exprs
     breakpoints::Vector{BreakpointState}
     slotnamelists::Dict{Symbol,Vector{Int}}
     used::BitSet
@@ -81,7 +88,7 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
         src, methodtables = optimize!(copy_codeinfo(src), scope)
     else
         src = replace_coretypes!(copy_codeinfo(src))
-        methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(src.code))
+        methodtables = Vector{Union{Compiled,DispatchableMethod}}(undef, length(src.code))
     end
     breakpoints = Vector{BreakpointState}(undef, length(src.code))
     for (i, pc_expr) in enumerate(src.code)
@@ -124,7 +131,7 @@ Fields:
 - `framecode`: the [`FrameCode`](@ref) for the method.
 - `sparam_vals`: the static parameter values for the method.
 """
-struct FrameInstance
+struct FrameInstance <: AbstractFrameInstance
     framecode::FrameCode
     sparam_vals::SimpleVector
     enter_generated::Bool
