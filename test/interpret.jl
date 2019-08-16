@@ -567,8 +567,10 @@ f(x) = x*x
 module CSVTest
     using Test
     using JuliaInterpreter
-    using TableReader
-    const myfile = "smallcsv.csv"
-    @test (@interpret readcsv(myfile)) == readcsv(myfile)
+    @static if sizeof(Int) == 8 # TableReader seems to not work on 32 bit
+        using TableReader
+        const myfile = "smallcsv.csv"
+        @test (@interpret readcsv(myfile)) == readcsv(myfile)
+    end
 end
 
