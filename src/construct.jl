@@ -26,12 +26,18 @@ rather than recursed into via the interpreter.
 """
 const compiled_modules = Set{Module}()
 
-const junk = FrameData[] # to allow re-use of allocated memory (this is otherwise a bottleneck)
-const debug_recycle = Base.RefValue(false)
-@noinline _check_frame_not_in_junk(frame) = @assert frame.framedata ∉ junk
+const junk_framedata = FrameData[] # to allow re-use of allocated memory (this is otherwise a bottleneck)
+const junk_frames = Frame[]
+debug_recycle() = false
+@noinline function _check_frame_not_in_junk(frame)
+    @assert frame.framedata ∉ junk_framedata
+    @assert frame ∉ junk_frames
+end
+
 @inline function recycle(frame)
-    debug_recycle[] && _check_frame_not_in_junk(frame)
-    push!(junk, frame.framedata)
+    debug_recycle() && _check_frame_not_in_junk(frame)
+    push!(junk_framedata, frame.framedata)
+    push!(junk_frames, frame)
 end
 
 function return_from(frame::Frame)
@@ -42,9 +48,10 @@ function return_from(frame::Frame)
 end
 
 function clear_caches()
-    empty!(junk)
+    empty!(junk_framedata)
     empty!(framedict)
     empty!(genframedict)
+    empty!(junk_frames)
     for bp in breakpoints()
         empty!(bp.instances)
     end
@@ -109,7 +116,7 @@ keyword-sorter function for `fcall`.
 
 # Example
 
-```jldoctest; setup=(using JuliaInterpreter; empty!(JuliaInterpreter.junk))
+```jldoctest
 julia> mymethod(x) = 1
 mymethod (generic function with 1 method)
 
@@ -213,7 +220,7 @@ this will be the types of `allargs`);
 
 # Example
 
-```jldoctest; setup=(using JuliaInterpreter; empty!(JuliaInterpreter.junk))
+```jldoctest
 julia> mymethod(x::Vector{T}) where T = 1
 mymethod (generic function with 1 method)
 
@@ -254,7 +261,7 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
         # The generator threw an error. Let's generate the same error by calling it.
         f(allargs[2:end]...)
     end
-    isa(ret, Compiled) && return ret
+    isa(ret, Compiled) && return ret, argtypes
     # Typical return
     framecode, lenv = ret
     if is_generated(method) && enter_generated
@@ -264,56 +271,49 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
 end
 
 function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=empty_svec, caller_will_catch_err::Bool=false)
-    if isa(framecode.scope, Method)
-        meth, src = framecode.scope::Method, framecode.src
-        slotnames = src.slotnames::SlotNamesType
-        ssavt = src.ssavaluetypes
-        ng = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any})
-        nargs, meth_nargs = length(argvals), Int(meth.nargs)
-        if length(junk) > 0
-            olddata = pop!(junk)
-            locals, ssavalues, sparams = olddata.locals, olddata.ssavalues, olddata.sparams
-            exception_frames, last_reference = olddata.exception_frames, olddata.last_reference
-            last_exception = olddata.last_exception
-            callargs = olddata.callargs
-            resize!(locals, length(src.slotflags))
-            resize!(ssavalues, ng)
-            # for check_isdefined to work properly, we need sparams to start out unassigned
-            resize!(sparams, 0)
-            empty!(exception_frames)
-            empty!(last_reference)
-            last_exception[] = nothing
-        else
-            locals = Vector{Union{Nothing,Some{Any}}}(undef, length(src.slotflags))
-            ssavalues = Vector{Any}(undef, ng)
-            sparams = Vector{Any}(undef, 0)
-            exception_frames = Int[]
-            last_reference = Dict{Symbol,Int}()
-            callargs = Any[]
-            last_exception = Ref{Any}(nothing)
-        end
-        for i = 1:meth_nargs
-            last_reference[slotnames[i]::Symbol] = i
-            if meth.isva && i == meth_nargs
-                locals[i] = nargs < i ? Some{Any}(()) : (let i=i; Some{Any}(ntuple(k->argvals[i+k-1], nargs-i+1)); end)
-                break
-            end
-            locals[i] = nargs >= i ? Some{Any}(argvals[i]) : Some{Any}(())
-        end
-        # add local variables initially undefined
-        for i = (meth_nargs+1):length(slotnames)
-            locals[i] = nothing
-        end
-    else
-        src = framecode.src
-        locals = Vector{Union{Nothing,Some{Any}}}(undef, length(src.slotflags))  # src.slotflags is concretely typed, unlike slotnames
+    src = framecode.src
+    slotnames = src.slotnames::SlotNamesType
+    ssavt = src.ssavaluetypes
+    ng, ns = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any}), length(src.slotflags)
+    if length(junk_framedata) > 0
+        olddata = pop!(junk_framedata)
+        locals, ssavalues, sparams = olddata.locals, olddata.ssavalues, olddata.sparams
+        exception_frames, last_reference = olddata.exception_frames, olddata.last_reference
+        last_exception = olddata.last_exception
+        callargs = olddata.callargs
+        resize!(locals, ns)
         fill!(locals, nothing)
-        ssavalues = Vector{Any}(undef, length(src.code))
-        sparams = Any[]
+        resize!(ssavalues, ng)
+        # for check_isdefined to work properly, we need sparams to start out unassigned
+        resize!(sparams, 0)
+        empty!(exception_frames)
+        resize!(last_reference, ns)
+        last_exception[] = nothing
+    else
+        locals = Vector{Union{Nothing,Some{Any}}}(nothing, ns)
+        ssavalues = Vector{Any}(undef, ng)
+        sparams = Vector{Any}(undef, 0)
         exception_frames = Int[]
-        last_reference = Dict{Symbol,Int}()
+        last_reference = Vector{Int}(undef, ns)
         callargs = Any[]
         last_exception = Ref{Any}(nothing)
+    end
+    fill!(last_reference, 0)
+    if isa(framecode.scope, Method)
+        meth = framecode.scope::Method
+        nargs, meth_nargs = length(argvals), Int(meth.nargs)
+        islastva = meth.isva && nargs >= meth_nargs
+        for i = 1:meth_nargs-islastva
+            if nargs >= i
+                locals[i], last_reference[i] = Some{Any}(argvals[i]), 1
+            else
+                locals[i] = Some{Any}(())
+            end
+        end
+        if islastva
+            locals[meth_nargs] =  (let i=meth_nargs; Some{Any}(ntuple(k->argvals[i+k-1], nargs-i+1)); end)
+            last_reference[meth_nargs] = 1
+        end
     end
     resize!(sparams, length(lenv))
     # Add static parameters to environment
@@ -519,7 +519,7 @@ would be created by the generator.
 
 # Example
 
-```jldoctest; setup=(using JuliaInterpreter; empty!(JuliaInterpreter.junk))
+```jldoctest
 julia> mymethod(x) = x+1
 mymethod (generic function with 1 method)
 
@@ -549,7 +549,7 @@ See [`enter_call`](@ref) for a similar approach not based on expressions.
 function enter_call_expr(expr; enter_generated = false)
     clear_caches()
     r = determine_method_for_expr(expr; enter_generated = enter_generated)
-    if isa(r, Tuple)
+    if r !== nothing && !isa(r[1], Compiled)
         return prepare_frame(r[1:end-1]...)
     end
     nothing
@@ -562,7 +562,7 @@ Build a `Frame` ready to execute `f` with the specified positional and keyword a
 
 # Example
 
-```jldoctest; setup=(using JuliaInterpreter; empty!(JuliaInterpreter.junk))
+```jldoctest
 julia> mymethod(x) = x+1
 mymethod (generic function with 1 method)
 
@@ -603,7 +603,7 @@ function enter_call(@nospecialize(finfo), @nospecialize(args...); kwargs...)
         error(f, " is a builtin or intrinsic")
     end
     r = prepare_call(f, allargs; enter_generated=enter_generated)
-    if isa(r, Tuple)
+    if r !== nothing && !isa(r[1], Compiled)
         return prepare_frame(r[1:end-1]...)
     end
     return nothing
@@ -659,7 +659,7 @@ Evaluate `f` on the specified arguments using the interpreter.
 
 # Example
 
-```jldoctest; setup=(using JuliaInterpreter; empty!(JuliaInterpreter.junk))
+```jldoctest
 julia> a = [1, 7]
 2-element Array{Int64,1}:
  1

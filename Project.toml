@@ -1,6 +1,6 @@
 name = "JuliaInterpreter"
 uuid = "aa1ae85d-cabe-5617-a682-6adf51b2e16a"
-version = "0.6.1"
+version = "0.7.0"
 
 [deps]
 CodeTracking = "da1fd8a2-8d9e-5ec2-8556-3022fb5608a2"
@@ -19,6 +19,7 @@ Mmap = "a63ad114-7e13-5084-954f-fe012c677804"
 SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 Tensors = "48a634ad-e948-5137-8d70-aa71f2a747f4"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+TableReader = "70df011a-6618-58d7-8e16-3cf9e384cb47"
 
 [targets]
-test = ["Test", "Dates", "Distributed", "Mmap", "SHA", "Tensors"]
+test = ["Test", "Dates", "Distributed", "Mmap", "SHA", "Tensors", "TableReader"]

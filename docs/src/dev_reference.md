@@ -96,6 +96,7 @@ JuliaInterpreter.compiled_modules
 ## Utilities
 
 ```@docs
+JuliaInterpreter.eval_code
 JuliaInterpreter.@lookup
 JuliaInterpreter.is_wrapper_call
 JuliaInterpreter.is_doc_expr

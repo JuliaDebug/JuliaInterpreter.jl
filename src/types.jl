@@ -53,6 +53,13 @@ function breakpointchar(bps::BreakpointState)
     return bps.condition === falsecondition ? ' ' : 'd'     # no breakpoint : disabled
 end
 
+abstract type AbstractFrameInstance end
+mutable struct DispatchableMethod
+    next::Union{Nothing,DispatchableMethod}  # linked-list representation
+    frameinstance::Union{Compiled, AbstractFrameInstance} # really a Union{Compiled, FrameInstance} but we have a cyclic dependency
+    sig::Type # for speed of matching, this is a *concrete* signature. `sig <: frameinstance.framecode.scope.sig`
+end
+
 """
 `FrameCode` holds static information about a method or toplevel code.
 One `FrameCode` can be shared by many calling `Frame`s.
@@ -68,8 +75,9 @@ Important fields:
 struct FrameCode
     scope::Union{Method,Module}
     src::CodeInfo
-    methodtables::Vector{Union{Compiled,TypeMapEntry}} # line-by-line method tables for generic-function :call Exprs
+    methodtables::Vector{Union{Compiled,DispatchableMethod}} # line-by-line method tables for generic-function :call Exprs
     breakpoints::Vector{BreakpointState}
+    slotnamelists::Dict{Symbol,Vector{Int}}
     used::BitSet
     generator::Bool   # true if this is for the expression-generator of a @generated function
 end
@@ -80,7 +88,7 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
         src, methodtables = optimize!(copy_codeinfo(src), scope)
     else
         src = replace_coretypes!(copy_codeinfo(src))
-        methodtables = Vector{Union{Compiled,TypeMapEntry}}(undef, length(src.code))
+        methodtables = Vector{Union{Compiled,DispatchableMethod}}(undef, length(src.code))
     end
     breakpoints = Vector{BreakpointState}(undef, length(src.code))
     for (i, pc_expr) in enumerate(src.code)
@@ -89,8 +97,13 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
             src.code[i] = nothing
         end
     end
+    slotnamelists = Dict{Symbol,Vector{Int}}()
+    for (i, sym) in enumerate(src.slotnames)
+        list = get(slotnamelists, sym, Int[])
+        slotnamelists[sym] = push!(list, i)
+    end
     used = find_used(src)
-    framecode = FrameCode(scope, src, methodtables, breakpoints, used, generator)
+    framecode = FrameCode(scope, src, methodtables, breakpoints, slotnamelists, used, generator)
     if scope isa Method
         for bp in _breakpoints
             # Manual union splitting
@@ -118,7 +131,7 @@ Fields:
 - `framecode`: the [`FrameCode`](@ref) for the method.
 - `sparam_vals`: the static parameter values for the method.
 """
-struct FrameInstance
+struct FrameInstance <: AbstractFrameInstance
     framecode::FrameCode
     sparam_vals::SimpleVector
     enter_generated::Bool
@@ -151,9 +164,7 @@ struct FrameData
     exception_frames::Vector{Int}
     last_exception::Base.RefValue{Any}
     caller_will_catch_err::Bool
-    # A vector from names to the slotnumber of that name
-    # for which a reference was last encountered.
-    last_reference::Dict{Symbol,Int}
+    last_reference::Vector{Int}
     callargs::Vector{Any}  # a temporary for processing arguments of :call exprs
 end
 
@@ -176,10 +187,24 @@ mutable struct Frame
     framecode::FrameCode
     framedata::FrameData
     pc::Int
+    assignment_counter::Int64
     caller::Union{Frame,Nothing}
     callee::Union{Frame,Nothing}
 end
-Frame(framecode, framedata, pc=1, caller=nothing) = Frame(framecode, framedata, pc, caller, nothing)
+function Frame(framecode, framedata, pc=1, caller=nothing)
+    if length(junk_frames) > 0
+        frame = pop!(junk_frames)
+        frame.framecode = framecode
+        frame.framedata = framedata
+        frame.pc = pc
+        frame.assignment_counter = 1
+        frame.caller = caller
+        frame.callee = nothing
+        return frame
+    else
+        return Frame(framecode, framedata, pc, 1, caller, nothing)
+    end
+end
 
 caller(frame) = frame.caller
 callee(frame) = frame.callee
@@ -378,4 +403,3 @@ function Base.show(io::IO, bp::BreakpointFileLocation)
         print(io, " [disabled]")
     end
 end
-

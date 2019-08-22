@@ -116,6 +116,24 @@ struct Squarer end
     @test !any(v->v.name == :b, var)
     @test filter(v->v.name == :a, var)[1].value == 2
 
+    # Method with local scope (two slots with same name)
+    ln = @__LINE__
+    function ftwoslots()
+        y = 1
+        z = let y = y
+                y = y + 2
+                rand()
+            end
+        y = y + 1
+        return z
+    end
+    bp = breakpoint(@__FILE__, ln+5, :(y > 2))
+    frame, bp2 = @interpret ftwoslots()
+    var = JuliaInterpreter.locals(leaf(frame))
+    @test filter(v->v.name == :y, var)[1].value == 3
+    remove(bp)
+    bp = breakpoint(@__FILE__, ln+8, :(y > 2))
+    @test isa(@interpret(ftwoslots()), Float64)
 
     # Direct return
     @breakpoint gcd(1,1) a==5

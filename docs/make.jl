@@ -1,6 +1,11 @@
 using Documenter, JuliaInterpreter, Test, CodeTracking
 
-remove()   # ensure there are no activate breakpoints
+DocMeta.setdocmeta!(JuliaInterpreter, :DocTestSetup, :(
+    begin
+        using JuliaInterpreter
+        JuliaInterpreter.clear_caches()
+        JuliaInterpreter.remove()
+    end); recursive=true)
 
 makedocs(
     modules = [JuliaInterpreter],

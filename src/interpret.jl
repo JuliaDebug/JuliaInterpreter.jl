@@ -1,5 +1,3 @@
-# Implements a simple interpreter for julia's lowered AST
-
 isassign(frame) = isassign(frame, frame.pc)
 isassign(frame, pc) = (pc in frame.framecode.used)
 
@@ -335,9 +333,9 @@ function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
     if isa(lhs, SSAValue)
         data.ssavalues[lhs.id] = rhs
     elseif isa(lhs, SlotNumber)
+        counter = (frame.assignment_counter += 1)
         data.locals[lhs.id] = Some{Any}(rhs)
-        slotnames = code.src.slotnames::SlotNamesType
-        data.last_reference[slotnames[lhs.id]::Symbol] = lhs.id
+        data.last_reference[lhs.id] = counter
     elseif isa(lhs, GlobalRef)
         Core.eval(lhs.mod, :($(lhs.name) = $(QuoteNode(rhs))))
     elseif isa(lhs, Symbol)

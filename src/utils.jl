@@ -288,7 +288,7 @@ function framecode_lines(src::CodeInfo)
     buf = IOBuffer()
     show(buf, src)
     code = filter!(split(String(take!(buf)), '\n')) do line
-        !(line == "CodeInfo(" || line == ")" || isempty(line))
+        !(line == "CodeInfo(" || line == ")" || isempty(line) || occursin("within `", line))
     end
     code .= replace.(code, Ref(r"\$\(QuoteNode\((.+?)\)\)" => s"\1"))
     return code
@@ -332,16 +332,24 @@ end
 Return the local variables as a vector of `Variable`[@ref].
 """
 function locals(frame::Frame)
-    vars = Variable[]
+    vars, var_counter = Variable[], Int[]
+    varlookup = Dict{Symbol,Int}()
     data, code = frame.framedata, frame.framecode
-    added = Set{Symbol}()
     slotnames = code.src.slotnames::SlotNamesType
-    for sym in slotnames
-        sym ∈ added && continue
-        idx = get(data.last_reference, sym, 0)
-        idx == 0 && continue
-        push!(vars, Variable(something(data.locals[idx]), sym, false))
-        push!(added, sym)
+    for (sym, counter, val) in zip(slotnames, data.last_reference, data.locals)
+        counter == 0 && continue
+        var = Variable(something(val), sym, false)
+        idx = get(varlookup, sym, 0)
+        if idx > 0
+            if counter > var_counter[idx]
+                vars[idx] = var
+                var_counter[idx] = counter
+            end
+        else
+            varlookup[sym] = length(vars)+1
+            push!(vars, var)
+            push!(var_counter, counter)
+        end
     end
     if code.scope isa Method
         syms = sparam_syms(code.scope)
@@ -359,6 +367,99 @@ function print_vars(io::IO, vars::Vector{Variable})
         v.name == Symbol("#self#") && (isa(v.value, Type) || sizeof(v.value) == 0) && continue
         print(io, '\n', v)
     end
+end
+
+"""
+    eval_code(frame::Frame, code::Union{String, Expr})
+
+Evaluate `code` in the context of `frame`, updating any local variables
+(including type parameters) that are reassigned in `code`, however, new local variables
+cannot be introduced.
+
+```jldoctest
+julia> foo(x, y) = x + y;
+
+julia> frame = JuliaInterpreter.enter_call(foo, 1, 3);
+
+julia> JuliaInterpreter.eval_code(frame, "x + y")
+4
+
+julia> JuliaInterpreter.eval_code(frame, "x = 5");
+
+julia> JuliaInterpreter.finish_and_return!(frame)
+8
+```
+
+When variables are captured in closures (and thus gets wrapped in a `Core.Box`)
+they will be automatically unwrapped and rewrapped upon evaluating them:
+
+```jldoctest
+julia> function capture()
+           x = 1
+           f = ()->(x = 2) # x captured in closure and is thus a Core.Box
+           f()
+           x
+       end;
+
+julia> frame = JuliaInterpreter.enter_call(capture);
+
+julia> JuliaInterpreter.step_expr!(frame);
+
+julia> JuliaInterpreter.step_expr!(frame);
+
+julia> JuliaInterpreter.locals(frame)
+2-element Array{JuliaInterpreter.Variable,1}:
+ #self# = capture
+ x = Core.Box(1)
+
+julia> JuliaInterpreter.eval_code(frame, "x")
+1
+
+julia> JuliaInterpreter.eval_code(frame, "x = 2")
+2
+
+julia> JuliaInterpreter.locals(frame)
+2-element Array{JuliaInterpreter.Variable,1}:
+ #self# = capture
+ x = Core.Box(2)
+```
+"""
+function eval_code end
+
+eval_code(frame::Frame, command::AbstractString) = eval_code(frame, Base.parse_input_line(command))
+function eval_code(frame::Frame, expr)
+    maybe_quote(x) = (isa(x, Expr) || isa(x, Symbol)) ? QuoteNode(x) : x
+    code = frame.framecode
+    data = frame.framedata
+    isexpr(expr, :toplevel) && (expr = expr.args[end])
+
+    if isexpr(expr, :toplevel)
+      expr = Expr(:block, expr.args...)
+    end
+    # see https://github.com/JuliaLang/julia/issues/31255 for the Symbol("") check
+    vars = filter(v -> v.name != Symbol(""), locals(frame))
+    res = gensym()
+    eval_expr = Expr(:let,
+        Expr(:block, map(x->Expr(:(=), x...), [(v.name, maybe_quote(v.value isa Core.Box ? v.value.contents : v.value)) for v in vars])...),
+        Expr(:block,
+            Expr(:(=), res, expr),
+            Expr(:tuple, res, Expr(:tuple, [v.name for v in vars]...))
+        ))
+    eval_res, res = Core.eval(moduleof(frame), eval_expr)
+    j = 1
+    for (i, v) in enumerate(vars)
+        if v.isparam
+            data.sparams[j] = res[i]
+            j += 1
+        else
+            slot_indices = code.slotnamelists[v.name]
+            idx = argmax(data.last_reference[slot_indices])
+            slot_idx = slot_indices[idx]
+            data.last_reference[slot_idx] = (frame.assignment_counter += 1)
+            data.locals[slot_idx] = Some{Any}(v.value isa Core.Box ? Core.Box(res[i]) : res[i])
+        end
+    end
+    eval_res
 end
 
 function show_stackloc(io::IO, frame)

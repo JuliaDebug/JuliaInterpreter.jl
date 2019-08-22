@@ -7,6 +7,7 @@ os:
 julia:
   - 1.0
   - 1.1
+  - 1.2
   - nightly
 
 branches:
@@ -30,4 +31,4 @@ jobs:
 
 after_success:
   - julia -e 'import Pkg; Pkg.add("Coverage"); using Coverage; Codecov.submit(Codecov.process_folder())'
-  
+
