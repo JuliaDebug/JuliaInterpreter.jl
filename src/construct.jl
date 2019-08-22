@@ -241,7 +241,8 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     elseif any(is_vararg_type, allargs)
         return nothing  # https://github.com/JuliaLang/julia/issues/30995
     end
-    argtypes = Tuple{_Typeof.(allargs)...}
+    argtypesv = Any[_Typeof(a) for a in allargs]
+    argtypes = Tuple{argtypesv...}
     method = whichtt(argtypes)
     if method === nothing
         # Call it to generate the exact error
