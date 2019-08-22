@@ -255,7 +255,6 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
         # Call it to generate the exact error
         f(allargs[2:end]...)
     end
-    args = allargs
     ret = prepare_framecode(method, argtypes; enter_generated=enter_generated)
     # Exceptional returns
     if ret === nothing
@@ -266,9 +265,9 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     # Typical return
     framecode, lenv = ret
     if is_generated(method) && enter_generated
-        args = Any[_Typeof(a) for a in args]
+        allargs = Any[_Typeof(a) for a in allargs]
     end
-    return framecode, args, lenv, argtypes
+    return framecode, allargs, lenv, argtypes
 end
 
 function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=empty_svec, caller_will_catch_err::Bool=false)
@@ -614,7 +613,7 @@ end
 # call expression for further processing.
 function extract_args(__module__, ex0)
     if isa(ex0, Expr)
-        if any(a->(Meta.isexpr(a, :kw) || Meta.isexpr(a, :parameters)), ex0.args)
+        if any(a->(isexpr(a, :kw) || isexpr(a, :parameters)), ex0.args)
             return quote
                 local arg1 = $(ex0.args[1])
                 local args, kwargs = $separate_kwargs($(ex0.args[2:end]...))
@@ -629,23 +628,22 @@ function extract_args(__module__, ex0)
                 map(x->isexpr(x,:parameters) ? QuoteNode(x) : x, ex0.args)...)
         end
     end
-    if isa(ex0, Expr) && ex0.head == :macrocall # Make @edit @time 1+2 edit the macro by using the types of the *expressions*
+    if isexpr(ex0, :macrocall) # Make @edit @time 1+2 edit the macro by using the types of the *expressions*
         return error("Macros are not supported in @enter")
     end
     ex = Meta.lower(__module__, ex0)
-    exret = Expr(:none)
     if !isa(ex, Expr)
         return error("expression is not a function call or symbol")
     elseif ex.head == :call
         return Expr(:tuple,
-                map(x->isexpr(x,:parameters) ? QuoteNode(x) : x, ex.args)...)
+            map(x->isexpr(x, :parameters) ? QuoteNode(x) : x, ex.args)...)
     elseif ex.head == :body
         a1 = ex.args[1]
-        if isa(a1, Expr) && a1.head == :call
+        if isexpr(a1, :call)
             a11 = a1.args[1]
             if a11 == :setindex!
                 return Expr(:tuple,
-                map(x->isexpr(x,:parameters) ? QuoteNode(x) : x, arg.args)...)
+                    map(x->isexpr(x, :parameters) ? QuoteNode(x) : x, arg.args)...)
             end
         end
     end

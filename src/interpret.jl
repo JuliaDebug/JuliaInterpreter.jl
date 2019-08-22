@@ -206,7 +206,7 @@ function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr:
     isa(ret, Some{Any}) && return ret.value
     call_expr = ret
     fargs = collect_args(frame, call_expr)
-    if (f = fargs[1]) === Core.eval
+    if fargs[1] === Core.eval
         return Core.eval(fargs[2], fargs[3])  # not a builtin, but worth treating specially
     elseif fargs[1] === Base.rethrow
         err = length(fargs) > 1 ? fargs[2] : frame.framedata.last_exception[]
@@ -224,7 +224,7 @@ function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr:
         framecode, lenv = get_call_framecode(fargs, frame.framecode, frame.pc; enter_generated=enter_generated)
         if lenv === nothing
             if isa(framecode, Compiled)
-                popfirst!(fargs)  # now it's really just `args`
+                f = popfirst!(fargs)  # now it's really just `args`
                 return Base.invokelatest(f, fargs...)
             end
             return framecode  # this was a Builtin
@@ -276,7 +276,8 @@ end
 function structname(frame, node)
     name = node.args[1]
     if isa(name, GlobalRef)
-        mod, name = name.module, name.name
+        mod = name.module
+        name = name.name
     else
         mod = moduleof(frame)
         name = name::Symbol
@@ -428,8 +429,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
     try
         if isa(node, Expr)
             if node.head == :(=)
-                lhs = node.args[1]
-                rhs = node.args[2]
+                lhs, rhs = node.args
                 if isa(rhs, Expr)
                     rhs = eval_rhs(recurse, frame, rhs)
                 else
