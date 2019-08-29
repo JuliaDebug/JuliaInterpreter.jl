@@ -574,3 +574,14 @@ module CSVTest
     end
 end
 
+# Regression test https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/328
+module DataFramesTest
+    using Test
+    using JuliaInterpreter
+    using DataFrames
+    function df_debug1()
+        df = DataFrame(A=1:3, B=4:6)
+        df1 = hcat(df[!,[:A]], df[!,[:B]])
+    end
+    @test @interpret(df_debug1()) == df_debug1()
+end

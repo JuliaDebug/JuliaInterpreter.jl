@@ -10,6 +10,8 @@ function getargs(args, frame)
     return callargs
 end
 
+const kwinvoke_instance = getfield(Core, Symbol("#kw##invoke")).instance
+
 """
     ret = maybe_evaluate_builtin(frame, call_expr, expand::Bool)
 
@@ -227,7 +229,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         return Some{Any}(ccall(:jl_f_intrinsic_call, Any, (Any, Ptr{Any}, UInt32), f, cargs, length(cargs)))
     end
     if isa(f, getfield(Core, Symbol("#kw##invoke")))
-        return Some{Any}(getfield(Core, Symbol("#kw##invoke"))(getargs(args, frame)...))
+        return Some{Any}(kwinvoke_instance(getargs(args, frame)...))
     end
     return call_expr
 end
