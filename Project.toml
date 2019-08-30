@@ -17,9 +17,10 @@ Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 Mmap = "a63ad114-7e13-5084-954f-fe012c677804"
 SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
+TableReader = "70df011a-6618-58d7-8e16-3cf9e384cb47"
 Tensors = "48a634ad-e948-5137-8d70-aa71f2a747f4"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-TableReader = "70df011a-6618-58d7-8e16-3cf9e384cb47"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 
 [targets]
-test = ["Test", "Dates", "Distributed", "Mmap", "SHA", "Tensors", "TableReader"]
+test = ["Test", "Dates", "Distributed", "Mmap", "SHA", "Tensors", "TableReader", "DataFrames"]
