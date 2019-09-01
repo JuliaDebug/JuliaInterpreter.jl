@@ -499,6 +499,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                     Core.eval(mod, Expr(:toplevel,
                         :(for modex in $modexs
                               newframe = ($prepare_thunk)(modex)
+                              newframe === nothing && continue
                               while true
                                   ($through_methoddef_or_done!)($recurse, newframe) === nothing && break
                               end

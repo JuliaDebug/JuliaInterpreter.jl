@@ -399,3 +399,24 @@ end
     JuliaInterpreter.finish!(frame, true)
     @test Toplevel.Node isa Type
 end
+
+@testset "Non-frames" begin
+    ex = Base.parse_input_line("""
+            \"\"\"
+            An expr that produces an `export nffoo` that doesn't produce a Frame
+            \"\"\"
+            module NonFrame
+            nfbar(x) = 1
+            @deprecate nffoo nfbar
+            global CoolStuff
+            end
+            """)
+    modexs, _ = JuliaInterpreter.split_expressions(Toplevel, ex)
+    for (mod, ex) in modexs
+        frame = JuliaInterpreter.prepare_thunk(mod, ex)
+        frame === nothing && continue
+        JuliaInterpreter.finish!(frame, true)
+    end
+    Core.eval(Toplevel, :(using .NonFrame))
+    @test isdefined(Toplevel, :nffoo)
+end
