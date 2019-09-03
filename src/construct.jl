@@ -464,7 +464,7 @@ function split_expressions!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; 
             push!(docexs, ex)
         end
     else
-        if isempty(lex.args)
+        if isempty(lex.args) || (isexpr(ex, :global) && all(item->isa(item, LineNumberNode), lex.args))
             push!(modexs, (mod, copy(ex)))
         else
             push!(lex.args, ex)
