@@ -436,7 +436,7 @@ function split_expressions!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; 
         if isdefined(mod, newname)
             newmod = getfield(mod, newname)
         else
-            if (id = Base.identify_package(mod, String(newname))) !== nothing
+            if (id = Base.identify_package(mod, String(newname))) !== nothing && haskey(Base.loaded_modules, id)
                 newmod = Base.root_module(id)
             else
                 newmod = Core.eval(mod, :(module $newname end))
