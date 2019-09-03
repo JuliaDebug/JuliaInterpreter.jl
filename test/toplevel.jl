@@ -1,4 +1,4 @@
-using JuliaInterpreter, Test
+using JuliaInterpreter, Test, Random
 
 module JIVisible
 module JIInvisible
@@ -400,6 +400,7 @@ end
     @test Toplevel.Node isa Type
 end
 
+
 @testset "Non-frames" begin
     ex = Base.parse_input_line("""
             \"\"\"
@@ -419,4 +420,23 @@ end
     end
     Core.eval(Toplevel, :(using .NonFrame))
     @test isdefined(Toplevel, :nffoo)
+end
+
+@testset "LOAD_PATH and modules" begin
+    tmpdir = joinpath(tempdir(), randstring())
+    mkpath(tmpdir)
+    push!(LOAD_PATH, tmpdir)
+    filename = joinpath(tmpdir, "NewModule.jl")
+    open(filename, "w") do io
+        print(io, """
+        module NewModule
+        f() = 1
+        end""")
+    end
+    str = read(filename, String)
+    ex = Base.parse_input_line(str)
+    modexs, _ = JuliaInterpreter.split_expressions(Main, ex)
+    @test !isempty(modexs)
+    pop!(LOAD_PATH)
+    rm(tmpdir, recursive=true)
 end
