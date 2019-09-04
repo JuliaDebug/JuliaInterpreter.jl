@@ -250,7 +250,7 @@ end
 
 """
 `Variable` is a struct representing a variable with an asigned value.
-By calling the function `locals`[@ref] on a `Frame`[@ref] a
+By calling the function [`locals`](@ref) on a [`Frame`](@ref) a
 `Vector` of `Variable`'s is returned.
 
 Important fields:
