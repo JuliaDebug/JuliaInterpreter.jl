@@ -329,7 +329,7 @@ end
 """
     local_variables = locals(frame::Frame)::Vector{Variable}
 
-Return the local variables as a vector of `Variable`[@ref].
+Return the local variables as a vector of [`Variable`](@ref).
 """
 function locals(frame::Frame)
     vars, var_counter = Variable[], Int[]
