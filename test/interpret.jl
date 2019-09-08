@@ -585,3 +585,6 @@ module DataFramesTest
     end
     @test @interpret(df_debug1()) == df_debug1()
 end
+
+# issue #330
+@test @interpret(Base.PipeEndpoint()) isa Base.PipeEndpoint

@@ -181,7 +181,9 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
         end
         # Currenly, our strategy to deal with llvmcall can't handle parametric functions
         # (the "mini interpreter" runs in module scope, not method scope)
-        if !isempty(lenv) && (hasarg(isequal(:llvmcall), code.code) || hasarg(a->is_global_ref(a, Base, :llvmcall), code.code))
+        if (!isempty(lenv) && (hasarg(isequal(:llvmcall), code.code) ||
+                              hasarg(a->is_global_ref(a, Base, :llvmcall), code.code))) ||
+                hasarg(isequal(:iolock_begin), code.code)
             return Compiled()
         end
         framecode = FrameCode(method, code; generator=generator)

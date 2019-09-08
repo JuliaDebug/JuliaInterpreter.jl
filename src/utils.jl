@@ -95,6 +95,8 @@ function hasarg(predicate, args)
             hasarg(predicate, a.args) && return true
         elseif isa(a, QuoteNode)
             predicate(a.value) && return true
+        elseif isa(a, GlobalRef)
+            predicate(a.name) && return true
         end
     end
     return false
