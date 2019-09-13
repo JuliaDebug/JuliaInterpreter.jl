@@ -172,8 +172,8 @@ end
 """
 `Frame` represents the current execution state in a particular call frame.
 Fields:
-- `framecode`: the [`FrameCode`] for this frame.
-- `framedata`: the [`FrameData`] for this frame.
+- `framecode`: the [`FrameCode`](@ref) for this frame.
+- `framedata`: the [`FrameData`](@ref) for this frame.
 - `pc`: the program counter (integer index of the next statment to be evaluated) for this frame.
 - `caller`: the parent caller of this frame, or `nothing`.
 - `callee`: the frame called by this one, or `nothing`.
