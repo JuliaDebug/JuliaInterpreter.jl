@@ -65,7 +65,10 @@ breakpoint(radius2, Tuple{Int,Int}, :(y > x))
 ```
 """
 function breakpoint(f::Union{Method, Function}, sig=nothing, line::Integer=0, condition::Condition=nothing)
-    sig !== nothing && (sig = Base.to_tuple_type(sig))
+    if sig !== nothing && f isa Function
+        sig = Base.to_tuple_type(sig)
+        sig = Tuple{typeof(f), sig.parameters...}
+    end
     bp = BreakpointSignature(f, sig, line, condition, Ref(true), BreakpointRef[])
     add_to_existing_framecodes(bp)
     idx = findfirst(bp2 -> same_location(bp, bp2), _breakpoints)

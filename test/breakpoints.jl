@@ -315,3 +315,10 @@ end
         @test JuliaInterpreter.whereis(frame)[2] == l
     end
 end
+
+@testset "breakpoint by type" begin
+    remove()
+    breakpoint(sin, Tuple{Float64})
+    frame, bp = @interpret sin(2.0)
+    @test bp isa BreakpointRef
+end
