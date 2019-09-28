@@ -322,3 +322,30 @@ end
     frame, bp = @interpret sin(2.0)
     @test bp isa BreakpointRef
 end
+
+@testset "hooks" begin
+    remove()
+    f_break(x) = x
+
+    # Check creating hits hooks
+    empty!(breakpoint_update_hooks)
+    create_hook_hits = 0
+    push!(breakpoint_update_hooks, _->create_hook_hits+=1)
+    bp = breakpoint(f_break)
+    @test create_hook_hits==0  # No frames created so not really present
+
+    @interpret f_break(1)
+    @test create_hook_hits == 1  # now breakpoint realy created
+    @interpret f_break(1)  # same method
+    @test_broken create_hook_hits == 1  # hook should not have triggered
+    @interpret f_break(1.0)  # different method
+    @test_broken create_hook_hits == 2  # hook should have triggered again
+
+    @testset "$op" for op in (disable, enable, toggle, remove)
+        empty!(breakpoint_update_hooks)
+        hook_hit = false
+        push!(breakpoint_update_hooks, _->hook_hit=true)
+        op(bp)
+        @test hook_hit
+    end
+end

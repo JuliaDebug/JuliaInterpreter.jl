@@ -7,6 +7,16 @@ Return an array with all breakpoints.
 """
 breakpoints() = _breakpoints
 
+"""
+    breakpoint_update_hooks
+
+This is a collection of "hook" functions, each taking as input a `BreakpointRef`.
+Whenever something that updates the global state in relation to this hook is called,
+each hook function in this list will be called in turn, getting as input the updated `bp`.
+"""
+const breakpoint_update_hooks = []
+firehooks(bp::BreakpointRef) = foreach(hook->hook(bp), breakpoint_update_hooks)
+
 function add_to_existing_framecodes(bp::AbstractBreakpoint)
     for framecode in values(framedict)
         add_breakpoint_if_match!(framecode, bp)
@@ -17,7 +27,9 @@ function add_breakpoint_if_match!(framecode::FrameCode, bp::AbstractBreakpoint)
     if framecode_matches_breakpoint(framecode, bp)
         stmtidx = bp.line === 0 ? 1 : statementnumber(framecode, bp.line)
         breakpoint!(framecode, stmtidx, bp.condition, bp.enabled[])
-        push!(bp.instances, BreakpointRef(framecode, stmtidx))
+        bp_ref = BreakpointRef(framecode, stmtidx)
+        firehooks(bp_ref)
+        push!(bp.instances, bp_ref)
     end
 end
 
@@ -184,7 +196,11 @@ breakpoint!(frame::Frame, pc=frame.pc, condition::Condition=nothing) =
     breakpoint!(frame.framecode, pc, condition)
 
 update_states!(bp::AbstractBreakpoint) = foreach(bpref -> update_state!(bpref, bp.enabled[]), bp.instances)
-update_state!(bp::BreakpointRef, v::Bool) = bp[] = v
+function update_state!(bp::BreakpointRef, v::Bool)
+    bp[] = v
+    firehooks(bp)
+    v
+end
 
 """
     enable(bp::AbstractBreakpoint)
@@ -192,7 +208,7 @@ update_state!(bp::BreakpointRef, v::Bool) = bp[] = v
 Enable breakpoint `bp`.
 """
 enable(bp::AbstractBreakpoint) = (bp.enabled[] = true; update_states!(bp))
-enable(bp::BreakpointRef) = bp[] = true
+enable(bp::BreakpointRef) = update_state!(bp, true)
 
 
 """
@@ -201,7 +217,7 @@ enable(bp::BreakpointRef) = bp[] = true
 Disable breakpoint `bp`. Disabled breakpoints can be re-enabled with [`enable`](@ref).
 """
 disable(bp::AbstractBreakpoint) = (bp.enabled[] = false; update_states!(bp))
-disable(bp::BreakpointRef) = bp[] = false
+disable(bp::BreakpointRef) = update_state!(bp, false)
 
 """
     remove(bp::AbstractBreakpoint)
@@ -215,6 +231,7 @@ function remove(bp::AbstractBreakpoint)
 end
 function remove(bp::BreakpointRef)
     bp.framecode.breakpoints[bp.stmtidx] = BreakpointState(false, falsecondition)
+    firehooks(bp)
     return nothing
 end
 
@@ -224,10 +241,7 @@ end
 Toggle breakpoint `bp`.
 """
 toggle(bp::AbstractBreakpoint) = (bp.enabled[] = !bp.enabled[]; update_states!(bp))
-function toggle(bp::BreakpointRef)
-    state = bp[]
-    bp.framecode.breakpoints[bp.stmtidx] = BreakpointState(!state.isactive, state.condition)
-end
+toggle(bp::BreakpointRef) = update_state!(bp, !bp[].isactive)
 
 """
     enable()
