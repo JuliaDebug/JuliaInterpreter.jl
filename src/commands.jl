@@ -228,6 +228,7 @@ function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
         frame.framedata.ssavalues[frame.pc] = Wrapper()
         return maybe_step_through_wrapper!(recurse, callee(frame))
     end
+    maybe_step_through_nkw_meta!(frame)
     return frame
 end
 maybe_step_through_wrapper!(frame::Frame) = maybe_step_through_wrapper!(finish_and_return!, frame)
@@ -354,6 +355,15 @@ function unwind_exception(frame::Frame, exc)
     end
     rethrow(exc)
 end
+
+function maybe_step_through_nkw_meta!(frame)
+    stmt = pc_expr(frame)
+    if isexpr(stmt, :meta) && stmt.args[1] == :nkw
+        @assert frame.pc == 1
+        frame.pc += 1
+    end
+end
+
 
 """
     ret = debug_command(recurse, frame, cmd, rootistoplevel=false; line=nothing)
