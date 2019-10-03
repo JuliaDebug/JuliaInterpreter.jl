@@ -166,14 +166,17 @@ function optimize!(code::CodeInfo, scope)
             if (arg1 == :llvmcall || lookup_stmt(code.code, arg1) == Base.llvmcall) && isempty(sparams) && scope isa Method
                 nargs = length(stmt.args)-4
                 delete_idx = build_compiled_call!(stmt, Base.llvmcall, code, idx, nargs, sparams, evalmod)
+                delete_idx === nothing && error("llvmcall must be compiled, but exited early from build_compiled_call!")
                 push!(foreigncalls_idx, idx)
                 append!(delete_idxs, delete_idx)
             end
         elseif isexpr(stmt, :foreigncall) && scope isa Method
             nargs = foreigncall_version == 0 ? stmt.args[5] : length(stmt.args[3])
             delete_idx = build_compiled_call!(stmt, :ccall, code, idx, nargs, sparams, evalmod)
-            push!(foreigncalls_idx, idx)
-            append!(delete_idxs, delete_idx)
+            if delete_idx !== nothing
+                push!(foreigncalls_idx, idx)
+                append!(delete_idxs, delete_idx)
+            end
         end
     end
 
@@ -224,7 +227,14 @@ function parametric_type_to_expr(t::Type)
     if t <: Vararg
         return Expr(:(...), t.parameters[1])
     end
-    return t.hasfreetypevars ? Expr(:curly, t.name.name, ((tv-> tv isa TypeVar ? tv.name : tv).(t.parameters))...) : t
+    if t.hasfreetypevars
+        params = map(t.parameters) do p
+            isa(p, TypeVar) ? p.name :
+            isa(p, DataType) && p.hasfreetypevars ? parametric_type_to_expr(p) : p
+        end
+        return Expr(:curly, scopename(t.name), params...)
+    end
+    return t
 end
 
 # Handle :llvmcall & :foreigncall (issue #28)
@@ -295,6 +305,15 @@ function build_compiled_call!(stmt, fcall, code, idx, nargs, sparams, evalmod)
             ArgType = Expr(:tuple, [parametric_type_to_expr(t) for t in ArgType]...)
         end
         RetType = parametric_type_to_expr(RetType)
+        # #285: test whether we can evaluate an type constraints on parametric expressions
+        # this essentially comes down to having the names be available in CompiledCalls,
+        # if they are not then executing the method will fail
+        try
+            isa(RetType, Expr) && Core.eval(CompiledCalls, wrap_params(RetType, sparams))
+            isa(ArgType, Expr) && Core.eval(CompiledCalls, wrap_params(ArgType, sparams))
+        catch
+            return nothing
+        end
         wrapargs = copy(argnames)
         if dynamic_ccall
             pushfirst!(wrapargs, cfunc)
