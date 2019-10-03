@@ -1,6 +1,8 @@
 # This file generates builtins.jl.
 using InteractiveUtils
 
+const kwinvoke_name = isdefined(Core, Symbol("#kw##invoke")) ? Symbol("#kw##invoke") : Symbol("##invoke")
+
 function scopedname(f)
     io = IOBuffer()
     show(io, f)
@@ -91,6 +93,9 @@ function getargs(args, frame)
     return callargs
 end
 
+const kwinvoke_name = isdefined(Core, Symbol("#kw##invoke")) ? Symbol("#kw##invoke") : Symbol("##invoke")
+const kwinvoke_instance = getfield(Core, kwinvoke_name).instance
+
 \"\"\"
     ret = maybe_evaluate_builtin(frame, call_expr, expand::Bool)
 
@@ -121,7 +126,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     firstcall = true
     for ft in subtypes(Core.Builtin)
         ft === Core.IntrinsicFunction && continue
-        ft === getfield(Core, Symbol("#kw##invoke")) && continue  # handle this one later
+        ft === getfield(Core, kwinvoke_name) && continue  # handle this one later
         head = firstcall ? "if" : "elseif"
         firstcall = false
         f = ft.instance
@@ -228,8 +233,8 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     print(io,
 """
     end
-    if isa(f, getfield(Core, Symbol("#kw##invoke")))
-        return Some{Any}(getfield(Core, Symbol("#kw##invoke"))(getargs(args, frame)...))
+    if isa(f, getfield(Core, kwinvoke_name))
+        return Some{Any}(kwinvoke_instance(getargs(args, frame)...))
     end
     return call_expr
 end

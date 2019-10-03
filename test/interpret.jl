@@ -567,7 +567,7 @@ f(x) = x*x
 module CSVTest
     using Test
     using JuliaInterpreter
-    @static if sizeof(Int) == 8 # TableReader seems to not work on 32 bit
+    @static if sizeof(Int) == 8 && VERSION.minor < 4  # TableReader seems to not work on 32 bit or 1.4
         using TableReader
         const myfile = "smallcsv.csv"
         @test (@interpret readcsv(myfile)) == readcsv(myfile)
