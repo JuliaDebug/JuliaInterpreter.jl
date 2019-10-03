@@ -588,3 +588,8 @@ end
 
 # issue #330
 @test @interpret(Base.PipeEndpoint()) isa Base.PipeEndpoint
+
+# issue #345
+@noinline f_345() = 1
+frame = JuliaInterpreter.enter_call(f_345)
+@test JuliaInterpreter.whereis(frame) == (@__FILE__(), @__LINE__() - 2)

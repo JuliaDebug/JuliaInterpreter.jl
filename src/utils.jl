@@ -238,7 +238,7 @@ getfile(frame::Frame, pc=frame.pc) = getfile(frame.framecode, pc)
 
 function codelocation(code::CodeInfo, idx)
     codeloc = code.codelocs[idx]
-    while codeloc == 0 && code.code[idx] === nothing && idx < length(code.code)
+    while codeloc == 0 && (code.code[idx] === nothing || isexpr(code.code[idx], :meta)) && idx < length(code.code)
         idx += 1
         codeloc = code.codelocs[idx]
     end
