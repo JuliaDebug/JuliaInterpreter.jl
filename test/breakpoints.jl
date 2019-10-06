@@ -329,23 +329,26 @@ end
 
     # Check creating hits hooks
     empty!(breakpoint_update_hooks)
-    create_hook_hits = 0
-    push!(breakpoint_update_hooks, _->create_hook_hits+=1)
+    hook_hit = 0
+    push!(breakpoint_update_hooks, (f,_)->hook_hit = f == breakpoint)
     bp = breakpoint(f_break)
-    @test create_hook_hits==0  # No frames created so not really present
+    @test hook_hit
 
-    @interpret f_break(1)
-    @test create_hook_hits == 1  # now breakpoint realy created
-    @interpret f_break(1)  # same method
-    @test_broken create_hook_hits == 1  # hook should not have triggered
-    @interpret f_break(1.0)  # different method
-    @test_broken create_hook_hits == 2  # hook should have triggered again
-
-    @testset "$op" for op in (disable, enable, toggle, remove)
+    @testset "update_state! $op" for op in (disable, enable, toggle)
         empty!(breakpoint_update_hooks)
         hook_hit = false
-        push!(breakpoint_update_hooks, _->hook_hit=true)
+        push!(
+            breakpoint_update_hooks,
+            (f, _) -> hook_hit = f == JuliaInterpreter.update_state!,
+        )
         op(bp)
         @test hook_hit
     end
+
+    # Test removing
+    empty!(breakpoint_update_hooks)
+    hook_hit = false
+    push!(breakpoint_update_hooks, (f,_)->hook_hit = f === remove)
+    remove(bp)
+    @test hook_hit
 end

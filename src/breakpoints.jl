@@ -10,12 +10,17 @@ breakpoints() = _breakpoints
 """
     breakpoint_update_hooks
 
-This is a collection of "hook" functions, each taking as input a `BreakpointRef`.
-Whenever something that updates the global state in relation to this hook is called,
-each hook function in this list will be called in turn, getting as input the updated `bp`.
+This is a collection of "hook" functions, each taking as input function, and a `AbstractBreakpoint`.
+After the global state in relation breakpoints is updated each this hook is called,
+passing in the triggering function, and the updated/created/removed breakpoint.
+The trigger function should not be called, and is provided for dispatch purposes.
 """
 const breakpoint_update_hooks = []
-firehooks(bp::BreakpointRef) = foreach(hook->hook(bp), breakpoint_update_hooks)
+function firehooks(hooked_fun, bp::AbstractBreakpoint)
+    for hook in breakpoint_update_hooks
+        hook(hooked_fun, bp)
+    end
+end
 
 function add_to_existing_framecodes(bp::AbstractBreakpoint)
     for framecode in values(framedict)
@@ -27,9 +32,7 @@ function add_breakpoint_if_match!(framecode::FrameCode, bp::AbstractBreakpoint)
     if framecode_matches_breakpoint(framecode, bp)
         stmtidx = bp.line === 0 ? 1 : statementnumber(framecode, bp.line)
         breakpoint!(framecode, stmtidx, bp.condition, bp.enabled[])
-        bp_ref = BreakpointRef(framecode, stmtidx)
-        firehooks(bp_ref)
-        push!(bp.instances, bp_ref)
+        push!(bp.instances, BreakpointRef(framecode, stmtidx))
     end
 end
 
@@ -85,6 +88,7 @@ function breakpoint(f::Union{Method, Function}, sig=nothing, line::Integer=0, co
     add_to_existing_framecodes(bp)
     idx = findfirst(bp2 -> same_location(bp, bp2), _breakpoints)
     idx === nothing ? push!(_breakpoints, bp) : (_breakpoints[idx] = bp)
+    firehooks(breakpoint, bp)
     return bp
 end
 breakpoint(f::Union{Method, Function}, sig, condition::Condition) = breakpoint(f, sig, 0, condition)
@@ -108,6 +112,7 @@ function breakpoint(file::AbstractString, line::Integer, condition::Condition=no
     add_to_existing_framecodes(bp)
     idx = findfirst(bp2 -> same_location(bp, bp2), _breakpoints)
     idx === nothing ? push!(_breakpoints, bp) : (_breakpoints[idx] = bp)
+    firehooks(breakpoint, bp)
     return bp
 end
 
@@ -195,12 +200,11 @@ end
 breakpoint!(frame::Frame, pc=frame.pc, condition::Condition=nothing) =
     breakpoint!(frame.framecode, pc, condition)
 
-update_states!(bp::AbstractBreakpoint) = foreach(bpref -> update_state!(bpref, bp.enabled[]), bp.instances)
-function update_state!(bp::BreakpointRef, v::Bool)
-    bp[] = v
-    firehooks(bp)
-    v
+function update_states!(bp::AbstractBreakpoint)
+    foreach(bpref -> update_state!(bpref, bp.enabled[]), bp.instances)
+    firehooks(update_state!, bp)
 end
+update_state!(bp::BreakpointRef, v::Bool) = bp[] = v
 
 """
     enable(bp::AbstractBreakpoint)
@@ -226,12 +230,15 @@ Remove (delete) breakpoint `bp`. Removed breakpoints cannot be re-enabled.
 """
 function remove(bp::AbstractBreakpoint)
     idx = findfirst(isequal(bp), _breakpoints)
-    idx === nothing || deleteat!(_breakpoints, idx)
+    if idx !== nothing
+        bp = _breakpoints[idx]
+        deleteat!(_breakpoints, idx)
+        firehooks(remove, bp)
+    end
     foreach(remove, bp.instances)
 end
 function remove(bp::BreakpointRef)
     bp.framecode.breakpoints[bp.stmtidx] = BreakpointState(false, falsecondition)
-    firehooks(bp)
     return nothing
 end
 
