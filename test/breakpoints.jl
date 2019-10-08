@@ -327,14 +327,14 @@ end
     remove()
     f_break(x) = x
 
-    # Check creating hits hooks
+    # Check creating hits hook
     empty!(breakpoint_update_hooks)
-    hook_hit = 0
+    hook_hit = false
     push!(breakpoint_update_hooks, (f,_)->hook_hit = f == breakpoint)
     bp = breakpoint(f_break)
     @test hook_hit
 
-    @testset "update_state! $op" for op in (disable, enable, toggle)
+    @testset "update_state! $op hits hook" for op in (disable, enable, toggle)
         empty!(breakpoint_update_hooks)
         hook_hit = false
         push!(
@@ -345,7 +345,7 @@ end
         @test hook_hit
     end
 
-    # Test removing
+    # Test removing hits hooks
     empty!(breakpoint_update_hooks)
     hook_hit = false
     push!(breakpoint_update_hooks, (f,_)->hook_hit = f === remove)
