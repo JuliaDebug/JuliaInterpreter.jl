@@ -202,7 +202,7 @@ breakpoint!(frame::Frame, pc=frame.pc, condition::Condition=nothing) =
 
 function update_states!(bp::AbstractBreakpoint)
     foreach(bpref -> update_state!(bpref, bp.enabled[]), bp.instances)
-    firehooks(update_state!, bp)
+    firehooks(update_states!, bp)
 end
 update_state!(bp::BreakpointRef, v::Bool) = bp[] = v
 

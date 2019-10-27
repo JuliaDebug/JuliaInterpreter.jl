@@ -334,12 +334,12 @@ end
     bp = breakpoint(f_break)
     @test hook_hit
 
-    @testset "update_state! $op hits hook" for op in (disable, enable, toggle)
+    @testset "update_states! $op hits hook" for op in (disable, enable, toggle)
         empty!(breakpoint_update_hooks)
         hook_hit = false
         push!(
             breakpoint_update_hooks,
-            (f, _) -> hook_hit = f == JuliaInterpreter.update_state!,
+            (f, _) -> hook_hit = f == JuliaInterpreter.update_states!,
         )
         op(bp)
         @test hook_hit
