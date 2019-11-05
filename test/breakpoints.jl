@@ -323,6 +323,7 @@ end
     @test bp isa BreakpointRef
 end
 
+const breakpoint_update_hooks = JuliaInterpreter.breakpoint_update_hooks
 @testset "hooks" begin
     remove()
     f_break(x) = x
@@ -337,10 +338,7 @@ end
     @testset "update_states! $op hits hook" for op in (disable, enable, toggle)
         empty!(breakpoint_update_hooks)
         hook_hit = false
-        push!(
-            breakpoint_update_hooks,
-            (f, _) -> hook_hit = f == JuliaInterpreter.update_states!,
-        )
+        on_breakpoints_updated((f, _) -> hook_hit = f == JuliaInterpreter.update_states!)
         op(bp)
         @test hook_hit
     end
@@ -348,7 +346,15 @@ end
     # Test removing hits hooks
     empty!(breakpoint_update_hooks)
     hook_hit = false
-    push!(breakpoint_update_hooks, (f,_)->hook_hit = f === remove)
+    on_breakpoints_updated((f, _) -> hook_hit = f === remove)
     remove(bp)
     @test hook_hit
+
+    @testset "make sure error in hook function doesn't throw" begin
+        empty!(breakpoint_update_hooks)
+        on_breakpoints_updated((_, _) -> error("bad hook"))
+        @test_logs (:warn, r"hook"i) breakpoint(f_break)
+    end
 end
+# Run outside testset so that if it fails, the hooks get removed. So other tests can pass
+empty!(breakpoint_update_hooks)

@@ -7,18 +7,34 @@ Return an array with all breakpoints.
 """
 breakpoints() = _breakpoints
 
-"""
-    breakpoint_update_hooks
 
-This is a collection of "hook" functions, each taking as input function, and a `AbstractBreakpoint`.
-After the global state in relation breakpoints is updated each this hook is called,
-passing in the triggering function, and the updated/created/removed breakpoint.
-The trigger function should not be called, and is provided for dispatch purposes.
-"""
 const breakpoint_update_hooks = []
+"""
+    on_breakpoints_updated(f)
+
+Register a one-argument function to be called after any update to the global set of
+breakpoints. This includes their creation, deletion, enabling and disabling.
+
+The function `f` should take two inputs:
+First argument is the function doing to update, such as `::typeof(breakpoint)` for the
+creation, or `::typeof(remove)` for the deletion.
+Second argument is the breakpoint object that was changed.
+If only desiring to handle some kinds of update, `f` should have fallback methods
+to do nothing in the general case.
+
+!!! warning
+    This feature is experimental, and may be modified or removed without the tagging of a
+    breaking release.
+"""
+on_breakpoints_updated(f) = push!(breakpoint_update_hooks, f)
+
 function firehooks(hooked_fun, bp::AbstractBreakpoint)
     for hook in breakpoint_update_hooks
-        hook(hooked_fun, bp)
+        try
+            hook(hooked_fun, bp)
+        catch err
+            @warn "Hook function errored" hook hooked_fun bp exception=err
+        end
     end
 end
 
