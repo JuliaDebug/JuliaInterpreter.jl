@@ -94,7 +94,7 @@ end
 @test_broken stc == sti
 
 # issue #3
-@test @interpret(joinpath("/home/julia/base", "sysimg.jl")) == "/home/julia/base/sysimg.jl"
+@test @interpret(joinpath("/home/julia/base", "sysimg.jl")) == joinpath("/home/julia/base", "sysimg.jl")
 @test @interpret(10.0^4) == 10.0^4
 # issue #6
 @test @interpret(Array.body.body.name) === Array.body.body.name
@@ -607,4 +607,9 @@ using LinearAlgebra, SparseArrays, Random
     A = A'*A
     b = rand(n)
     @test @interpret(solveit(A, b)) == solveit(A, b)
+end
+
+@testset "issue 351" begin
+    f() = map(x -> 2x, 1:10)
+    @test @interpret(f()) == f()
 end
