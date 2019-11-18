@@ -36,7 +36,11 @@ using Test
     @test Aborted(frame, i).at.line == 9
     # Check macro
     frame = JuliaInterpreter.prepare_thunk(modexs[5])
-    @test Aborted(frame, 1).at.file == Symbol("util.jl")
+    if VERSION < v"1.4.0-DEV.475"
+        @test Aborted(frame, 1).at.file == Symbol("util.jl")
+    else
+        @test Aborted(frame, 1).at.file == Symbol("fake.jl")
+    end
 end
 
 module EvalLimited end
