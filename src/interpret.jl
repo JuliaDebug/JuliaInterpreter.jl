@@ -79,8 +79,6 @@ function lookup_or_eval(@nospecialize(recurse), frame, @nospecialize(node))
         return lookup_var(frame, node)
     elseif isa(node, Symbol)
         return getfield(moduleof(frame), node)
-    elseif isa(node, Int)
-        return node
     elseif isa(node, QuoteNode)
         return node.value
     elseif isa(node, Expr)
@@ -105,6 +103,8 @@ function lookup_or_eval(@nospecialize(recurse), frame, @nospecialize(node))
             dump(ex)
             error("unknown expr ", ex)
         end
+    elseif isa(node, Number)   # slow, requires subtyping
+        return node
     elseif isa(node, Type)
         return node
     end
