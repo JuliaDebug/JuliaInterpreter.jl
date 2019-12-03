@@ -613,3 +613,11 @@ end
     f() = map(x -> 2x, 1:10)
     @test @interpret(f()) == f()
 end
+
+@testset "invoke" begin
+    # Example provided by jmert in #352
+    f(d::Diagonal{T}) where {T} = invoke(f, Tuple{AbstractMatrix}, d)
+    f(m::AbstractMatrix{T}) where {T} = T
+    D = Diagonal([1.0, 2.0])
+    @test @interpret(f(D)) === f(D)
+end
