@@ -103,7 +103,7 @@ function lookup_or_eval(@nospecialize(recurse), frame, @nospecialize(node))
             dump(ex)
             error("unknown expr ", ex)
         end
-    elseif isa(node, Number)   # slow, requires subtyping
+    elseif isa(node, Int) || isa(node, Number)   # Number is slow, requires subtyping
         return node
     elseif isa(node, Type)
         return node
