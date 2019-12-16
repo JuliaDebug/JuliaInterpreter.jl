@@ -62,9 +62,13 @@ function find_used(code::CodeInfo)
     stmts = code.code
     for stmt in stmts
         scan_ssa_use!(used, stmt)
-        if isexpr(stmt, :struct_type)  # this one is missed by Core.Compiler.userefs
-            for a in stmt.args
-                scan_ssa_use!(used, a)
+        if isa(stmt, Expr)
+            head = stmt.head
+            if head === :struct_type || head === :abstract_type || head === :primitive_type
+                # these are missed by Core.Compiler.userefs, see https://github.com/JuliaLang/julia/pull/30936
+                for a in stmt.args
+                    scan_ssa_use!(used, a)
+                end
             end
         end
     end

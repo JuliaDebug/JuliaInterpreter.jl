@@ -285,6 +285,7 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         callargs = olddata.callargs
         resize!(locals, ns)
         fill!(locals, nothing)
+        resize!(ssavalues, 0)
         resize!(ssavalues, ng)
         # for check_isdefined to work properly, we need sparams to start out unassigned
         resize!(sparams, 0)
