@@ -440,3 +440,10 @@ end
     pop!(LOAD_PATH)
     rm(tmpdir, recursive=true)
 end
+
+@testset "`used` for abstract types" begin
+    ex = :(abstract type AbstractType <: AbstractArray{Union{Int,Missing},2} end)
+    frame = JuliaInterpreter.prepare_thunk(Toplevel, ex)
+    JuliaInterpreter.finish!(frame, true)
+    @test isabstracttype(Toplevel.AbstractType)
+end
