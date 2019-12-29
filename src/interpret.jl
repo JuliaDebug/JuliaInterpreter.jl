@@ -362,10 +362,9 @@ function eval_rhs(@nospecialize(recurse), frame, node::Expr)
     head = node.head
     if head == :new
         mod = moduleof(frame)
-        rhs = ccall(:jl_new_struct_uninit, Any, (Any,), @lookup(mod, frame, node.args[1]))
-        for i = 1:length(node.args) - 1
-            ccall(:jl_set_nth_field, Cvoid, (Any, Csize_t, Any), rhs, i-1, @lookup(mod, frame, node.args[i+1]))
-        end
+        args = [@lookup(mod, frame, arg) for arg in node.args]
+        T = popfirst!(args)
+        rhs = ccall(:jl_new_structv, Any, (Any, Ptr{Any}, UInt32), T, args, length(args))
         return rhs
     elseif head == :splatnew  # Julia 1.2+
         mod = moduleof(frame)
