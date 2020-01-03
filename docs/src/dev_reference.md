@@ -108,3 +108,9 @@ JuliaInterpreter.Variable
 JuliaInterpreter.locals
 JuliaInterpreter.whichtt
 ```
+
+## Hooks
+```@docs
+JuliaInterpreter.on_breakpoints_updated
+JuliaInterpreter.firehooks
+```

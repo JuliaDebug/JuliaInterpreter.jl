@@ -16,18 +16,34 @@ Register a one-argument function to be called after any update to the set of all
 breakpoints. This includes their creation, deletion, enabling and disabling.
 
 The function `f` should take two inputs:
-First argument is the function doing to update, such as `::typeof(breakpoint)` for the
-creation, or `::typeof(remove)` for the deletion.
-Second argument is the breakpoint object that was changed.
+ - First argument is the function doing to update, this is provided to allow to dispatch
+   on its type. It will be one:
+   -  `::typeof(breakpoint)` for the creation,
+   -  `::typeof(remove)` for the deletion.
+   -  `::typeof(update_states)` for disable/enable/toggleing
+ - Second argument is the breakpoint object that was changed.
+
 If only desiring to handle some kinds of update, `f` should have fallback methods
 to do nothing in the general case.
 
 !!! warning
-    This feature is experimental, and may be modified or removed without the tagging of a
-    breaking release.
+    This feature is experimental, and may be modified or removed in a minor release.
 """
 on_breakpoints_updated(f) = push!(breakpoint_update_hooks, f)
 
+
+"""
+    firehooks(hooked_fun, bp::AbstractBreakpoint)
+
+Trigger all hooks that were registered with [`on_breakpoints_updated`](@ref),
+passing them the `hooked_fun` and the `bp`.
+This should be called whenever the set of breakpoints is updated.
+`hooked_fun` is the function doing the update, and `bp` is the relevent breakpoint being
+updated _after_ the update is applied.
+
+!!! warning
+    This feature is experimental, and may be modified or removed in a minor release.
+"""
 function firehooks(hooked_fun, bp::AbstractBreakpoint)
     for hook in breakpoint_update_hooks
         try
