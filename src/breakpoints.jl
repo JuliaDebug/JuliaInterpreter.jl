@@ -119,7 +119,13 @@ function breakpoint(f::Union{Method, Function}, sig=nothing, line::Integer=0, co
     bp = BreakpointSignature(f, sig, line, condition, Ref(true), BreakpointRef[])
     add_to_existing_framecodes(bp)
     idx = findfirst(bp2 -> same_location(bp, bp2), _breakpoints)
-    idx === nothing ? push!(_breakpoints, bp) : (_breakpoints[idx] = bp)
+    if idx === nothing  # creating new
+        push!(_breakpoints, bp)
+    else  #Replace existing breakpoint
+        old_bp = _breakpoints[idx]
+        _breakpoints[idx] = bp
+        firehooks(remove, old_bp)
+    end
     firehooks(breakpoint, bp)
     return bp
 end

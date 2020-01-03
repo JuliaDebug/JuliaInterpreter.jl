@@ -324,6 +324,7 @@ end
 end
 
 const breakpoint_update_hooks = JuliaInterpreter.breakpoint_update_hooks
+const on_breakpoints_updated = JuliaInterpreter.on_breakpoints_updated
 @testset "hooks" begin
     remove()
     f_break(x) = x
@@ -331,9 +332,29 @@ const breakpoint_update_hooks = JuliaInterpreter.breakpoint_update_hooks
     # Check creating hits hook
     empty!(breakpoint_update_hooks)
     hook_hit = false
+    on_breakpoints_updated((f,_)->hook_hit = f == breakpoint)
+    orig_bp = breakpoint(f_break)
+    @test hook_hit
+
+    # Check re-creating hits remove *and* breakpoint (create)
+    empty!(breakpoint_update_hooks)
+    hit_remove_old = false
+    hit_create_new = false
+    hit_other = false  # don't want this
+    on_breakpoints_updated() do f, hbp
+        if f==remove
+            hit_remove_old = hbp === orig_bp
+        elseif f==breakpoint
+            hit_create_new = hbp !== orig_bp
+        else
+            hit_other = true
+        end
+    end
     push!(breakpoint_update_hooks, (f,_)->hook_hit = f == breakpoint)
     bp = breakpoint(f_break)
-    @test hook_hit
+    @test hit_remove_old
+    @test hit_create_new
+    @test !hit_other
 
     @testset "update_states! $op hits hook" for op in (disable, enable, toggle)
         empty!(breakpoint_update_hooks)
