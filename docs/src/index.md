@@ -178,3 +178,41 @@ code without restarting Julia.
 You can control execution of frames via [`debug_command`](@ref).
 Authors of debugging applications should target `debug_command` for their interaction
 with JuliaInterpreter.
+
+## Hooks
+Consider if you were building a debugging application with a GUI component which displays a dot in the text editor margin where a breakpoint is.
+If a user creates a breakpoint not via your GUI, but rather via a command in the REPL etc.
+then you still wish to keep your GUI up to date.
+How to do this? The answer is hooks.
+
+
+JuliaInterpreter has experimental support for having  a hook, or callback function invoked
+whenever the set of all breakpoints is changed.
+Hook functions are setup by invoking the [`JuliaInterpreter.on_breakpoints_updated`](@ref) function.
+
+To return to our example of keeping GUI up to date, the hooks would look something like this:
+```julia
+using JuliaInterpreter
+using JuliaInterpreter: AbstractBreakpoint, update_states!, on_breakpoints_updated
+
+breakpoint_gui_elements = Dict{AbstractBreakpoint, MarginDot}[]
+# ...
+function breakpoint_gui_hook(::typeof(breakpoint), bp::AbstractBreakpoint)
+    bp_dot = MarginDot(bp)
+    draw(bp_dot)
+    breakpoint_gui_elements[bp] = bp_dot
+end
+
+function breakpoint_gui_hook(::typeof(remove), bp::AbstractBreakpoint)
+    bp_dot = pop!(breakpoint_gui_elements, bp)
+    undraw(bp_dot)
+end
+
+function breakpoint_gui_hook(::typeof(update_states!), bp::AbstractBreakpoint)
+    is_enabled = bp.enabled[]
+    bp_dot = breakpoint_gui_elements[bp]
+    set_fill!(bp_dot, is_enabled ? :blue : :grey)
+end
+
+on_breakpoints_updated(breakpoint_gui_hook)
+```

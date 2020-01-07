@@ -7,6 +7,53 @@ Return an array with all breakpoints.
 """
 breakpoints() = _breakpoints
 
+
+const breakpoint_update_hooks = []
+"""
+    on_breakpoints_updated(f)
+
+Register a one-argument function to be called after any update to the set of all
+breakpoints. This includes their creation, deletion, enabling and disabling.
+
+The function `f` should take two inputs:
+ - First argument is the function doing to update, this is provided to allow to dispatch
+   on its type. It will be one:
+   -  `::typeof(breakpoint)` for the creation,
+   -  `::typeof(remove)` for the deletion.
+   -  `::typeof(update_states)` for disable/enable/toggleing
+ - Second argument is the breakpoint object that was changed.
+
+If only desiring to handle some kinds of update, `f` should have fallback methods
+to do nothing in the general case.
+
+!!! warning
+    This feature is experimental, and may be modified or removed in a minor release.
+"""
+on_breakpoints_updated(f) = push!(breakpoint_update_hooks, f)
+
+
+"""
+    firehooks(hooked_fun, bp::AbstractBreakpoint)
+
+Trigger all hooks that were registered with [`on_breakpoints_updated`](@ref),
+passing them the `hooked_fun` and the `bp`.
+This should be called whenever the set of breakpoints is updated.
+`hooked_fun` is the function doing the update, and `bp` is the relevent breakpoint being
+updated _after_ the update is applied.
+
+!!! warning
+    This feature is experimental, and may be modified or removed in a minor release.
+"""
+function firehooks(hooked_fun, bp::AbstractBreakpoint)
+    for hook in breakpoint_update_hooks
+        try
+            hook(hooked_fun, bp)
+        catch err
+            @warn "Hook function errored" hook hooked_fun bp exception=err
+        end
+    end
+end
+
 function add_to_existing_framecodes(bp::AbstractBreakpoint)
     for framecode in values(framedict)
         add_breakpoint_if_match!(framecode, bp)
@@ -72,7 +119,14 @@ function breakpoint(f::Union{Method, Function}, sig=nothing, line::Integer=0, co
     bp = BreakpointSignature(f, sig, line, condition, Ref(true), BreakpointRef[])
     add_to_existing_framecodes(bp)
     idx = findfirst(bp2 -> same_location(bp, bp2), _breakpoints)
-    idx === nothing ? push!(_breakpoints, bp) : (_breakpoints[idx] = bp)
+    if idx === nothing  # creating new
+        push!(_breakpoints, bp)
+    else  #Replace existing breakpoint
+        old_bp = _breakpoints[idx]
+        _breakpoints[idx] = bp
+        firehooks(remove, old_bp)
+    end
+    firehooks(breakpoint, bp)
     return bp
 end
 breakpoint(f::Union{Method, Function}, sig, condition::Condition) = breakpoint(f, sig, 0, condition)
@@ -96,6 +150,7 @@ function breakpoint(file::AbstractString, line::Integer, condition::Condition=no
     add_to_existing_framecodes(bp)
     idx = findfirst(bp2 -> same_location(bp, bp2), _breakpoints)
     idx === nothing ? push!(_breakpoints, bp) : (_breakpoints[idx] = bp)
+    firehooks(breakpoint, bp)
     return bp
 end
 
@@ -183,7 +238,10 @@ end
 breakpoint!(frame::Frame, pc=frame.pc, condition::Condition=nothing) =
     breakpoint!(frame.framecode, pc, condition)
 
-update_states!(bp::AbstractBreakpoint) = foreach(bpref -> update_state!(bpref, bp.enabled[]), bp.instances)
+function update_states!(bp::AbstractBreakpoint)
+    foreach(bpref -> update_state!(bpref, bp.enabled[]), bp.instances)
+    firehooks(update_states!, bp)
+end
 update_state!(bp::BreakpointRef, v::Bool) = bp[] = v
 
 """
@@ -192,7 +250,7 @@ update_state!(bp::BreakpointRef, v::Bool) = bp[] = v
 Enable breakpoint `bp`.
 """
 enable(bp::AbstractBreakpoint) = (bp.enabled[] = true; update_states!(bp))
-enable(bp::BreakpointRef) = bp[] = true
+enable(bp::BreakpointRef) = update_state!(bp, true)
 
 
 """
@@ -201,7 +259,7 @@ enable(bp::BreakpointRef) = bp[] = true
 Disable breakpoint `bp`. Disabled breakpoints can be re-enabled with [`enable`](@ref).
 """
 disable(bp::AbstractBreakpoint) = (bp.enabled[] = false; update_states!(bp))
-disable(bp::BreakpointRef) = bp[] = false
+disable(bp::BreakpointRef) = update_state!(bp, false)
 
 """
     remove(bp::AbstractBreakpoint)
@@ -210,7 +268,11 @@ Remove (delete) breakpoint `bp`. Removed breakpoints cannot be re-enabled.
 """
 function remove(bp::AbstractBreakpoint)
     idx = findfirst(isequal(bp), _breakpoints)
-    idx === nothing || deleteat!(_breakpoints, idx)
+    if idx !== nothing
+        bp = _breakpoints[idx]
+        deleteat!(_breakpoints, idx)
+        firehooks(remove, bp)
+    end
     foreach(remove, bp.instances)
 end
 function remove(bp::BreakpointRef)
@@ -224,10 +286,7 @@ end
 Toggle breakpoint `bp`.
 """
 toggle(bp::AbstractBreakpoint) = (bp.enabled[] = !bp.enabled[]; update_states!(bp))
-function toggle(bp::BreakpointRef)
-    state = bp[]
-    bp.framecode.breakpoints[bp.stmtidx] = BreakpointState(!state.isactive, state.condition)
-end
+toggle(bp::BreakpointRef) = update_state!(bp, !bp[].isactive)
 
 """
     enable()
