@@ -197,12 +197,14 @@ function optimize!(code::CodeInfo, scope)
     ssainc = fill(1, length(old_code))
     for (i, stmt) in enumerate(old_code)
         loc = old_codelocs[i]
-        inner = extract_inner_call!(stmt, length(new_code)+1)
-        while inner !== nothing
-            push!(new_code, inner)
-            push!(new_codelocs, loc)
-            ssainc[i] += 1
+        if !is_type_definition(stmt)  # https://github.com/timholy/Revise.jl/issues/417
             inner = extract_inner_call!(stmt, length(new_code)+1)
+            while inner !== nothing
+                push!(new_code, inner)
+                push!(new_codelocs, loc)
+                ssainc[i] += 1
+                inner = extract_inner_call!(stmt, length(new_code)+1)
+            end
         end
         push!(new_code, stmt)
         push!(new_codelocs, loc)
