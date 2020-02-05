@@ -447,3 +447,11 @@ end
     JuliaInterpreter.finish!(frame, true)
     @test isabstracttype(Toplevel.AbstractType)
 end
+
+@testset "Recursive type definitions" begin
+    # See https://github.com/timholy/Revise.jl/issues/417
+    ex = :(struct RecursiveType x::Vector{RecursiveType} end)
+    frame = JuliaInterpreter.prepare_thunk(Toplevel, ex)
+    JuliaInterpreter.finish!(frame, true)
+    @test Toplevel.RecursiveType(Vector{Toplevel.RecursiveType}()) isa Toplevel.RecursiveType
+end

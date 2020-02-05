@@ -57,18 +57,23 @@ pc_expr(framecode::FrameCode, pc) = pc_expr(framecode.src, pc)
 pc_expr(frame::Frame, pc) = pc_expr(frame.framecode, pc)
 pc_expr(frame::Frame) = pc_expr(frame, frame.pc)
 
+function is_type_definition(stmt)
+    if isa(stmt, Expr)
+        head = stmt.head
+        return head === :struct_type || head === :abstract_type || head === :primitive_type
+    end
+    return false
+end
+
 function find_used(code::CodeInfo)
     used = BitSet()
     stmts = code.code
     for stmt in stmts
         scan_ssa_use!(used, stmt)
-        if isa(stmt, Expr)
-            head = stmt.head
-            if head === :struct_type || head === :abstract_type || head === :primitive_type
-                # these are missed by Core.Compiler.userefs, see https://github.com/JuliaLang/julia/pull/30936
-                for a in stmt.args
-                    scan_ssa_use!(used, a)
-                end
+        if is_type_definition(stmt)
+            # these are missed by Core.Compiler.userefs, see https://github.com/JuliaLang/julia/pull/30936
+            for a in stmt.args
+                scan_ssa_use!(used, a)
             end
         end
     end

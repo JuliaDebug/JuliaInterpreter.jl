@@ -305,6 +305,12 @@ function evaluate_structtype(@nospecialize(recurse), frame, node)
             a = ex.args[i]
             if isa(a, SSAValue) || isa(a, SlotNumber)
                 ex.args[i] = lookup_var(frame, a)
+            elseif isexpr(a, :call)
+                for (j, aa) in enumerate(a.args)
+                    if isa(aa, SSAValue) || isa(aa, SlotNumber)
+                        a.args[j] = lookup_var(frame, aa)
+                    end
+                end
             end
         end
     end
@@ -492,7 +498,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                     end
                     return_from(newframe)
                 elseif node.head == :global
-                    # error("fixme")
+                    Core.eval(moduleof(frame), node)
                 elseif node.head == :toplevel
                     mod = moduleof(frame)
                     modexs, _ = split_expressions(mod, node)
