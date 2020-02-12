@@ -155,14 +155,25 @@ function breakpoint(file::AbstractString, line::Integer, condition::Condition=no
 end
 
 function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointFileLocation)
-    framecode.scope isa Method || return false
-    meth = framecode.scope
-    methpath = CodeTracking.maybe_fix_path(String(meth.file))
-    ispath(methpath) && (methpath = realpath(methpath))
-    if bp.abspath == methpath || endswith(methpath, bp.path)
-        return method_contains_line(meth, bp.line)
+    if framecode.scope isa Method
+        meth = framecode.scope
+        methpath = CodeTracking.maybe_fix_path(String(meth.file))
+        ispath(methpath) && (methpath = realpath(methpath))
+        if bp.abspath == methpath || endswith(methpath, bp.path)
+            return method_contains_line(meth, bp.line)
+        else
+            return false
+        end
     else
-        return false
+        path, _ = whereis(framecode, 1)
+        path = CodeTracking.maybe_fix_path(path)
+        ispath(path) && (path = realpath(path))
+
+        if bp.abspath == path || endswith(path, bp.path)
+            return toplevel_code_contains_line(framecode, bp.line)
+        else
+            return false
+        end
     end
 end
 
@@ -218,7 +229,7 @@ function prepare_slotfunction(framecode::FrameCode, body::Union{Symbol,Expr})
             push!(assignments, Expr(:(=), syms[i], :($dataname.sparams[$i])))
         end
     end
-    funcname = ismeth ? gensym("slotfunction") : gensym(Symbol(framecode.scope.name, "_slotfunction"))
+    funcname = ismeth ? gensym("slotfunction") : gensym(Symbol(framecode.scope, "_slotfunction"))
     return Expr(:function, Expr(:call, funcname, framename), Expr(:block, assignments..., body))
 end
 
