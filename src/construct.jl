@@ -438,6 +438,7 @@ function split_expressions!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; 
         newname = ex.args[2]::Symbol
         if isdefined(mod, newname)
             newmod = getfield(mod, newname)
+            newmod isa Module || throw(ErrorException("invalid redefinition of constant $(newname)"))
         else
             if (id = Base.identify_package(mod, String(newname))) !== nothing && haskey(Base.loaded_modules, id)
                 newmod = Base.root_module(id)
