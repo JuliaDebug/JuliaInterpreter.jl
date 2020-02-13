@@ -379,3 +379,55 @@ const on_breakpoints_updated = JuliaInterpreter.on_breakpoints_updated
 end
 # Run outside testset so that if it fails, the hooks get removed. So other tests can pass
 empty!(breakpoint_update_hooks)
+
+@testset "toplevel breakpoints" begin
+    mktemp() do path, io
+        print(io, """
+        1+1         # bp
+        begin
+            2+2
+            3+3     # bp
+        end
+        function foo(x)
+            x
+            x       # bp
+            x
+        end
+        """)
+        close(io)
+
+        expr = Base.parse_input_line(String(read(path)), filename = path)
+        exprs, _ = JuliaInterpreter.split_expressions(Main, expr; filename = path)
+
+        breakpoint(path, 1)
+        breakpoint(path, 4)
+        breakpoint(path, 8)
+
+        # breakpoint in top-level line
+        mod, ex = exprs[1]
+        frame = JuliaInterpreter.prepare_thunk(mod, ex)
+        if VERSION < v"1.2"
+            @test_broken JuliaInterpreter.shouldbreak(frame, frame.pc)
+        else
+            @test JuliaInterpreter.shouldbreak(frame, frame.pc)
+        end
+        ret = JuliaInterpreter.finish_and_return!(frame, true)
+        @test ret === 2
+
+        # breakpoint in top-level block
+        mod, ex = exprs[3]
+        frame = JuliaInterpreter.prepare_thunk(mod, ex)
+        @test JuliaInterpreter.shouldbreak(frame, frame.pc)
+        ret = JuliaInterpreter.finish_and_return!(frame, true)
+        @test ret === 6
+
+        # don't break for bp in function definition
+        mod, ex = exprs[4]
+        frame = JuliaInterpreter.prepare_thunk(mod, ex)
+        @test JuliaInterpreter.shouldbreak(frame, frame.pc) == false
+        ret = JuliaInterpreter.finish_and_return!(frame, true)
+        @test ret isa Function
+
+        remove()
+    end
+end

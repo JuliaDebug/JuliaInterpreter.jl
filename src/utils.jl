@@ -286,6 +286,10 @@ function method_contains_line(method::Method, line::Integer)
     return line in compute_corrected_linerange(method)
 end
 
+function toplevel_code_contains_line(framecode::FrameCode, line::Integer)
+    return getline(first(framecode.src.linetable)) <= line <= getline(last(framecode.src.linetable))
+end
+
 """
     stmtidx = statementnumber(frame, line)
 

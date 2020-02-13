@@ -115,6 +115,12 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
                 error("unhandled breakpoint type")
             end
         end
+    else
+        for bp in _breakpoints
+            if bp isa BreakpointFileLocation
+                add_breakpoint_if_match!(framecode, bp)
+            end
+        end
     end
 
     return framecode
