@@ -406,7 +406,11 @@ empty!(breakpoint_update_hooks)
         # breakpoint in top-level line
         mod, ex = exprs[1]
         frame = JuliaInterpreter.prepare_thunk(mod, ex)
-        @test JuliaInterpreter.shouldbreak(frame, frame.pc)
+        if VERSION < v"1.2"
+            @test_broken JuliaInterpreter.shouldbreak(frame, frame.pc)
+        else
+            @test JuliaInterpreter.shouldbreak(frame, frame.pc)
+        end
         ret = JuliaInterpreter.finish_and_return!(frame, true)
         @test ret === 2
 
