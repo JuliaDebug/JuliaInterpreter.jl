@@ -456,6 +456,25 @@ finally
     break_off(:error)
 end
 
+try
+    break_on(:error)
+    exs, _ = JuliaInterpreter.split_expressions(Main, quote
+            g_1(2.0)
+        end)
+    line2_g = @__LINE__
+    frame = JuliaInterpreter.prepare_thunk(exs[1])
+    frame, bp = JuliaInterpreter.debug_command(frame, :c, true)
+    stacktrace_lines = split(sprint(Base.display_error, bp.err, leaf(frame)), '\n')
+    @test occursin(string("ERROR: ", sprint(showerror, ErrorException("foo"))), stacktrace_lines[1])
+    @test occursin("[1] error(::String) at error.jl:", stacktrace_lines[3])
+    @test occursin("[2] g_3(::Float64) at $(@__FILE__):$(line_g - 1)", stacktrace_lines[4])
+    @test occursin("[3] g_2(::Float64) at $(@__FILE__):$(line_g - 2)", stacktrace_lines[5])
+    @test occursin("[4] g_1(::Float64) at $(@__FILE__):$(line_g - 3)", stacktrace_lines[6])
+    @test occursin("[5] top-level scope at $(@__FILE__):$(line2_g - 2)", stacktrace_lines[7])
+finally
+    break_off(:error)
+end
+
 # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/154
 q = QuoteNode([1])
 @test @interpret deepcopy(q) == q
