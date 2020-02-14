@@ -525,11 +525,13 @@ function Base.StackTraces.StackFrame(frame::Frame)
         sig = method.sig
         sparams = Core.svec(frame.framedata.sparams...)
         mi = specialize_method(method, atypes, sparams)
+        fname = frame.framecode.scope.name
     else
         mi = frame.framecode.src
+        fname = gensym()
     end
     Base.StackFrame(
-        frame.framecode.scope.name,
+        fname,
         Symbol(JuliaInterpreter.getfile(frame)),
         JuliaInterpreter.linenumber(frame),
         mi,
