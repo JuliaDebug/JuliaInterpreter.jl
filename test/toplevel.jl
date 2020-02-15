@@ -455,3 +455,19 @@ end
     JuliaInterpreter.finish!(frame, true)
     @test Toplevel.RecursiveType(Vector{Toplevel.RecursiveType}()) isa Toplevel.RecursiveType
 end
+
+# https://github.com/timholy/Revise.jl/issues/420
+module ToplevelParameters
+Base.@kwdef struct MyStruct
+   x::Array{<:Real, 1} = [.05]
+end
+end
+@testset "Nested references in type definitions" begin
+    ex = quote
+        Base.@kwdef struct MyStruct
+           x::Array{<:Real, 1} = [.05]
+        end
+    end
+    frame = JuliaInterpreter.prepare_thunk(ToplevelParameters, ex)
+    @test JuliaInterpreter.finish!(frame, true) === nothing
+end

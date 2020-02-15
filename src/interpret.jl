@@ -291,6 +291,18 @@ function set_structtype_const(mod::Module, name::Symbol)
     ccall(:jl_set_const, Cvoid, (Any, Any, Any), mod, dt.name.name, dt.name.wrapper)
 end
 
+function inplace_lookup!(ex, i, frame)
+    a = ex.args[i]
+    if isa(a, SSAValue) || isa(a, SlotNumber)
+        ex.args[i] = lookup_var(frame, a)
+    elseif isexpr(a, :call)
+        for j = 1:length(a.args)
+            inplace_lookup!(a, j, frame)
+        end
+    end
+    return ex
+end
+
 function evaluate_structtype(@nospecialize(recurse), frame, node)
     grsvec!(ex::Expr) = (ex.args[1] = GlobalRef(Core, :svec); return ex)
 
@@ -302,16 +314,7 @@ function evaluate_structtype(@nospecialize(recurse), frame, node)
     for idx in (2, 3, 5)
         ex = newstructexpr.args[idx] = grsvec!(copy(node.args[idx]))
         for i = 2:length(ex.args)
-            a = ex.args[i]
-            if isa(a, SSAValue) || isa(a, SlotNumber)
-                ex.args[i] = lookup_var(frame, a)
-            elseif isexpr(a, :call)
-                for (j, aa) in enumerate(a.args)
-                    if isa(aa, SSAValue) || isa(aa, SlotNumber)
-                        a.args[j] = lookup_var(frame, aa)
-                    end
-                end
-            end
+            inplace_lookup!(ex, i, frame)
         end
     end
     Core.eval(mod, newstructexpr)
