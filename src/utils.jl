@@ -561,3 +561,11 @@ function Base.display_error(io::IO, er, frame::Frame)
     showerror(IOContext(io, :limit => true), er, frame)
     println(io)
 end
+
+function static_eval(ex)
+    try
+        eval(ex)
+    catch
+        nothing
+    end
+end

@@ -283,7 +283,7 @@ function build_compiled_call!(stmt, fcall, code, idx, nargs, sparams, evalmod)
     end
     dynamic_ccall = false
     if isa(cfunc, Expr)   # specification by tuple, e.g., (:clock, "libc")
-        cfunc = eval(cfunc)
+        cfunc = something(static_eval(cfunc), cfunc)
     end
     if isa(cfunc, Symbol)
         cfunc = QuoteNode(cfunc)
