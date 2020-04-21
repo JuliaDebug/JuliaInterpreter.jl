@@ -371,7 +371,7 @@ function locals(frame::Frame)
     slotnames = code.src.slotnames::SlotNamesType
     for (sym, counter, val) in zip(slotnames, data.last_reference, data.locals)
         counter == 0 && continue
-        var = Variable(something(val), sym, false)
+        var = Variable(something(val), sym)
         idx = get(varlookup, sym, 0)
         if idx > 0
             if counter > var_counter[idx]
@@ -389,6 +389,13 @@ function locals(frame::Frame)
         for i in 1:length(syms)
             if isassigned(data.sparams, i)
                 push!(vars, Variable(data.sparams[i], syms[i], true))
+            end
+        end
+    end
+    for var in vars
+        if var.name == Symbol("#self#")
+            for field in fieldnames(typeof(var.value))
+                push!(vars, Variable(getfield(var.value, field), field, false, true))
             end
         end
     end
@@ -484,6 +491,15 @@ function eval_code(frame::Frame, expr)
         if v.isparam
             data.sparams[j] = res[i]
             j += 1
+        elseif v.is_captured_closure
+            selfidx = findfirst(v -> v.name === Symbol("#self#"), vars)
+            @assert selfidx !== nothing
+            self = vars[selfidx].value
+            closed_over_var = getfield(self, v.name)
+            if closed_over_var isa Core.Box
+                setfield!(closed_over_var, :contents, res[i])
+            end
+            # We cannot rebind closed over variables that the frontend identified as constant
         else
             slot_indices = code.slotnamelists[v.name]
             idx = argmax(data.last_reference[slot_indices])

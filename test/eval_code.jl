@@ -56,3 +56,20 @@ eval_code(frame, "x = 3")
 @test eval_code(frame, "x") == 3
 JuliaInterpreter.finish!(frame)
 @test JuliaInterpreter.get_return(frame) == 2
+
+function debugfun(non_accessible_variable)
+    garbage = ones(10)
+    map(1:10) do i
+        1+1
+        a = 5
+        @bp
+        garbage[i] + non_accessible_variable[i]
+        non_accessible_variable = 2
+    end
+end
+fr = JuliaInterpreter.enter_call(debugfun, [1,2])
+fr, bp = debug_command(fr, :c)
+@test eval_code(fr, "non_accessible_variable") == [1,2]
+@test eval_code(fr, "garbage") == ones(10)
+eval_code(fr, "non_accessible_variable = 5.0")
+@test eval_code(fr, "non_accessible_variable") == 5.0
