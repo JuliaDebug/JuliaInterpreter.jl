@@ -13,7 +13,7 @@ makedocs(
     strict = true,
     format = Documenter.HTML(prettyurls = get(ENV, "CI", nothing) == "true"),
     sitename = "JuliaInterpreter.jl",
-    authors = "Keno Fischer, Tim Holy, and others",
+    authors = "Keno Fischer, Tim Holy, Kristoffer Carlsson, and others",
     linkcheck = !("skiplinks" in ARGS),
     pages = [
         "Home" => "index.md",

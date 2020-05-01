@@ -35,6 +35,8 @@ end
 struct Squarer end
 
 @testset "Breakpoints" begin
+    Δ = CodeTracking.line_is_decl
+
     breakpoint(radius2)
     frame = JuliaInterpreter.enter_call(loop_radius2, 2)
     bp = JuliaInterpreter.finish_and_return!(frame)
@@ -194,11 +196,11 @@ struct Squarer end
     io = IOBuffer()
     frame = JuliaInterpreter.enter_call(loop_radius2, 2)
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 1)
-    @test repr(bp) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, line 3)"
+    @test repr(bp) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):$(3-Δ), line 3)"
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 0)  # fictive breakpoint
-    @test repr(bp) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, %0)"
+    @test repr(bp) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):$(3-Δ), %0)"
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 1, ArgumentError("whoops"))
-    @test repr(bp) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):3, line 3, ArgumentError(\"whoops\"))"
+    @test repr(bp) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):$(3-Δ), line 3, ArgumentError(\"whoops\"))"
 
     # In source breakpointing
     f_outer_bp(x) = g_inner_bp(x)

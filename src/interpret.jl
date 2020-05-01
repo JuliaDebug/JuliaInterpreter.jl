@@ -505,7 +505,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                 elseif node.head == :toplevel
                     mod = moduleof(frame)
                     modexs, _ = split_expressions(mod, node)
-                    Core.eval(mod, Expr(:toplevel,
+                    rhs = Core.eval(mod, Expr(:toplevel,
                         :(for modex in $modexs
                               newframe = ($prepare_thunk)(modex)
                               newframe === nothing && continue

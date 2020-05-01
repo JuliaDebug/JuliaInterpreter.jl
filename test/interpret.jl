@@ -223,7 +223,7 @@ frame = JuliaInterpreter.enter_call(f, 3)
 @test whereis(frame, 5)[2] == defline + 6
 m = which(iterate, Tuple{Dict}) # this method has `nothing` as its first statement and codeloc == 0
 framecode = JuliaInterpreter.get_framecode(m)
-@test JuliaInterpreter.linenumber(framecode, 1) == m.line
+@test JuliaInterpreter.linenumber(framecode, 1) == m.line + CodeTracking.line_is_decl
 
 # issue #28
 let a = ['0'], b = ['a']

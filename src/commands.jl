@@ -358,7 +358,7 @@ end
 
 function maybe_step_through_nkw_meta!(frame)
     stmt = pc_expr(frame)
-    if isexpr(stmt, :meta) && stmt.args[1] == :nkw
+    if stmt === nothing || (isexpr(stmt, :meta) && stmt.args[1] == :nkw)
         @assert frame.pc == 1
         frame.pc += 1
     end
