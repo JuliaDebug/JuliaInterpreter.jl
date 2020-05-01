@@ -48,16 +48,16 @@ globally-available name (as used here with the `any` function).
 
 Now let's see what happens:
 
-```jldoctest demo1; filter = r"in Base at .*$"
+```jldoctest demo1; filter = [r"in Base at .*$", r"[^\d]\d\d\d[^\d]"]
 julia> @interpret sum([1,2,3])  # no element bigger than 4, breakpoint should not trigger
 6
 
 julia> frame, bpref = @interpret sum([1,2,5])  # should trigger breakpoint
-(Frame for sum(a::AbstractArray) in Base at reducedim.jl:648
-c 1* 648  1 ─      nothing
-  2  648  │   %2 = (Base.#sum#550)(Colon(), #self#, a)
-  3  648  └──      return %2
-a = [1, 2, 5], breakpoint(sum(a::AbstractArray) in Base at reducedim.jl:648, line 648))
+(Frame for sum(a::AbstractArray; dims) in Base at reducedim.jl:652
+c 1* 652  1 ─      nothing
+  2  652  │   %2 = (Base.#sum#583)(Colon(), #self#, a)
+  3  652  └──      return %2
+a = [1, 2, 5], breakpoint(sum(a::AbstractArray; dims) in Base at reducedim.jl:652, line 652))
 ```
 
 `frame` is described in more detail on the next page; for now, suffice it to say
@@ -65,7 +65,7 @@ that the `c` in the leftmost column indicates the presence of a conditional brea
 upon entry to `sum`. `bpref` is a reference to the breakpoint of type [`BreakpointRef`](@ref).
 The breakpoint `bp` we created can be manipulated at the command line
 
-```jldoctest demo1; filter = r"in Base at .*$"
+```jldoctest demo1; filter = [r"in Base at .*$", r"[^\d]\d\d\d[^\d]"]
 julia> disable(bp)
 
 julia> @interpret sum([1,2,5])
@@ -74,11 +74,11 @@ julia> @interpret sum([1,2,5])
 julia> enable(bp)
 
 julia> @interpret sum([1,2,5])
-(Frame for sum(a::AbstractArray) in Base at reducedim.jl:648
-c 1* 648  1 ─      nothing
-  2  648  │   %2 = (Base.#sum#550)(Colon(), #self#, a)
-  3  648  └──      return %2
-a = [1, 2, 5], breakpoint(sum(a::AbstractArray) in Base at reducedim.jl:648, line 648))
+(Frame for sum(a::AbstractArray; dims) in Base at reducedim.jl:652
+c 1* 652  1 ─      nothing
+  2  652  │   %2 = (Base.#sum#583)(Colon(), #self#, a)
+  3  652  └──      return %2
+a = [1, 2, 5], breakpoint(sum(a::AbstractArray; dims) in Base at reducedim.jl:652, line 652))
 ```
 
 [`disable`](@ref) and [`enable`](@ref) allow you to turn breakpoints off and on without losing any

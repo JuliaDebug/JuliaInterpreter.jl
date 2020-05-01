@@ -5,9 +5,9 @@ uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 
 [[CodeTracking]]
 deps = ["InteractiveUtils", "UUIDs"]
-git-tree-sha1 = "0becdab7e6fbbcb7b88d8de5b72e5bb2f28239f3"
+git-tree-sha1 = "ef95614491ce00eff5ebc3bbb957cf8b3b3dd3e8"
 uuid = "da1fd8a2-8d9e-5ec2-8556-3022fb5608a2"
-version = "0.5.8"
+version = "0.5.10"
 
 [[Dates]]
 deps = ["Printf"]
@@ -43,7 +43,7 @@ version = "0.21.0"
 deps = ["CodeTracking", "InteractiveUtils", "Random", "UUIDs"]
 path = ".."
 uuid = "aa1ae85d-cabe-5617-a682-6adf51b2e16a"
-version = "0.7.10"
+version = "0.7.13"
 
 [[LibGit2]]
 deps = ["Printf"]
@@ -64,9 +64,9 @@ uuid = "a63ad114-7e13-5084-954f-fe012c677804"
 
 [[Parsers]]
 deps = ["Dates", "Test"]
-git-tree-sha1 = "d112c19ccca00924d5d3a38b11ae2b4b268dda39"
+git-tree-sha1 = "f8f5d2d4b4b07342e5811d2b6428e45524e241df"
 uuid = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
-version = "0.3.11"
+version = "1.0.2"
 
 [[Pkg]]
 deps = ["Dates", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "REPL", "Random", "SHA", "UUIDs"]
