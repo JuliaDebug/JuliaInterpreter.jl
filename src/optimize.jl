@@ -60,11 +60,11 @@ end
 
 function compute_ssa_mapping_delete_statements!(code::CodeInfo, stmts::Vector{Int})
     stmts = unique!(sort!(stmts))
-    ssalookup = collect(1:length(code.codelocs))
+    ssalookup = collect(1:length(codelocs(code)))
     cnt = 1
     for i in 1:length(stmts)
         start = stmts[i] + 1
-        stop = i == length(stmts) ? length(code.codelocs) : stmts[i+1]
+        stop = i == length(stmts) ? length(codelocs(code)) : stmts[i+1]
         ssalookup[start:stop] .-= cnt
         cnt += 1
     end
@@ -183,7 +183,7 @@ function optimize!(code::CodeInfo, scope)
     if !isempty(delete_idxs)
         ssalookup = compute_ssa_mapping_delete_statements!(code, delete_idxs)
         foreigncalls_idx = map(x -> ssalookup[x], foreigncalls_idx)
-        deleteat!(code.codelocs, delete_idxs)
+        deleteat!(codelocs(code), delete_idxs)
         deleteat!(code.code, delete_idxs)
         code.ssavaluetypes = length(code.code)
         renumber_ssa!(code.code, ssalookup)
@@ -191,7 +191,7 @@ function optimize!(code::CodeInfo, scope)
 
     ## Un-nest :call expressions (so that there will be only one :call per line)
     # This will allow us to re-use args-buffers rather than having to allocate new ones each time.
-    old_code, old_codelocs = code.code, code.codelocs
+    old_code, old_codelocs = code.code, codelocs(code)
     code.code = new_code = eltype(old_code)[]
     code.codelocs = new_codelocs = Int32[]
     ssainc = fill(1, length(old_code))
