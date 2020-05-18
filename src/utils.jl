@@ -214,6 +214,23 @@ end
 
 ## Location info
 
+# These getters improve inference since fieldtype(CodeInfo, :linetable)
+# and fieldtype(CodeInfo, :codelocs) are both Any
+function linetable(arg)::Vector{Any}
+    if isa(arg, FrameCode)
+        arg = arg.src
+    end
+    return arg.linetable
+end
+
+function codelocs(arg)::Vector{Int32}
+    if isa(arg, FrameCode)
+        arg = arg.src
+    end
+    return arg.codelocs
+end
+
+
 function lineoffset(framecode::FrameCode)
     offset = 0
     scope = framecode.scope
@@ -224,7 +241,7 @@ function lineoffset(framecode::FrameCode)
     return offset
 end
 
-getline(ln) = isexpr(ln, :line) ? ln.args[1] : ln.line
+getline(ln) = Int(isexpr(ln, :line) ? ln.args[1] : ln.line)
 getfile(ln) = CodeTracking.maybe_fixup_stdlib_path(String(isexpr(ln, :line) ? ln.args[2] : ln.file))
 
 """
@@ -236,7 +253,7 @@ determined, `loc == nothing`. Otherwise `loc == (filepath, line)`.
 function CodeTracking.whereis(framecode::FrameCode, pc)
     codeloc = codelocation(framecode.src, pc)
     codeloc == 0 && return nothing
-    lineinfo = framecode.src.linetable[codeloc]
+    lineinfo = linetable(framecode)[codeloc]
     return isa(framecode.scope, Method) ?
         whereis(lineinfo, framecode.scope) : (getfile(lineinfo), getline(lineinfo))
 end
@@ -252,22 +269,22 @@ See [`CodeTracking.whereis`](@ref) for dynamic line information.
 function linenumber(framecode::FrameCode, pc)
     codeloc = codelocation(framecode.src, pc)
     codeloc == 0 && return nothing
-    return getline(framecode.src.linetable[codeloc])
+    return getline(linetable(framecode)[codeloc])
 end
 linenumber(frame::Frame, pc=frame.pc) = linenumber(frame.framecode, pc)
 
 function getfile(framecode::FrameCode, pc)
     codeloc = codelocation(framecode.src, pc)
     codeloc == 0 && return nothing
-    return getfile(framecode.src.linetable[codeloc])
+    return getfile(linetable(framecode)[codeloc])
 end
 getfile(frame::Frame, pc=frame.pc) = getfile(frame.framecode, pc)
 
 function codelocation(code::CodeInfo, idx)
-    codeloc = code.codelocs[idx]
+    codeloc = codelocs(code)[idx]
     while codeloc == 0 && (code.code[idx] === nothing || isexpr(code.code[idx], :meta)) && idx < length(code.code)
         idx += 1
-        codeloc = code.codelocs[idx]
+        codeloc = codelocs(code)[idx]
     end
     return codeloc
 end
@@ -276,7 +293,7 @@ function compute_corrected_linerange(method::Method)
     _, line1 = whereis(method)
     offset = line1 - method.line
     src = JuliaInterpreter.get_source(method)
-    lastline = src.linetable[end]
+    lastline = linetable(src)[end]
     return line1:getline(lastline) + offset
 end
 
@@ -287,19 +304,19 @@ function method_contains_line(method::Method, line::Integer)
 end
 
 function toplevel_code_contains_line(framecode::FrameCode, line::Integer)
-    return getline(first(framecode.src.linetable)) <= line <= getline(last(framecode.src.linetable))
+    return getline(first(linetable(framecode))) <= line <= getline(last(linetable(framecode)))
 end
 
 """
-    stmtidx = statementnumber(frame, line)
+    stmtidx = statementnumber(frame, line::Integer)
 
 Return the index of the first statement in `frame`'s `CodeInfo` that corresponds to
 static line number `line`.
 """
-function statementnumber(framecode::FrameCode, line)
-    lineidx = searchsortedfirst(framecode.src.linetable, line; by=lin->isa(lin,Integer) ? lin : getline(lin))
-    1 <= lineidx <= length(framecode.src.linetable) || throw(ArgumentError("line $line not found in $(framecode.scope)"))
-    return searchsortedfirst(framecode.src.codelocs, lineidx)
+function statementnumber(framecode::FrameCode, line::Integer)
+    lineidx = searchsortedfirst(linetable(framecode), line; by=lin->isa(lin,Integer) ? Int(lin) : getline(lin))::Int
+    1 <= lineidx <= length(linetable(framecode)) || throw(ArgumentError("line $line not found in $(framecode.scope)"))
+    return searchsortedfirst(codelocs(framecode), lineidx)
 end
 statementnumber(frame::Frame, line) = statementnumber(frame.framecode, line)
 
@@ -334,7 +351,7 @@ breakpointchar(framecode, stmtidx) =
 function print_framecode(io::IO, framecode::FrameCode; pc=0, range=1:nstatements(framecode), kwargs...)
     iscolor = get(io, :color, false)
     ndstmt = ndigits(nstatements(framecode))
-    lt = framecode.src.linetable
+    lt = linetable(framecode)
     offset = lineoffset(framecode)
     ndline = isempty(lt) ? 0 : ndigits(getline(lt[end]) + offset)
     nullline = " "^ndline
