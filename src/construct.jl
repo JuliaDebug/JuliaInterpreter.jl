@@ -179,6 +179,7 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
                 generator = false
             end
         end
+        code = code::CodeInfo
         # Currenly, our strategy to deal with llvmcall can't handle parametric functions
         # (the "mini interpreter" runs in module scope, not method scope)
         if (!isempty(lenv) && (hasarg(isequal(:llvmcall), code.code) ||
@@ -506,9 +507,9 @@ function determine_method_for_expr(expr; enter_generated = false)
     f = to_function(expr.args[1])
     allargs = expr.args
     # Extract keyword args
-    local kwargs = Expr(:parameters)
+    kwargs = Expr(:parameters)
     if length(allargs) > 1 && isexpr(allargs[2], :parameters)
-        kwargs = splice!(allargs, 2)
+        kwargs = splice!(allargs, 2)::Expr
     end
     f, allargs = prepare_args(f, allargs, kwargs.args)
     return prepare_call(f, allargs; enter_generated=enter_generated)

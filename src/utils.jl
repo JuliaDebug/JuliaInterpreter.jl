@@ -111,7 +111,7 @@ function hasarg(predicate, args)
     return false
 end
 
-function wrap_params(expr, sparams)
+function wrap_params(expr, sparams::Vector{Symbol})
     isempty(sparams) && return expr
     params = []
     for p in sparams
@@ -216,20 +216,28 @@ end
 
 # These getters improve inference since fieldtype(CodeInfo, :linetable)
 # and fieldtype(CodeInfo, :codelocs) are both Any
-function linetable(arg)::Vector{Any}
+const LineTypes = Union{LineNumberNode,Core.LineInfoNode}
+function linetable(arg)
+    if isa(arg, Frame)
+        arg = arg.framecode
+    end
     if isa(arg, FrameCode)
         arg = arg.src
     end
-    return arg.linetable
+    return (arg::CodeInfo).linetable::Vector{Any}
 end
+linetable(arg, i::Integer) = linetable(arg)[i]::LineTypes
 
-function codelocs(arg)::Vector{Int32}
+function codelocs(arg)
+    if isa(arg, Frame)
+        arg = arg.framecode
+    end
     if isa(arg, FrameCode)
         arg = arg.src
     end
-    return arg.codelocs
+    return (arg::CodeInfo).codelocs::Vector{Int32}
 end
-
+codelocs(arg, i::Integer) = codelocs(arg)[i]  # for consistency with linetable (but no extra benefit here)
 
 function lineoffset(framecode::FrameCode)
     offset = 0
@@ -253,7 +261,7 @@ determined, `loc == nothing`. Otherwise `loc == (filepath, line)`.
 function CodeTracking.whereis(framecode::FrameCode, pc)
     codeloc = codelocation(framecode.src, pc)
     codeloc == 0 && return nothing
-    lineinfo = linetable(framecode)[codeloc]
+    lineinfo = linetable(framecode, codeloc)
     return isa(framecode.scope, Method) ?
         whereis(lineinfo, framecode.scope) : (getfile(lineinfo), getline(lineinfo))
 end
@@ -269,14 +277,14 @@ See [`CodeTracking.whereis`](@ref) for dynamic line information.
 function linenumber(framecode::FrameCode, pc)
     codeloc = codelocation(framecode.src, pc)
     codeloc == 0 && return nothing
-    return getline(linetable(framecode)[codeloc])
+    return getline(linetable(framecode, codeloc))
 end
 linenumber(frame::Frame, pc=frame.pc) = linenumber(frame.framecode, pc)
 
 function getfile(framecode::FrameCode, pc)
     codeloc = codelocation(framecode.src, pc)
     codeloc == 0 && return nothing
-    return getfile(linetable(framecode)[codeloc])
+    return getfile(linetable(framecode, codeloc))
 end
 getfile(frame::Frame, pc=frame.pc) = getfile(frame.framecode, pc)
 
@@ -293,7 +301,7 @@ function compute_corrected_linerange(method::Method)
     _, line1 = whereis(method)
     offset = line1 - method.line
     src = JuliaInterpreter.get_source(method)
-    lastline = linetable(src)[end]
+    lastline = linetable(src)[end]::LineTypes
     return line1:getline(lastline) + offset
 end
 
@@ -304,7 +312,7 @@ function method_contains_line(method::Method, line::Integer)
 end
 
 function toplevel_code_contains_line(framecode::FrameCode, line::Integer)
-    return getline(first(linetable(framecode))) <= line <= getline(last(linetable(framecode)))
+    return getline(linetable(framecode, 1)) <= line <= getline(last(linetable(framecode)))
 end
 
 """
@@ -314,8 +322,11 @@ Return the index of the first statement in `frame`'s `CodeInfo` that corresponds
 static line number `line`.
 """
 function statementnumber(framecode::FrameCode, line::Integer)
-    lineidx = searchsortedfirst(linetable(framecode), line; by=lin->isa(lin,Integer) ? Int(lin) : getline(lin))::Int
-    1 <= lineidx <= length(linetable(framecode)) || throw(ArgumentError("line $line not found in $(framecode.scope)"))
+    sortby(lin) = isa(lin, Int) ? lin : getline(lin)  # for comparison to x=Int(line)
+
+    lt = linetable(framecode)
+    lineidx = searchsortedfirst(lt, Int(line); by=sortby)::Int
+    1 <= lineidx <= length(lt) || throw(ArgumentError("line $line not found in $(framecode.scope)"))
     return searchsortedfirst(codelocs(framecode), lineidx)
 end
 statementnumber(frame::Frame, line) = statementnumber(frame.framecode, line)
@@ -401,8 +412,9 @@ function locals(frame::Frame)
             push!(var_counter, counter)
         end
     end
-    if code.scope isa Method
-        syms = sparam_syms(code.scope)
+    scope = code.scope
+    if scope isa Method
+        syms = sparam_syms(scope)
         for i in 1:length(syms)
             if isassigned(data.sparams, i)
                 push!(vars, Variable(data.sparams[i], syms[i], true))
@@ -410,8 +422,9 @@ function locals(frame::Frame)
         end
     end
     for var in vars
-        if var.name == Symbol("#self#")
+        if var.name === Symbol("#self#")
             for field in fieldnames(typeof(var.value))
+                field = field::Symbol
                 push!(vars, Variable(getfield(var.value, field), field, false, true))
             end
         end

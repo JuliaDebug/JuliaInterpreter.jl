@@ -169,7 +169,14 @@ to obtain the new execution frame.
 function next_line!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
     pc = frame.pc
     initialline, initialfile = linenumber(frame, pc), getfile(frame, pc)
+    if initialline === nothing || initialfile === nothing
+        return step_expr!(recurse, frame, istoplevel)
+    end
+    return _next_line!(recurse, frame, istoplevel, initialline, initialfile) # avoid boxing
+end
+function _next_line!(@nospecialize(recurse), frame, istoplevel, initialline::Int, initialfile::String)
     predicate(frame) = isexpr(pc_expr(frame), :return) || (linenumber(frame) != initialline || getfile(frame) != initialfile)
+
     pc = next_until!(predicate, recurse, frame, istoplevel)
     (pc === nothing || isa(pc, BreakpointRef)) && return pc
     maybe_step_through_kwprep!(recurse, frame, istoplevel)
