@@ -111,7 +111,7 @@ function hasarg(predicate, args)
     return false
 end
 
-function wrap_params(expr, sparams)
+function wrap_params(expr, sparams::Vector{Symbol})
     isempty(sparams) && return expr
     params = []
     for p in sparams
@@ -412,8 +412,9 @@ function locals(frame::Frame)
             push!(var_counter, counter)
         end
     end
-    if code.scope isa Method
-        syms = sparam_syms(code.scope)
+    scope = code.scope
+    if scope isa Method
+        syms = sparam_syms(scope)
         for i in 1:length(syms)
             if isassigned(data.sparams, i)
                 push!(vars, Variable(data.sparams[i], syms[i], true))
@@ -421,8 +422,9 @@ function locals(frame::Frame)
         end
     end
     for var in vars
-        if var.name == Symbol("#self#")
+        if var.name === Symbol("#self#")
             for field in fieldnames(typeof(var.value))
+                field = field::Symbol
                 push!(vars, Variable(getfield(var.value, field), field, false, true))
             end
         end

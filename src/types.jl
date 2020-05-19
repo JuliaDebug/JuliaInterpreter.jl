@@ -83,6 +83,15 @@ struct FrameCode
 end
 
 const BREAKPOINT_EXPR = :($(QuoteNode(getproperty))($JuliaInterpreter, :__BREAKPOINT_MARKER__))
+function is_breakpoint_expr(ex::Expr)
+    # Sadly, comparing QuoteNodes calls isequal(::Any, ::Any), and === seems not to work.
+    # To avoid invalidations, do it the hard way.
+    ex.head === :call || return false
+    length(ex.args) === 3 || return false
+    is_quotenode(ex.args[1], getproperty) || return false
+    ex.args[2] === JuliaInterpreter || return false
+    return is_quotenode(ex.args[3], :__BREAKPOINT_MARKER__)
+end
 function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
     if optimize
         src, methodtables = optimize!(copy_codeinfo(src), scope)
@@ -92,7 +101,7 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
     end
     breakpoints = Vector{BreakpointState}(undef, length(src.code))
     for (i, pc_expr) in enumerate(src.code)
-        if pc_expr == BREAKPOINT_EXPR
+        if isa(pc_expr, Expr) && is_breakpoint_expr(pc_expr)
             breakpoints[i] = BreakpointState()
             src.code[i] = nothing
         end
