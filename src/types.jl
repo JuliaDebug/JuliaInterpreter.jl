@@ -20,6 +20,9 @@ struct SlotNumber
     id::Int
 end
 
+Base.show(io::IO, ssa::SSAValue)    = print(io, "%J", ssa.id)
+Base.show(io::IO, slot::SlotNumber) = print(io, "_J", slot.id)
+
 # Breakpoint support
 truecondition(frame) = true
 falsecondition(frame) = false
