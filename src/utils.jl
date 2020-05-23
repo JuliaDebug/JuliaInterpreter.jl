@@ -508,7 +508,7 @@ function eval_code(frame::Frame, expr)
     end
     # see https://github.com/JuliaLang/julia/issues/31255 for the Symbol("") check
     vars = filter(v -> v.name != Symbol(""), locals(frame))
-    defined_ssa = findall(!=(0), [isassigned(data.ssavalues, i) for i in 1:length(data.ssavalues)])
+    defined_ssa = findall(x -> x!=0, [isassigned(data.ssavalues, i) for i in 1:length(data.ssavalues)])
     defined_locals = findall(x -> x isa Some, data.locals)
     res = gensym()
     eval_expr = Expr(:let,
