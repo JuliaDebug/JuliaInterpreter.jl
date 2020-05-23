@@ -493,6 +493,9 @@ julia> JuliaInterpreter.locals(frame)
  #self# = capture
  x = Core.Box(2)
 ```
+
+"Special" values like SSA values and slots (shown in lowered code as e.g. `%3` and `@_4`
+respectively) can be evaluated using the syntax `var"%3"` and `var"@_4"` respectively.
 """
 function eval_code end
 
