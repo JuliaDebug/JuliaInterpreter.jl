@@ -493,6 +493,9 @@ julia> JuliaInterpreter.locals(frame)
  #self# = capture
  x = Core.Box(2)
 ```
+
+"Special" values like SSA values and slots (shown in lowered code as e.g. `%3` and `@_4`
+respectively) can be evaluated using the syntax `var"%3"` and `var"@_4"` respectively.
 """
 function eval_code end
 
@@ -508,9 +511,13 @@ function eval_code(frame::Frame, expr)
     end
     # see https://github.com/JuliaLang/julia/issues/31255 for the Symbol("") check
     vars = filter(v -> v.name != Symbol(""), locals(frame))
+    defined_ssa = findall(x -> x!=0, [isassigned(data.ssavalues, i) for i in 1:length(data.ssavalues)])
+    defined_locals = findall(x -> x isa Some, data.locals)
     res = gensym()
     eval_expr = Expr(:let,
-        Expr(:block, map(x->Expr(:(=), x...), [(v.name, maybe_quote(v.value isa Core.Box ? v.value.contents : v.value)) for v in vars])...),
+                     Expr(:block, map(x->Expr(:(=), x...), [(v.name, maybe_quote(v.value isa Core.Box ? v.value.contents : v.value)) for v in vars])...,
+                     map(x->Expr(:(=), x...), [(Symbol("%$i"), data.ssavalues[i]) for i in defined_ssa])...,
+                     map(x->Expr(:(=), x...), [(Symbol("@_$i"), data.locals[i].value) for i in defined_locals])...),
         Expr(:block,
             Expr(:(=), res, expr),
             Expr(:tuple, res, Expr(:tuple, [v.name for v in vars]...))

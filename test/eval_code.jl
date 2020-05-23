@@ -73,3 +73,14 @@ fr, bp = debug_command(fr, :c)
 @test eval_code(fr, "garbage") == ones(10)
 eval_code(fr, "non_accessible_variable = 5.0")
 @test eval_code(fr, "non_accessible_variable") == 5.0
+
+if VERSION >= v"1.4" # for var"" syntax
+    # Evaluating SSAValues
+    f(x) = x^2
+    frame = JuliaInterpreter.enter_call(f, 5)
+    JuliaInterpreter.step_expr!(frame)
+    JuliaInterpreter.step_expr!(frame)
+    # This could change with changes to Julia lowering
+    @test eval_code(frame, "var\"%2\"") == Val(2)
+    @test eval_code(frame, "var\"@_1\"") == f
+end
