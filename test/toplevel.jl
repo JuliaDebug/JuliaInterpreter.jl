@@ -44,6 +44,8 @@ end
 
     @test JuliaInterpreter.prepare_thunk(Main, :(export foo)) === nothing
     @test JuliaInterpreter.prepare_thunk(Base.Threads, :(global Condition)) === nothing
+    @test_throws ArgumentError JuliaInterpreter.prepare_thunk(Main, :(using NoPkgOfThisName))
+    @test JuliaInterpreter.prepare_thunk(Main, :(using NoPkgOfThisName); eval=false) === nothing
 
     @test !isdefined(Main, :JIInvisible)
     JuliaInterpreter.split_expressions(JIVisible, :(module JIInvisible f() = 1 end))
