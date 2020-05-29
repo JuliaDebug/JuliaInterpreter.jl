@@ -640,3 +640,12 @@ end
     D = Diagonal([1.0, 2.0])
     @test @interpret(f(D)) === f(D)
 end
+
+@testset "constructor locals" begin
+    struct A
+        a::Int
+    end
+
+    frame = JuliaInterpreter.enter_call(A, 3)
+    @test length(JuliaInterpreter.locals(frame)) > 0
+end
