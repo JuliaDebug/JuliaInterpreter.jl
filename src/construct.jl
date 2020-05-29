@@ -353,7 +353,7 @@ end
 Prepare `expr` for evaluation in `mod`. `expr` should be a "straightforward" expression,
 one that does not require special top-level handling (see [`JuliaInterpreter.split_expressions`](@ref)).
 """
-function prepare_thunk(mod::Module, thunk::Expr, recursive::Bool=false)
+function prepare_thunk(mod::Module, thunk::Expr, recursive::Bool=false; eval::Bool=true)
     if isexpr(thunk, :thunk)
         framecode = FrameCode(mod, thunk.args[1])
     elseif isexpr(thunk, :error) || isexpr(thunk, :incomplete)
@@ -362,13 +362,13 @@ function prepare_thunk(mod::Module, thunk::Expr, recursive::Bool=false)
         thunk = Meta.lower(mod, thunk)
         if isa(thunk, Expr)
             # If on 2nd attempt to lower it's still an Expr, just evaluate it
-            Core.eval(mod, thunk)
+            eval && Core.eval(mod, thunk)
             return nothing
         end
         framecode = FrameCode(mod, thunk.args[1])
     else
         lwr = Meta.lower(mod, thunk)
-        isa(lwr, Expr) && return prepare_thunk(mod, lwr, true)
+        isa(lwr, Expr) && return prepare_thunk(mod, lwr, true; eval=eval)
         return nothing
     end
     return Frame(framecode, prepare_framedata(framecode, []))
