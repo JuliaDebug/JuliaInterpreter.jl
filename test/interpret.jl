@@ -642,10 +642,10 @@ end
 end
 
 @testset "constructor locals" begin
-    struct A
+    struct A396
         a::Int
     end
 
-    frame = JuliaInterpreter.enter_call(A, 3)
+    frame = JuliaInterpreter.enter_call(A396, 3)
     @test length(JuliaInterpreter.locals(frame)) > 0
 end
