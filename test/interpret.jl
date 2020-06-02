@@ -641,11 +641,10 @@ end
     @test @interpret(f(D)) === f(D)
 end
 
+struct A396
+    a::Int
+end
 @testset "constructor locals" begin
-    struct A396
-        a::Int
-    end
-
     frame = JuliaInterpreter.enter_call(A396, 3)
     @test length(JuliaInterpreter.locals(frame)) > 0
 end
