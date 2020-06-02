@@ -84,3 +84,16 @@ if VERSION >= v"1.4" # for var"" syntax
     @test eval_code(frame, "var\"%2\"") == Val(2)
     @test eval_code(frame, "var\"@_1\"") == f
 end
+
+function fun(;output=:sym)
+   x = 5
+   y = 3
+end
+fr = JuliaInterpreter.enter_call(fun)
+fr = JuliaInterpreter.maybe_step_through_wrapper!(fr)
+JuliaInterpreter.step_expr!(fr)
+@test eval_code(fr, "x") == 5
+@test eval_code(fr, "output") == :sym
+eval_code(fr, "output = :foo")
+@test eval_code(fr, "output") == :foo
+

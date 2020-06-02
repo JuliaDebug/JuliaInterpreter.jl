@@ -516,8 +516,8 @@ function eval_code(frame::Frame, expr)
     res = gensym()
     eval_expr = Expr(:let,
                      Expr(:block, map(x->Expr(:(=), x...), [(v.name, maybe_quote(v.value isa Core.Box ? v.value.contents : v.value)) for v in vars])...,
-                     map(x->Expr(:(=), x...), [(Symbol("%$i"), data.ssavalues[i]) for i in defined_ssa])...,
-                     map(x->Expr(:(=), x...), [(Symbol("@_$i"), data.locals[i].value) for i in defined_locals])...),
+                     map(x->Expr(:(=), x...), [(Symbol("%$i"), maybe_quote(data.ssavalues[i])) for i in defined_ssa])...,
+                     map(x->Expr(:(=), x...), [(Symbol("@_$i"), maybe_quote(data.locals[i].value)) for i in defined_locals])...),
         Expr(:block,
             Expr(:(=), res, expr),
             Expr(:tuple, res, Expr(:tuple, [v.name for v in vars]...))
