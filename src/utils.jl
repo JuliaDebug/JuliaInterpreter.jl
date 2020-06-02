@@ -425,7 +425,9 @@ function locals(frame::Frame)
         if var.name === Symbol("#self#")
             for field in fieldnames(typeof(var.value))
                 field = field::Symbol
-                push!(vars, Variable(getfield(var.value, field), field, false, true))
+                if isdefined(var.value, field)
+                    push!(vars, Variable(getfield(var.value, field), field, false, true))
+                end
             end
         end
     end
