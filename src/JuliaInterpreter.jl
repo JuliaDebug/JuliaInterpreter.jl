@@ -5,7 +5,7 @@ module JuliaInterpreter
 # a Julia base or stdlib package are located in this file here.
 # Nothing else should appear in this file here, apart from
 # the `include("packagedef.jl")` statement, which loads what
-# we would normally consider the bulkd of the package code.
+# we would normally consider the bulk of the package code.
 # This somewhat unusual structure is in place to support
 # the VS Code extension integration.
 
