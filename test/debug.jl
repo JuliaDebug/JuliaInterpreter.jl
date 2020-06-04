@@ -68,6 +68,8 @@ struct B{T} end
             @test debug_command(frame, :finish) === nothing
             @test frame.caller === frame.callee === nothing
             @test get_return(frame) == complicated_keyword_stuff(args...; kwargs...)
+
+            @test @interpret(complicated_keyword_stuff(args...; kwargs...)) == complicated_keyword_stuff(args...; kwargs...)
         end
 
         f22() = string(:(a+b))
@@ -477,7 +479,7 @@ struct B{T} end
             @bp
             return b
         end
-        
+
         frame = JuliaInterpreter.enter_call(f, 5, 10)
         frame, pc = JuliaInterpreter.debug_command(frame, :n)
         @test pc isa BreakpointRef

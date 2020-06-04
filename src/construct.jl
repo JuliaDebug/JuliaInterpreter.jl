@@ -619,10 +619,11 @@ end
 function extract_args(__module__, ex0)
     if isa(ex0, Expr)
         if any(a->(isexpr(a, :kw) || isexpr(a, :parameters)), ex0.args)
+            arg1, args, kwargs = gensym("arg1"), gensym("args"), gensym("kwargs")
             return quote
-                local arg1 = $(ex0.args[1])
-                local args, kwargs = $separate_kwargs($(ex0.args[2:end]...))
-                tuple(Core.kwfunc(arg1), kwargs, arg1, args...)
+                $arg1 = $(ex0.args[1])
+                $args, $kwargs = $separate_kwargs($(ex0.args[2:end]...))
+                tuple(Core.kwfunc($arg1), $kwargs, $arg1, $args...)
             end
         elseif ex0.head == :.
             return Expr(:tuple, :getproperty, ex0.args...)
