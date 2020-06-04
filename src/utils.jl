@@ -169,6 +169,33 @@ is_call_or_return(@nospecialize(node)) = is_call(node) || isexpr(node, :return)
 
 is_dummy(bpref::BreakpointRef) = bpref.stmtidx == 0 && bpref.err === nothing
 
+if VERSION >= v"1.4.0-DEV.304"
+    function unpack_splatcall(stmt)
+        if isexpr(stmt, :call) && length(stmt.args) >= 3 && is_quotenode(stmt.args[1], Core._apply_iterate)
+            return true, stmt.args[3]
+        end
+        return false, nothing
+    end
+else
+    function unpack_splatcall(stmt)
+        if isexpr(stmt, :call) && length(stmt.args) >= 2 && is_quotenode(stmt.args[1], Core._apply)
+            return true, stmt.args[2]
+        end
+        return false, nothing
+    end
+end
+
+function is_bodyfunc(@nospecialize(arg))
+    if isa(arg, QuoteNode)
+        arg = arg.value
+    end
+    if isa(arg, Function)
+        fname = String(typeof(arg).name.name)
+        return startswith(fname, "##") && match(r"#\d+$", fname) !== nothing
+    end
+    return false
+end
+
 """
 Determine whether we are calling a function for which the current function
 is a wrapper (either because of optional arguments or because of keyword arguments).
