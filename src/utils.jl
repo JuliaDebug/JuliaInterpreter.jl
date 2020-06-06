@@ -399,7 +399,11 @@ function locals(frame::Frame)
     slotnames = code.src.slotnames::SlotNamesType
     for (sym, counter, val) in zip(slotnames, data.last_reference, data.locals)
         counter == 0 && continue
-        var = Variable(something(val), sym)
+        val = something(val)
+        if val isa Core.Box && !isdefined(val, :contents)
+            continue
+        end
+        var = Variable(val, sym)
         idx = get(varlookup, sym, 0)
         if idx > 0
             if counter > var_counter[idx]

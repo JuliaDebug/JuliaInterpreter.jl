@@ -96,4 +96,3 @@ JuliaInterpreter.step_expr!(fr)
 @test eval_code(fr, "output") == :sym
 eval_code(fr, "output = :foo")
 @test eval_code(fr, "output") == :foo
-
