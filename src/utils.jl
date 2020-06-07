@@ -129,6 +129,13 @@ _scopename(sym) = sym
 _scopename(parent, child) = Expr(:., parent, QuoteNode(child))
 _scopename(parent, child, rest...) = Expr(:., parent, _scopename(child, rest...))
 
+function lower(mod::Module, ex::Expr)
+    if ex.head === :toplevel && !must_be_toplevel(mod, ex)
+        ex = Expr(:block, ex.args...)
+    end
+    return Meta.lower(mod, ex)
+end
+
 ## Predicates
 
 is_goto_node(@nospecialize(node)) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
@@ -187,13 +194,26 @@ Test whether expression `ex` is a `@doc` expression.
 """
 function is_doc_expr(@nospecialize(ex))
     docsym = Symbol("@doc")
-    if isexpr(ex, :macrocall)
-        a = ex.args[1]
-        is_global_ref(a, Core, docsym) && return true
-        isa(a, Symbol) && a == docsym && return true
-        if isexpr(a, :.)
-            mod, name = a.args[1], a.args[2]
-            return mod === :Core && isa(name, QuoteNode) && name.value == docsym
+    if isa(ex, Expr)
+        if ex.head === :macrocall
+            a = ex.args[1]
+            is_global_ref(a, Core, docsym) && return true
+            isa(a, Symbol) && a == docsym && return true
+            if isexpr(a, :.)
+                mod, name = a.args[1], a.args[2]
+                return mod === :Core && isa(name, QuoteNode) && name.value == docsym
+            end
+        elseif ex.head === :toplevel || ex.head === :block
+            tf = false
+            for a in ex.args
+                isa(a, LineNumberNode) && continue
+                if is_doc_expr(a)
+                    tf = true
+                else
+                    return false
+                end
+            end
+            return tf
         end
     end
     return false
@@ -208,6 +228,23 @@ function is_vararg_type(x)
             x = Base.unwrap_unionall(x)
         end
         return isa(x, DataType) && nameof(x) == :Vararg
+    end
+    return false
+end
+
+function must_be_toplevel(mod::Module, ex::Expr)
+    head = ex.head
+    if head === :toplevel || head === :block
+        for a in ex.args
+            if isa(a, Expr)
+                must_be_toplevel(mod, a) && return true
+            end
+        end
+    elseif head === :import || head === :using || head === :global || head === :const
+        return true
+    elseif head === :macrocall
+        exex = macroexpand(mod, ex)
+        isa(exex, Expr) && must_be_toplevel(mod, exex) && return true
     end
     return false
 end

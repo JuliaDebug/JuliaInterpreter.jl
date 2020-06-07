@@ -7,6 +7,13 @@ module JIInvisible
 end
 end
 
+macro MacNothing(ex)
+    return nothing
+end
+macro MacIdentity(ex)
+    return esc(ex)
+end
+
 @testset "Basics" begin
     @test JuliaInterpreter.is_doc_expr(:(@doc "string" sum))
     @test JuliaInterpreter.is_doc_expr(:(Core.@doc "string" sum))
@@ -46,8 +53,13 @@ end
 
     @test JuliaInterpreter.prepare_thunk(Main, :(export foo)) === nothing
     @test JuliaInterpreter.prepare_thunk(Base.Threads, :(global Condition)) === nothing
+    @test JuliaInterpreter.prepare_thunk(Base.Threads, Expr(:toplevel, :(global Condition))) === nothing
+    err = ErrorException("lowering returned an error, \$(Expr(:error, \"misplaced \\\"global\\\" declaration\"))")
+    @test_throws err JuliaInterpreter.prepare_thunk(Base.Threads, Expr(:block, :(global Condition))) === nothing
     @test_throws ArgumentError JuliaInterpreter.prepare_thunk(Main, :(using NoPkgOfThisName))
     @test JuliaInterpreter.prepare_thunk(Main, :(using NoPkgOfThisName); eval=false) === nothing
+    @test JuliaInterpreter.prepare_thunk(Main, Expr(:toplevel, :(@MacNothing global Condition))) === nothing
+    @test JuliaInterpreter.prepare_thunk(Main, Expr(:toplevel, :(@MacIdentity global Condition))) === nothing
 
     @test !isdefined(Main, :JIInvisible)
     JuliaInterpreter.split_expressions(JIVisible, :(module JIInvisible f() = 1 end))
@@ -474,4 +486,25 @@ end
     end
     frame = JuliaInterpreter.prepare_thunk(ToplevelParameters, ex)
     @test JuliaInterpreter.finish!(frame, true) === nothing
+end
+
+## Incremental evaluation
+# The core component of fixing https://github.com/timholy/Revise.jl/issues/475
+@testset "Incremental evaluation" begin
+    JuliaInterpreter.split_expressions(Toplevel, quote
+        aR475 = 0.8
+        aR475 = 0.75
+    end; istoplevel=true, eval=false)
+    @test !isdefined(Toplevel, :aR475)
+    JuliaInterpreter.split_expressions(Toplevel, quote
+            aR475 = 0.8
+            aR475 = 0.75
+        end; istoplevel=true, eval=true)
+    @test Toplevel.aR475 == 0.75
+    JuliaInterpreter.split_expressions(Toplevel, quote
+            aR475 = 0.8
+            aR475 = 0.75
+            aR475 = 0.8
+        end; istoplevel=true, eval=true)
+    @test Toplevel.aR475 == 0.8
 end

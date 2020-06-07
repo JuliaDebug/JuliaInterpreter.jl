@@ -367,7 +367,7 @@ function prepare_thunk(mod::Module, thunk::Expr, recursive::Bool=false; eval::Bo
         end
         framecode = FrameCode(mod, thunk.args[1])
     else
-        lwr = Meta.lower(mod, thunk)
+        lwr = lower(mod, thunk)
         isa(lwr, Expr) && return prepare_thunk(mod, lwr, true; eval=eval)
         return nothing
     end
@@ -427,14 +427,18 @@ function split_expressions(mod::Module, expr::Expr; filename=nothing, kwargs...)
     end
     return split_expressions!(modexs, docexprs, mod, expr; filename=filename, kwargs...)
 end
-split_expressions!(modexs, docexprs, mod::Module, ex::Expr; kwargs...) =
-    split_expressions!(modexs, docexprs, Expr(:block), mod, ex; kwargs...)
+function split_expressions!(modexs, docexprs, mod::Module, ex::Expr; istoplevel::Bool=false, kwargs...)
+    if ex.head === :toplevel || istoplevel
+        return split_expressions!(modexs, docexprs, Expr(:toplevel), mod, ex; istoplevel=true, kwargs...)
+    end
+    return split_expressions!(modexs, docexprs, Expr(:block), mod, ex; istoplevel=false, kwargs...)
+end
 
-function split_expressions!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; extract_docexprs=false, filename="toplevel")
+function split_expressions!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; extract_docexprs=false, eval::Bool=false, kwargs...)
     # lex is the expression we'll lower; it will accumulate LineNumberNodes and a
     # single top-level expression. We split blocks, module defs, etc.
     if ex.head == :toplevel || ex.head == :block
-        split_expressions!(modexs, docexprs, lex, mod, ex.args; extract_docexprs=extract_docexprs, filename=filename)
+        split_expressions!(modexs, docexprs, lex, mod, ex.args; extract_docexprs=extract_docexprs, eval=eval, kwargs...)
     elseif ex.head == :module
         newname = ex.args[2]::Symbol
         if isdefined(mod, newname)
@@ -447,11 +451,11 @@ function split_expressions!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; 
                 newmod = Core.eval(mod, :(module $newname end))
             end
         end
-        split_expressions!(modexs, docexprs, lex, newmod, ex.args[3]; extract_docexprs=extract_docexprs, filename=filename)
+        split_expressions!(modexs, docexprs, lex, newmod, ex.args[3]; extract_docexprs=extract_docexprs, eval=eval, kwargs...)
     elseif extract_docexprs && is_doc_expr(ex) && length(ex.args) >= 4
         body = ex.args[4]
         if isa(body, Expr) && body.head != :call
-            split_expressions!(modexs, docexprs, lex, mod, body; extract_docexprs=extract_docexprs, filename=filename)
+            split_expressions!(modexs, docexprs, lex, mod, body; extract_docexprs=extract_docexprs, eval=false, kwargs...)
         end
         docexs = get(docexprs, mod, nothing)
         if docexs === nothing
@@ -469,13 +473,10 @@ function split_expressions!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; 
             push!(docexs, ex)
         end
     else
-        if isempty(lex.args) || (isexpr(ex, :global) && all(item->isa(item, LineNumberNode), lex.args))
-            push!(modexs, (mod, copy(ex)))
-        else
-            push!(lex.args, ex)
-            push!(modexs, (mod, copy(lex)))
-            empty!(lex.args)
-        end
+        push!(lex.args, ex)
+        push!(modexs, (mod, copy(lex)))
+        eval && Core.eval(mod, lex)
+        empty!(lex.args)
     end
     return modexs, docexprs
 end
