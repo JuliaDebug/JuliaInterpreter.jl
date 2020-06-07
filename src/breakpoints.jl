@@ -44,7 +44,7 @@ updated _after_ the update is applied.
 !!! warning
     This feature is experimental, and may be modified or removed in a minor release.
 """
-function firehooks(hooked_fun, bp::AbstractBreakpoint)
+function firehooks(@nospecialize(hooked_fun), bp::AbstractBreakpoint)
     for hook in breakpoint_update_hooks
         try
             hook(hooked_fun, bp)
@@ -111,7 +111,7 @@ end
 breakpoint(radius2, Tuple{Int,Int}, :(y > x))
 ```
 """
-function breakpoint(f::Union{Method, Function}, sig=nothing, line::Integer=0, condition::Condition=nothing)
+function breakpoint(@nospecialize(f::Union{Method, Function}), sig=nothing, line::Integer=0, condition::Condition=nothing)
     if sig !== nothing && f isa Function
         sig = Base.to_tuple_type(sig)
         sig = Tuple{typeof(f), sig.parameters...}
@@ -129,9 +129,9 @@ function breakpoint(f::Union{Method, Function}, sig=nothing, line::Integer=0, co
     firehooks(breakpoint, bp)
     return bp
 end
-breakpoint(f::Union{Method, Function}, sig, condition::Condition) = breakpoint(f, sig, 0, condition)
-breakpoint(f::Union{Method, Function}, line::Integer, condition::Condition=nothing) = breakpoint(f, nothing, line, condition)
-breakpoint(f::Union{Method, Function}, condition::Condition) = breakpoint(f, nothing, 0, condition)
+breakpoint(@nospecialize(f::Union{Method, Function}), sig, condition::Condition) = breakpoint(f, sig, 0, condition)
+breakpoint(@nospecialize(f::Union{Method, Function}), line::Integer, condition::Condition=nothing) = breakpoint(f, nothing, line, condition)
+breakpoint(@nospecialize(f::Union{Method, Function}), condition::Condition) = breakpoint(f, nothing, 0, condition)
 
 
 """
