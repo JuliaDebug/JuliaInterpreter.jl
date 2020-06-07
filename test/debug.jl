@@ -88,6 +88,8 @@ end
                 @test debug_command(frame, :finish) === nothing
                 @test oframe.caller === oframe.callee === nothing
                 @test get_return(oframe) == func(args...; kwargs...)
+
+                @test @interpret(complicated_keyword_stuff(args...; kwargs...)) == complicated_keyword_stuff(args...; kwargs...)
             end
         end
 

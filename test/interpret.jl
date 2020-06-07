@@ -2,6 +2,7 @@ using JuliaInterpreter
 using JuliaInterpreter: enter_call_expr
 using Test, InteractiveUtils, CodeTracking
 using Mmap
+using LinearAlgebra
 
 module Isolated end
 
@@ -355,6 +356,31 @@ f113(;x) = x
     locals = JuliaInterpreter.locals(frame)
     @test length(locals) == 3
     @test JuliaInterpreter.Variable(3, :x, false) in locals
+
+    # Issue #404
+    function aaa(F::Array{T,1}, Z::Array{T,1}) where {T}
+        M = length(Z)
+
+        J = [1:M;]
+        z = T[]
+        f = T[]
+        w = T[]
+
+        A = rand(10, 10)
+        G = svd(A[J, :])
+        w = G.V[:, m]
+
+        r = zz -> rhandle(zz, z, f, w)
+    end
+
+    function rhandle(zz, z, f, w)
+        nothing
+    end
+
+    fr = JuliaInterpreter.enter_call(aaa, rand(5), rand(5))
+    fr, bp = JuliaInterpreter.debug_command(fr, :n)
+    locs = JuliaInterpreter.locals(fr)
+    @test !any(x -> x.name === :w, locs)
 end
 
 @testset "getfield replacements" begin
