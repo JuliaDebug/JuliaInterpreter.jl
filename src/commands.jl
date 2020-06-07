@@ -219,7 +219,9 @@ function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
     isexpr(last, :(=)) && (last = last.args[2])
     comp = VERSION < v"1.4.0-DEV.215" ? startswith : endswith
     is_kw = isa(scope, Method) && comp(String(Base.unwrap_unionall(Base.unwrap_unionall(scope.sig).parameters[1]).name.name), "#kw")
-    if is_kw || isexpr(last, :call) && any(isequal(SlotNumber(1)), last.args)
+    has_selfarg = isexpr(last, :call) && any(isequal(SlotNumber(1)), last.args)
+    issplatcall, _callee = unpack_splatcall(last)
+    if is_kw || has_selfarg || (issplatcall && is_bodyfunc(_callee))
         # If the last expr calls #self# or passes it to an implementation method,
         # this is a wrapper function that we might want to step through
         while frame.pc != length(stmts)-1
@@ -285,6 +287,16 @@ function maybe_step_through_kwprep!(@nospecialize(recurse), frame::Frame, istopl
                 f = stmt1.args[1]
                 if is_quotenode(f, Base.pairs)
                     # No supplied kwargs
+                    pcsplat = pc + 3
+                    if pcsplat <= n
+                        issplatcall, callee = unpack_splatcall(src.code[pcsplat])
+                        if issplatcall && is_bodyfunc(callee)
+                            while pc < pcsplat
+                                pc = step_expr!(recurse, frame, istoplevel)
+                            end
+                            return frame
+                        end
+                    end
                     pccall = pc + 2
                     if pccall <= n
                         stmt2 = src.code[pccall]
@@ -337,6 +349,7 @@ function maybe_reset_frame!(@nospecialize(recurse), frame::Frame, @nospecialize(
         ssavals = frame.framedata.ssavalues
         is_wrapper = isassigned(ssavals, frame.pc) && ssavals[frame.pc] === Wrapper()
         maybe_assign!(frame, val)
+        frame.pc >= nstatements(frame.framecode) && return maybe_reset_frame!(recurse, frame, nothing, rootistoplevel)
         frame.pc += 1
         if is_wrapper
             return maybe_reset_frame!(recurse, frame, finish!(recurse, frame), rootistoplevel)
@@ -346,6 +359,8 @@ function maybe_reset_frame!(@nospecialize(recurse), frame::Frame, @nospecialize(
     end
     return frame, pc
 end
+maybe_reset_frame!(frame::Frame, @nospecialize(pc), rootistoplevel::Bool) =
+    maybe_reset_frame!(finish_and_return!, frame, pc, rootistoplevel)
 
 # Unwind the stack until an exc is eventually caught, thereby
 # returning the frame that caught the exception at the pc of the catch

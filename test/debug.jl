@@ -49,6 +49,24 @@ trivial(x) = x
 
 struct B{T} end
 
+# Putting this into a @testset introduces a closure that breaks the kwprep detection
+function complicated_keyword_stuff(a, b=-1; x=1, y=2)
+    a == a
+    (a, b, :x=>x, :y=>y)
+end
+function complicated_keyword_stuff_splatargs(args...; x=1, y=2)
+    args[1] == args[1]
+    (args..., :x=>x, :y=>y)
+end
+function complicated_keyword_stuff_splatkws(a, b=-1; kw...)
+    a == a
+    (a, b, kw...)
+end
+function complicated_keyword_stuff_splat2(args...; kw...)
+    args[1] == args[1]
+    (args..., kw...)
+end
+
 # @testset "Debug" begin
     @testset "Basics" begin
         frame = enter_call(map, x->2x, 1:10)
@@ -56,20 +74,23 @@ struct B{T} end
         @test frame.caller === frame.callee === nothing
         @test get_return(frame) == map(x->2x, 1:10)
 
-        function complicated_keyword_stuff(args...; kw...)
-            args[1] == args[1]
-            (args..., kw...)
-        end
-        for (args, kwargs) in (((1,), ()), ((1, 2), (x=7, y=33)))
-            frame = enter_call(complicated_keyword_stuff, args...; kwargs...)
-            f, pc = debug_command(frame, :n)
-            @test f === frame
-            @test isa(pc, Int)
-            @test debug_command(frame, :finish) === nothing
-            @test frame.caller === frame.callee === nothing
-            @test get_return(frame) == complicated_keyword_stuff(args...; kwargs...)
+        for func in (complicated_keyword_stuff, complicated_keyword_stuff_splatargs,
+                     complicated_keyword_stuff_splatkws, complicated_keyword_stuff_splat2)
+            for (args, kwargs) in (((1,), ()), ((1, 2), (x=7, y=33)))
+                oframe = frame = enter_call(func, args...; kwargs...)
+                frame = JuliaInterpreter.maybe_step_through_kwprep!(frame, false)
+                frame = JuliaInterpreter.maybe_step_through_wrapper!(frame)
+                @test any(stmt->isa(stmt, Expr) && JuliaInterpreter.hasarg(isequal(QuoteNode(==)), stmt.args), frame.framecode.src.code)
+                f, pc = debug_command(frame, :n)
+                @test f === frame
+                @test isa(pc, Int)
+                @test oframe.callee !== nothing
+                @test debug_command(frame, :finish) === nothing
+                @test oframe.caller === oframe.callee === nothing
+                @test get_return(oframe) == func(args...; kwargs...)
 
-            @test @interpret(complicated_keyword_stuff(args...; kwargs...)) == complicated_keyword_stuff(args...; kwargs...)
+                @test @interpret(complicated_keyword_stuff(args...; kwargs...)) == complicated_keyword_stuff(args...; kwargs...)
+            end
         end
 
         f22() = string(:(a+b))
