@@ -1,4 +1,6 @@
-using JuliaInterpreter, Test, Random
+if !isdefined(@__MODULE__, :read_and_parse)
+    include("utils.jl")
+end
 
 module JIVisible
 module JIInvisible
