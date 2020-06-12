@@ -11,8 +11,8 @@ end
 
 function lookup_expr(frame, e::Expr)
     head = e.head
-    head == :the_exception && return frame.framedata.last_exception[]
-    if head == :static_parameter
+    head === :the_exception && return frame.framedata.last_exception[]
+    if head === :static_parameter
         arg = e.args[1]::Int
         if isassigned(frame.framedata.sparams, arg)
             return frame.framedata.sparams[arg]
@@ -21,7 +21,7 @@ function lookup_expr(frame, e::Expr)
             throw(UndefVarError(syms[arg]))
         end
     end
-    head == :boundscheck && length(e.args) == 0 && return true
+    head === :boundscheck && length(e.args) == 0 && return true
     error("invalid lookup expr ", e)
 end
 
@@ -86,7 +86,7 @@ function lookup_or_eval(@nospecialize(recurse), frame, @nospecialize(node))
         for arg in node.args
             push!(ex.args, lookup_or_eval(recurse, frame, arg))
         end
-        if ex.head == :call
+        if ex.head === :call
             f = ex.args[1]
             if f === Core.svec
                 return Core.svec(ex.args[2:end]...)
@@ -124,9 +124,9 @@ function resolvefc(frame, @nospecialize(expr))
     isa(expr, Tuple{Symbol,String}) && return expr
     isa(expr, Tuple{String,Symbol}) && return expr
     if isexpr(expr, :call)
-        a = expr.args[1]
-        (isa(a, QuoteNode) && a.value == Core.tuple) || error("unexpected ccall to ", expr)
-        return Expr(:call, GlobalRef(Core, :tuple), expr.args[2:end]...)
+        a = (expr::Expr).args[1]
+        (isa(a, QuoteNode) && a.value === Core.tuple) || error("unexpected ccall to ", expr)
+        return Expr(:call, GlobalRef(Core, :tuple), (expr::Expr).args[2:end]...)
     end
     error("unexpected ccall to ", expr)
 end
@@ -154,7 +154,7 @@ function evaluate_foreigncall(frame::Frame, call_expr::Expr)
         arg = args[i]
         args[i] = isa(arg, Symbol) ? QuoteNode(arg) : arg
     end
-    head == :cfunction && (args[2] = QuoteNode(args[2]))
+    head === :cfunction && (args[2] = QuoteNode(args[2]))
     scope = frame.framecode.scope
     data = frame.framedata
     if !isempty(data.sparams) && scope isa Method
@@ -369,35 +369,35 @@ maybe_assign!(frame, @nospecialize(val)) = maybe_assign!(frame, pc_expr(frame), 
 
 function eval_rhs(@nospecialize(recurse), frame, node::Expr)
     head = node.head
-    if head == :new
+    if head === :new
         mod = moduleof(frame)
         args = [@lookup(mod, frame, arg) for arg in node.args]
         T = popfirst!(args)
         rhs = ccall(:jl_new_structv, Any, (Any, Ptr{Any}, UInt32), T, args, length(args))
         return rhs
-    elseif head == :splatnew  # Julia 1.2+
+    elseif head === :splatnew  # Julia 1.2+
         mod = moduleof(frame)
         rhs = ccall(:jl_new_structt, Any, (Any, Any), @lookup(mod, frame, node.args[1]), @lookup(mod, frame, node.args[2]))
         return rhs
-    elseif head == :isdefined
+    elseif head === :isdefined
         return check_isdefined(frame, node.args[1])
-    elseif head == :call
+    elseif head === :call
         # here it's crucial to avoid dynamic dispatch
         isa(recurse, Compiled) && return evaluate_call_compiled!(recurse, frame, node)
         return evaluate_call_recurse!(recurse, frame, node)
-    elseif head == :foreigncall || head == :cfunction
+    elseif head === :foreigncall || head === :cfunction
         return evaluate_foreigncall(frame, node)
-    elseif head == :copyast
+    elseif head === :copyast
         val = (node.args[1]::QuoteNode).value
         return isa(val, Expr) ? copy(val) : val
-    elseif head == :enter
+    elseif head === :enter
         return length(frame.framedata.exception_frames)
-    elseif head == :boundscheck
+    elseif head === :boundscheck
         return true
-    elseif head == :meta || head == :inbounds || head == (@static VERSION >= v"1.2.0-DEV.462" ? :loopinfo : :simdloop) ||
-           head == :gc_preserve_begin || head == :gc_preserve_end
+    elseif head === :meta || head === :inbounds || head == (@static VERSION >= v"1.2.0-DEV.462" ? :loopinfo : :simdloop) ||
+           head === :gc_preserve_begin || head === :gc_preserve_end
         return nothing
-    elseif head == :method && length(node.args) == 1
+    elseif head === :method && length(node.args) == 1
         return evaluate_methoddef(frame, node)
     end
     return lookup_expr(frame, node)
@@ -437,7 +437,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
     # _location[location_key] = get(_location, location_key, 0) + 1
     try
         if isa(node, Expr)
-            if node.head == :(=)
+            if node.head === :(=)
                 lhs, rhs = node.args
                 if isa(rhs, Expr)
                     rhs = eval_rhs(recurse, frame, rhs)
@@ -446,7 +446,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                 end
                 isa(rhs, BreakpointRef) && return rhs
                 do_assignment!(frame, lhs, rhs)
-            elseif node.head == :gotoifnot
+            elseif node.head === :gotoifnot
                 arg = @lookup(frame, node.args[1])
                 if !isa(arg, Bool)
                     throw(TypeError(nameof(frame), "if", Bool, node.args[1]))
@@ -454,32 +454,32 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                 if !arg
                     return (frame.pc = node.args[2]::Int)
                 end
-            elseif node.head == :enter
+            elseif node.head === :enter
                 rhs = node.args[1]
                 push!(data.exception_frames, rhs)
-            elseif node.head == :leave
+            elseif node.head === :leave
                 for _ = 1:node.args[1]
                     pop!(data.exception_frames)
                 end
-            elseif node.head == :pop_exception
+            elseif node.head === :pop_exception
                 n = lookup_var(frame, node.args[1])
                 deleteat!(data.exception_frames, n+1:length(data.exception_frames))
-            elseif node.head == :return
+            elseif node.head === :return
                 return nothing
             elseif istoplevel
-                if node.head == :method && length(node.args) > 1
+                if node.head === :method && length(node.args) > 1
                     evaluate_methoddef(frame, node)
-                elseif node.head == :struct_type
+                elseif node.head === :struct_type
                     evaluate_structtype(recurse, frame, node)
-                elseif node.head == :abstract_type
+                elseif node.head === :abstract_type
                     evaluate_abstracttype(recurse, frame, node)
-                elseif node.head == :primitive_type
+                elseif node.head === :primitive_type
                     evaluate_primitivetype(recurse, frame, node)
-                elseif node.head == :module
+                elseif node.head === :module
                     error("this should have been handled by split_expressions")
-                elseif node.head == :using || node.head == :import || node.head == :export
+                elseif node.head === :using || node.head === :import || node.head === :export
                     Core.eval(moduleof(frame), node)
-                elseif node.head == :const
+                elseif node.head === :const
                     g = node.args[1]
                     if isa(g, GlobalRef)
                         mod, name = g.module, g.name
@@ -489,7 +489,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                     if VERSION >= v"1.2.0-DEV.239"  # depends on https://github.com/JuliaLang/julia/pull/30893
                         Core.eval(mod, Expr(:const, name))
                     end
-                elseif node.head == :thunk
+                elseif node.head === :thunk
                     newframe = prepare_thunk(moduleof(frame), node)
                     if isa(recurse, Compiled)
                         finish!(recurse, newframe, true)
@@ -500,9 +500,9 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                         frame.callee = nothing
                     end
                     return_from(newframe)
-                elseif node.head == :global
+                elseif node.head === :global
                     Core.eval(moduleof(frame), node)
-                elseif node.head == :toplevel
+                elseif node.head === :toplevel
                     mod = moduleof(frame)
                     modexs, _ = split_expressions(mod, node)
                     rhs = Core.eval(mod, Expr(:toplevel,
@@ -514,14 +514,14 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                               end
                               $return_from(newframe)
                           end)))
-                elseif node.head == :error
+                elseif node.head === :error
                     error("unexpected error statement ", node)
-                elseif node.head == :incomplete
+                elseif node.head === :incomplete
                     error("incomplete statement ", node)
                 else
                     rhs = eval_rhs(recurse, frame, node)
                 end
-            elseif node.head == :thunk || node.head == :toplevel
+            elseif node.head === :thunk || node.head === :toplevel
                 error("this frame needs to be run at top level")
             else
                 rhs = eval_rhs(recurse, frame, node)

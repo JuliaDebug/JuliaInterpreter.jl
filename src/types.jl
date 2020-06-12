@@ -91,9 +91,10 @@ function is_breakpoint_expr(ex::Expr)
     # To avoid invalidations, do it the hard way.
     ex.head === :call || return false
     length(ex.args) === 3 || return false
-    is_quotenode(ex.args[1], getproperty) || return false
+    (q = ex.args[1]; isa(q, QuoteNode) && q.value === getproperty) || return false
     ex.args[2] === JuliaInterpreter || return false
-    return is_quotenode(ex.args[3], :__BREAKPOINT_MARKER__)
+    q = ex.args[3]
+    return isa(q, QuoteNode) && q.value === :__BREAKPOINT_MARKER__
 end
 function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
     if optimize
@@ -287,7 +288,7 @@ Variable(value, name) = Variable(value, name, false, false)
 Variable(value, name, isparam) = Variable(value, name, isparam, false)
 Base.show(io::IO, var::Variable) = (print(io, var.name, " = "); show(io,var.value))
 Base.isequal(var1::Variable, var2::Variable) =
-    var1.value == var2.value && var1.name == var2.name && var1.isparam == var2.isparam &&
+    var1.value == var2.value && var1.name === var2.name && var1.isparam == var2.isparam &&
     var1.is_captured_closure == var2.is_captured_closure
 
 # A type that is unique to this package for which there are no valid operations

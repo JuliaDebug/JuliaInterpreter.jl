@@ -2,17 +2,16 @@ const calllike = (:call, :foreigncall)
 
 const compiled_calls = Dict{Any,Any}()
 
-function extract_inner_call!(stmt, idx, once::Bool=false)
-    isa(stmt, Expr) || return nothing
-    (stmt.head == :toplevel || stmt.head == :thunk) && return nothing
+function extract_inner_call!(stmt::Expr, idx, once::Bool=false)
+    (stmt.head === :toplevel || stmt.head === :thunk) && return nothing
     once |= stmt.head ∈ calllike
     for (i, a) in enumerate(stmt.args)
         isa(a, Expr) || continue
         # Make sure we don't "damage" special syntax that requires literals
-        if i == 1 && stmt.head == :foreigncall
+        if i == 1 && stmt.head === :foreigncall
             continue
         end
-        if i == 2 && stmt.head == :call && stmt.args[1] == :cglobal
+        if i == 2 && stmt.head === :call && stmt.args[1] === :cglobal
             continue
         end
         ret = extract_inner_call!(a, idx, once) # doing this first extracts innermost calls
@@ -50,7 +49,7 @@ function renumber_ssa!(stmts::Vector{Any}, ssalookup)
             stmts[i] = SSAValue(stmt.id)
         elseif isa(stmt, Expr)
             replace_ssa!(stmt, ssalookup)
-            if (stmt.head == :gotoifnot || stmt.head == :enter) && isa(stmt.args[end], Int)
+            if (stmt.head === :gotoifnot || stmt.head === :enter) && isa(stmt.args[end], Int)
                 stmt.args[end] = ssalookup[stmt.args[end]]
             end
         end
@@ -104,9 +103,9 @@ function lookup_global_ref(a::GlobalRef)
 end
 
 function lookup_global_refs!(ex::Expr)
-    (ex.head == :isdefined || ex.head == :thunk || ex.head == :toplevel) && return nothing
+    (ex.head === :isdefined || ex.head === :thunk || ex.head === :toplevel) && return nothing
     for (i, a) in enumerate(ex.args)
-        ex.head == :(=) && i == 1 && continue # Don't look up globalrefs on the LHS of an assignment (issue #98)
+        ex.head === :(=) && i == 1 && continue # Don't look up globalrefs on the LHS of an assignment (issue #98)
         if isa(a, GlobalRef)
             ex.args[i] = lookup_global_ref(a)
         elseif isa(a, Expr)
@@ -131,7 +130,7 @@ which this will run) and ensures that no statement includes nested `:call` expre
 function optimize!(code::CodeInfo, scope)
     mod = moduleof(scope)
     evalmod = mod == Core.Compiler ? Core.Compiler : CompiledCalls
-    sparams = scope isa Method ? Symbol[sparam_syms(scope)...] : Symbol[]
+    sparams = scope isa Method ? sparam_syms(scope) : Symbol[]
     code.inferred && error("optimization of inferred code not implemented")
     replace_coretypes!(code)
     # TODO: because of builtins.jl, for CodeInfos like
@@ -143,7 +142,7 @@ function optimize!(code::CodeInfo, scope)
         if isa(stmt, GlobalRef)
             code.code[i] = lookup_global_ref(stmt)
         elseif isa(stmt, Expr)
-            if stmt.head == :call && stmt.args[1] == :cglobal  # cglobal requires literals
+            if stmt.head === :call && stmt.args[1] === :cglobal  # cglobal requires literals
                 continue
             else
                 lookup_global_refs!(stmt)
@@ -158,31 +157,35 @@ function optimize!(code::CodeInfo, scope)
     for (idx, stmt) in enumerate(code.code)
         # Foregincalls can be rhs of assignments
         if isexpr(stmt, :(=))
-            stmt = stmt.args[2]
+            stmt = (stmt::Expr).args[2]
         end
-        if isexpr(stmt, :call)
-            # Check for :llvmcall
-            arg1 = stmt.args[1]
-            if (arg1 == :llvmcall || lookup_stmt(code.code, arg1) == Base.llvmcall) && isempty(sparams) && scope isa Method
-                nargs = length(stmt.args)-4
-                delete_idx = build_compiled_call!(stmt, Base.llvmcall, code, idx, nargs, sparams, evalmod)
-                delete_idx === nothing && error("llvmcall must be compiled, but exited early from build_compiled_call!")
-                push!(foreigncalls_idx, idx)
-                append!(delete_idxs, delete_idx)
-            end
-        elseif isexpr(stmt, :foreigncall) && scope isa Method
-            nargs = foreigncall_version == 0 ? stmt.args[5] : length(stmt.args[3])
-            delete_idx = build_compiled_call!(stmt, :ccall, code, idx, nargs, sparams, evalmod)
-            if delete_idx !== nothing
-                push!(foreigncalls_idx, idx)
-                append!(delete_idxs, delete_idx)
+        if isa(stmt, Expr)
+            if stmt.head === :call
+                # Check for :llvmcall
+                arg1 = stmt.args[1]
+                if (arg1 === :llvmcall || lookup_stmt(code.code, arg1) === Base.llvmcall) && isempty(sparams) && scope isa Method
+                    nargs = length(stmt.args)-4
+                    delete_idx = build_compiled_call!(stmt, Base.llvmcall, code, idx, nargs, sparams, evalmod)
+                    delete_idx === nothing && error("llvmcall must be compiled, but exited early from build_compiled_call!")
+                    push!(foreigncalls_idx, idx)
+                    append!(delete_idxs, delete_idx)
+                end
+            elseif stmt.head === :foreigncall && scope isa Method
+                nargs = foreigncall_version == 0 ? stmt.args[5]::Int : length(stmt.args[3]::SimpleVector)
+                delete_idx = build_compiled_call!(stmt, :ccall, code, idx, nargs, sparams, evalmod)
+                if delete_idx !== nothing
+                    push!(foreigncalls_idx, idx)
+                    append!(delete_idxs, delete_idx)
+                end
             end
         end
     end
 
     if !isempty(delete_idxs)
         ssalookup = compute_ssa_mapping_delete_statements!(code, delete_idxs)
-        foreigncalls_idx = map(x -> ssalookup[x], foreigncalls_idx)
+        let lkup = ssalookup
+            foreigncalls_idx = map(x -> lkup[x], foreigncalls_idx)
+        end
         deleteat!(codelocs(code), delete_idxs)
         deleteat!(code.code, delete_idxs)
         code.ssavaluetypes = length(code.code)
@@ -197,13 +200,15 @@ function optimize!(code::CodeInfo, scope)
     ssainc = fill(1, length(old_code))
     for (i, stmt) in enumerate(old_code)
         loc = old_codelocs[i]
-        if !is_type_definition(stmt)  # https://github.com/timholy/Revise.jl/issues/417
-            inner = extract_inner_call!(stmt, length(new_code)+1)
-            while inner !== nothing
-                push!(new_code, inner)
-                push!(new_codelocs, loc)
-                ssainc[i] += 1
+        if isa(stmt, Expr)
+            if !is_type_definition(stmt)  # https://github.com/timholy/Revise.jl/issues/417
                 inner = extract_inner_call!(stmt, length(new_code)+1)
+                while inner !== nothing
+                    push!(new_code, inner)
+                    push!(new_codelocs, loc)
+                    ssainc[i] += 1
+                    inner = extract_inner_call!(stmt, length(new_code)+1)
+                end
             end
         end
         push!(new_code, stmt)
@@ -240,10 +245,10 @@ function parametric_type_to_expr(t::Type)
 end
 
 # Handle :llvmcall & :foreigncall (issue #28)
-function build_compiled_call!(stmt, fcall, code, idx, nargs, sparams, evalmod)
+function build_compiled_call!(stmt::Expr, fcall, code, idx, nargs::Int, sparams::Vector{Symbol}, evalmod)
     TVal = evalmod == Core.Compiler ? Core.Compiler.Val : Val
     delete_idx = Int[]
-    if fcall == :ccall
+    if fcall === :ccall
         cfunc, RetType, ArgType = lookup_stmt(code.code, stmt.args[1]), stmt.args[2], stmt.args[3]
         # The result of this is useful to have next to you when reading this code:
         # f(x, y) =  ccall(:jl_value_ptr, Ptr{Cvoid}, (Float32,Any), x, y)
@@ -325,12 +330,12 @@ function build_compiled_call!(stmt, fcall, code, idx, nargs, sparams, evalmod)
         end
         methname = gensym("compiledcall")
         calling_convention = stmt.args[foreigncall_version == 0 ? 4 : 5]
-        if calling_convention == :(:llvmcall)
+        if calling_convention === :(:llvmcall)
             def = :(
                 function $methname($(wrapargs...)) where {$(sparams...)}
                     return $fcall($cfunc, llvmcall, $RetType, $ArgType, $(argnames...))
                 end)
-        elseif calling_convention == :(:stdcall)
+        elseif calling_convention === :(:stdcall)
             def = :(
                 function $methname($(wrapargs...)) where {$(sparams...)}
                     return $fcall($cfunc, stdcall, $RetType, $ArgType, $(argnames...))
@@ -366,7 +371,7 @@ function replace_coretypes!(src; rev::Bool=false)
     return src
 end
 
-function replace_coretypes_list!(list; rev::Bool)
+function replace_coretypes_list!(list::AbstractVector; rev::Bool)
     for (i, stmt) in enumerate(list)
         if isa(stmt, rev ? SSAValue : Core.SSAValue)
             list[i] = rev ? Core.SSAValue(stmt.id) : SSAValue(stmt.id)

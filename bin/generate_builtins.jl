@@ -200,7 +200,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     fva = []
     minmin, maxmax = typemax(Int), 0
     for fsym in names(Core.Intrinsics)
-        fsym == :Intrinsics && continue
+        fsym === :Intrinsics && continue
         isdefined(Base, fsym) || continue
         f = getfield(Base, fsym)
         id = reinterpret(Int32, f) + 1
