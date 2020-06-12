@@ -147,11 +147,10 @@ is_quotenode(@nospecialize(q), @nospecialize(val)) = isa(q, QuoteNode) && q.valu
 function is_quoted_type(@nospecialize(a), name::Symbol)
     if isa(a, QuoteNode)
         T = a.value
-        isa(T, Type) || return false
         if isa(T, UnionAll)
             T = Base.unwrap_unionall(T)
         end
-        return T.name.name == :NamedTuple
+        isa(T, DataType) && return T.name.name === name
     end
     return false
 end
