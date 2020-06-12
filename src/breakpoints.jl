@@ -336,9 +336,9 @@ The supported states are:
 """
 function break_on(states::Vararg{Symbol})
     for state in states
-        if state == :error
+        if state === :error
             break_on_error[] = true
-        elseif state == :throw
+        elseif state === :throw
             break_on_throw[] = true
         else
             throw(ArgumentError(string("unsupported state :", state)))
@@ -354,9 +354,9 @@ See [`break_on`](@ref) for a description of valid states.
 """
 function break_off(states::Vararg{Symbol})
     for state in states
-        if state == :error
+        if state === :error
             break_on_error[] = false
-        elseif state == :throw
+        elseif state === :throw
             break_on_throw[] = false
         else
             throw(ArgumentError(string("unsupported state :", state)))

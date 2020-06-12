@@ -380,7 +380,7 @@ end
 
 function maybe_step_through_nkw_meta!(frame)
     stmt = pc_expr(frame)
-    if stmt === nothing || (isexpr(stmt, :meta) && stmt.args[1] == :nkw)
+    if stmt === nothing || (isexpr(stmt, :meta) && (stmt::Expr).args[1] === :nkw)
         @assert frame.pc == 1
         frame.pc += 1
     end
@@ -421,23 +421,23 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootis
     istoplevel = rootistoplevel && frame.caller === nothing
     cmd0 = cmd
     is_si = false
-    if cmd == :si
+    if cmd === :si
         stmt = pc_expr(frame)
         cmd = is_call(stmt) ? :s : :se
         is_si = true
     end
     try
-        cmd == :nc && return nicereturn!(recurse, frame, next_call!(recurse, frame, istoplevel), rootistoplevel)
-        cmd == :n && return maybe_reset_frame!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
-        cmd == :se && return maybe_reset_frame!(recurse, frame, step_expr!(recurse, frame, istoplevel), rootistoplevel)
-        cmd == :until && return maybe_reset_frame!(recurse, frame, until_line!(recurse, frame, line, istoplevel), rootistoplevel)
+        cmd === :nc && return nicereturn!(recurse, frame, next_call!(recurse, frame, istoplevel), rootistoplevel)
+        cmd === :n && return maybe_reset_frame!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
+        cmd === :se && return maybe_reset_frame!(recurse, frame, step_expr!(recurse, frame, istoplevel), rootistoplevel)
+        cmd === :until && return maybe_reset_frame!(recurse, frame, until_line!(recurse, frame, line, istoplevel), rootistoplevel)
 
         enter_generated = false
-        if cmd == :sg
+        if cmd === :sg
             enter_generated = true
             cmd = :s
         end
-        if cmd == :s
+        if cmd === :s
             pc = maybe_next_call!(recurse, frame, istoplevel)
             (isa(pc, BreakpointRef) || pc === nothing) && return maybe_reset_frame!(recurse, frame, pc, rootistoplevel)
             is_si || maybe_step_through_kwprep!(recurse, frame, istoplevel)
@@ -456,7 +456,7 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootis
             end
             if isa(ret, BreakpointRef)
                 newframe = leaf(frame)
-                cmd0 == :si && return newframe, ret
+                cmd0 === :si && return newframe, ret
                 is_si || (newframe = maybe_step_through_wrapper!(recurse, newframe))
                 is_si || maybe_step_through_kwprep!(recurse, newframe, istoplevel)
                 return newframe, BreakpointRef(newframe.framecode, 0)
@@ -466,15 +466,15 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootis
             frame.pc += 1
             return frame, frame.pc
         end
-        if cmd == :c
+        if cmd === :c
             r = root(frame)
             ret = finish_stack!(recurse, r, rootistoplevel)
             return isa(ret, BreakpointRef) ? (leaf(r), ret) : nothing
         end
-        cmd == :finish && return maybe_reset_frame!(recurse, frame, finish!(recurse, frame, istoplevel), rootistoplevel)
+        cmd === :finish && return maybe_reset_frame!(recurse, frame, finish!(recurse, frame, istoplevel), rootistoplevel)
     catch err
         frame = unwind_exception(frame, err)
-        if cmd == :c
+        if cmd === :c
             return debug_command(recurse, frame, :c, istoplevel)
         else
             return debug_command(recurse, frame, :nc, istoplevel)

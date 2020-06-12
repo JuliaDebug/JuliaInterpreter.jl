@@ -115,8 +115,8 @@ struct Squarer end
     bp = breakpoint(tmppath, 3)
     frame, bp2 = @interpret jikwfunc(2)
     var = JuliaInterpreter.locals(leaf(frame))
-    @test !any(v->v.name == :b, var)
-    @test filter(v->v.name == :a, var)[1].value == 2
+    @test !any(v->v.name === :b, var)
+    @test filter(v->v.name === :a, var)[1].value == 2
 
     # Method with local scope (two slots with same name)
     ln = @__LINE__
@@ -132,7 +132,7 @@ struct Squarer end
     bp = breakpoint(@__FILE__, ln+5, :(y > 2))
     frame, bp2 = @interpret ftwoslots()
     var = JuliaInterpreter.locals(leaf(frame))
-    @test filter(v->v.name == :y, var)[1].value == 3
+    @test filter(v->v.name === :y, var)[1].value == 3
     remove(bp)
     bp = breakpoint(@__FILE__, ln+8, :(y > 2))
     @test isa(@interpret(ftwoslots()), Float64)
@@ -157,9 +157,9 @@ struct Squarer end
         bp = JuliaInterpreter.finish_and_return!(frame)
         @test bp.err == ErrorException("oops")
         @test stacklength(frame) >= 2
-        @test frame.framecode.scope.name == :outer
+        @test frame.framecode.scope.name === :outer
         cframe = frame.callee
-        @test cframe.framecode.scope.name == :inner
+        @test cframe.framecode.scope.name === :inner
 
         # Don't break on caught exceptions
         function f_exc_outer()
@@ -213,7 +213,7 @@ struct Squarer end
         return 2
     end
     fr, bp = @interpret f_outer_bp(3)
-    @test leaf(fr).framecode.scope.name == :g_inner_bp
+    @test leaf(fr).framecode.scope.name === :g_inner_bp
     @test bp.stmtidx == 3
 
     # Breakpoints on types

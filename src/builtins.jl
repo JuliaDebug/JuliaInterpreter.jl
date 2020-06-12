@@ -80,7 +80,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         if !expand
             return Some{Any}(Core._apply_iterate(argswrapped...))
         end
-        @assert argswrapped[1] == Core.iterate || argswrapped[1] === Core.Compiler.iterate || argswrapped[1] == Base.iterate "cannot handle `_apply_iterate` with non iterate as first argument, got $(argswrapped[1]), $(typeof(argswrapped[1]))"
+        @assert argswrapped[1] === Core.iterate || argswrapped[1] === Core.Compiler.iterate || argswrapped[1] === Base.iterate "cannot handle `_apply_iterate` with non iterate as first argument, got $(argswrapped[1]), $(typeof(argswrapped[1]))"
         new_expr = Expr(:call, argswrapped[2])
         popfirst!(argswrapped) # pop the iterate
         popfirst!(argswrapped) # pop the function

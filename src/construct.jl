@@ -182,9 +182,9 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
         code = code::CodeInfo
         # Currenly, our strategy to deal with llvmcall can't handle parametric functions
         # (the "mini interpreter" runs in module scope, not method scope)
-        if (!isempty(lenv) && (hasarg(isequal(:llvmcall), code.code) ||
+        if (!isempty(lenv) && (hasarg(isidentical(:llvmcall), code.code) ||
                               hasarg(a->is_global_ref(a, Base, :llvmcall), code.code))) ||
-                hasarg(isequal(:iolock_begin), code.code)
+                hasarg(isidentical(:iolock_begin), code.code)
             return Compiled()
         end
         framecode = FrameCode(method, code; generator=generator)
@@ -433,9 +433,9 @@ split_expressions!(modexs, docexprs, mod::Module, ex::Expr; kwargs...) =
 function split_expressions!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; extract_docexprs=false, filename="toplevel")
     # lex is the expression we'll lower; it will accumulate LineNumberNodes and a
     # single top-level expression. We split blocks, module defs, etc.
-    if ex.head == :toplevel || ex.head == :block
+    if ex.head === :toplevel || ex.head === :block
         split_expressions!(modexs, docexprs, lex, mod, ex.args; extract_docexprs=extract_docexprs, filename=filename)
-    elseif ex.head == :module
+    elseif ex.head === :module
         newname = ex.args[2]::Symbol
         if isdefined(mod, newname)
             newmod = getfield(mod, newname)
@@ -625,9 +625,9 @@ function extract_args(__module__, ex0)
                 $args, $kwargs = $separate_kwargs($(ex0.args[2:end]...))
                 tuple(Core.kwfunc($arg1), $kwargs, $arg1, $args...)
             end
-        elseif ex0.head == :.
+        elseif ex0.head === :.
             return Expr(:tuple, :getproperty, ex0.args...)
-        elseif ex0.head == :(<:)
+        elseif ex0.head === :(<:)
             return Expr(:tuple, :(<:), ex0.args...)
         else
             return Expr(:tuple,
@@ -640,14 +640,14 @@ function extract_args(__module__, ex0)
     ex = Meta.lower(__module__, ex0)
     if !isa(ex, Expr)
         return error("expression is not a function call or symbol")
-    elseif ex.head == :call
+    elseif ex.head === :call
         return Expr(:tuple,
             map(x->isexpr(x, :parameters) ? QuoteNode(x) : x, ex.args)...)
-    elseif ex.head == :body
+    elseif ex.head === :body
         a1 = ex.args[1]
         if isexpr(a1, :call)
             a11 = a1.args[1]
-            if a11 == :setindex!
+            if a11 === :setindex!
                 return Expr(:tuple,
                     map(x->isexpr(x, :parameters) ? QuoteNode(x) : x, arg.args)...)
             end

@@ -115,8 +115,7 @@ function wrap_params(expr, sparams::Vector{Symbol})
     isempty(sparams) && return expr
     params = []
     for p in sparams
-        pname = isexpr(p, :(<:)) ? p.args[1] : p
-        hasarg(isequal(pname), expr.args) && push!(params, p)
+        hasarg(isidentical(p), expr.args) && push!(params, p)
     end
     return isempty(params) ? expr : Expr(:where, expr, params...)
 end
@@ -130,6 +129,8 @@ _scopename(parent, child) = Expr(:., parent, QuoteNode(child))
 _scopename(parent, child, rest...) = Expr(:., parent, _scopename(child, rest...))
 
 ## Predicates
+
+isidentical(x) = Base.Fix2(===, x)   # recommended over isequal(::Symbol) since it cannot be invalidated
 
 is_goto_node(@nospecialize(node)) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
 
@@ -218,7 +219,7 @@ function is_doc_expr(@nospecialize(ex))
         is_global_ref(a, Core, docsym) && return true
         isa(a, Symbol) && a == docsym && return true
         if isexpr(a, :.)
-            mod, name = a.args[1], a.args[2]
+            mod, name = (a::Expr).args[1], (a::Expr).args[2]
             return mod === :Core && isa(name, QuoteNode) && name.value == docsym
         end
     end
