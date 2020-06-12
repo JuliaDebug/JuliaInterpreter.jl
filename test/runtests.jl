@@ -10,6 +10,7 @@ end
 Core.eval(JuliaInterpreter, :(debug_recycle() = true))
 
 @testset "Main tests" begin
+    include("core.jl")
     include("interpret.jl")
     include("toplevel.jl")
     include("limits.jl")
