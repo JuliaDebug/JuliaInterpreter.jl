@@ -373,6 +373,25 @@ end
 
 function framecode_lines(src::CodeInfo)
     buf = IOBuffer()
+    if isdefined(Base.IRShow, :show_ir_stmt)
+        lines = String[]
+        src = replace_coretypes!(copy_codeinfo(src); rev=true)
+        reverse_lookup_globalref!(src.code)
+        io = IOContext(buf, :displaysize=>displaysize(stdout))
+        used = BitSet()
+        cfg = Core.Compiler.compute_basic_blocks(src.code)
+        for stmt in src.code
+            Core.Compiler.scan_ssa_use!(push!, used, stmt)
+        end
+        line_info_preprinter = Base.IRShow.lineinfo_disabled
+        line_info_postprinter = Base.IRShow.default_expr_type_printer
+        bb_idx = 1
+        for idx = 1:length(src.code)
+            bb_idx = Base.IRShow.show_ir_stmt(io, src, idx, line_info_preprinter, line_info_postprinter, used, cfg, bb_idx)
+            push!(lines, chomp(String(take!(buf))))
+        end
+        return lines
+    end
     show(buf, src)
     code = filter!(split(String(take!(buf)), '\n')) do line
         !(line == "CodeInfo(" || line == ")" || isempty(line) || occursin("within `", line))
