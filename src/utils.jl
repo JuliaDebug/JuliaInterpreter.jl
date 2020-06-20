@@ -132,7 +132,7 @@ _scopename(parent, child, rest...) = Expr(:., parent, _scopename(child, rest...)
 
 isidentical(x) = Base.Fix2(===, x)   # recommended over isequal(::Symbol) since it cannot be invalidated
 
-is_goto_node(@nospecialize(node)) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
+# is_goto_node(@nospecialize(node)) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
 
 if isdefined(Core, :GotoIfNot)
     is_GotoIfNot(@nospecialize(node)) = isa(node, Core.GotoIfNot)
