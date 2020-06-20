@@ -261,14 +261,14 @@ function maybe_step_through_kwprep!(@nospecialize(recurse), frame::Frame, istopl
             stmt1 = src.code[pc+1]
             # We deliberately check isexpr(stmt, :call) rather than is_call(stmt): if it's
             # assigned to a local, it's *not* kwarg preparation.
-            if isexpr(stmt1, :call) && is_quotenode(stmt1.args[1], Core.apply_type) && is_quoted_type(stmt1.args[2], :NamedTuple)
+            if isexpr(stmt1, :call) && is_quotenode_egal(stmt1.args[1], Core.apply_type) && is_quoted_type(stmt1.args[2], :NamedTuple)
                 stmt4, stmt5 = src.code[pc+4], src.code[pc+5]
-                if isexpr(stmt4, :call) && is_quotenode(stmt4.args[1], Core.kwfunc)
+                if isexpr(stmt4, :call) && is_quotenode_egal(stmt4.args[1], Core.kwfunc)
                     while pc < pccall
                         pc = step_expr!(recurse, frame, istoplevel)
                     end
                     return frame
-                elseif isexpr(stmt5, :call) && is_quotenode(stmt5.args[1], Core.kwfunc) && pccall+1 <= n
+                elseif isexpr(stmt5, :call) && is_quotenode_egal(stmt5.args[1], Core.kwfunc) && pccall+1 <= n
                     # This happens when the call is scoped by a module
                     pccall += 1
                     while pc < pccall
@@ -285,7 +285,7 @@ function maybe_step_through_kwprep!(@nospecialize(recurse), frame::Frame, istopl
             stmt1 = src.code[pc+1]
             if isexpr(stmt1, :call)
                 f = stmt1.args[1]
-                if is_quotenode(f, Base.pairs)
+                if is_quotenode_egal(f, Base.pairs)
                     # No supplied kwargs
                     pcsplat = pc + 3
                     if pcsplat <= n
@@ -300,20 +300,22 @@ function maybe_step_through_kwprep!(@nospecialize(recurse), frame::Frame, istopl
                     pccall = pc + 2
                     if pccall <= n
                         stmt2 = src.code[pccall]
-                        if isexpr(stmt2, :call) && length(stmt2.args) >= 3 && stmt2.args[2] == SSAValue(pc+1) && stmt2.args[3] == SlotNumber(1)
-                            while pc < pccall
-                                pc = step_expr!(recurse, frame, istoplevel)
+                        if isa(stmt2, Expr)
+                            if stmt2.head === :call && length(stmt2.args) >= 3 && stmt2.args[2] === SSAValue(pc+1) && stmt2.args[3] === SlotNumber(1)
+                                while pc < pccall
+                                    pc = step_expr!(recurse, frame, istoplevel)
+                                end
                             end
                         end
                     end
-                elseif is_quotenode(f, Base.merge) && ((pccall = pc + 7) <= n)
+                elseif is_quotenode_egal(f, Base.merge) && ((pccall = pc + 7) <= n)
                     stmtk = src.code[pccall-1]
-                    if isexpr(stmtk, :call) && is_quotenode(stmtk.args[1], Core.kwfunc)
+                    if isexpr(stmtk, :call) && is_quotenode_egal(stmtk.args[1], Core.kwfunc)
                         for i = 1:4
                             pc = step_expr!(recurse, frame, istoplevel)
                         end
                         stmti = src.code[pc]
-                        if isexpr(stmti, :call) && is_quotenode(stmti.args[1], Core.kwfunc)
+                        if isexpr(stmti, :call) && is_quotenode_egal(stmti.args[1], Core.kwfunc)
                             pc = step_expr!(recurse, frame, istoplevel)
                         end
                     end
