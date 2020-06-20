@@ -417,7 +417,7 @@ function check_isdefined(frame, @nospecialize(node))
     error("unrecognized isdefined node ", node)
 end
 
-# For "profiling" where JuliaIntepreter spends its time. See the commented-out block
+# For "profiling" where JuliaInterpreter spends its time. See the commented-out block
 # in `step_expr!`
 const _location = Dict{Tuple{Method,Int},Int}()
 
@@ -449,7 +449,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
             elseif node.head === :gotoifnot
                 arg = @lookup(frame, node.args[1])
                 if !isa(arg, Bool)
-                    throw(TypeError(nameof(frame), "if", Bool, node.args[1]))
+                    throw(TypeError(nameof(frame), "if", Bool, arg))
                 end
                 if !arg
                     return (frame.pc = node.args[2]::Int)
