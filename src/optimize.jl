@@ -52,6 +52,17 @@ function renumber_ssa!(stmts::Vector{Any}, ssalookup)
             if (stmt.head === :gotoifnot || stmt.head === :enter) && isa(stmt.args[end], Int)
                 stmt.args[end] = ssalookup[stmt.args[end]]
             end
+        elseif is_GotoIfNot(stmt)
+            cond = stmt.cond
+            if isa(cond, SSAValue)
+                cond = SSAValue(ssalookup[cond.id])
+            end
+            stmts[i] = Core.GotoIfNot(cond, ssalookup[stmt.dest])
+        elseif is_ReturnNode(stmt)
+            val = (stmt::Core.ReturnNode).val
+            if isa(val, SSAValue)
+                stmts[i] = Core.ReturnNode(SSAValue(ssalookup[val.id]))
+            end
         end
     end
     return stmts
@@ -372,11 +383,33 @@ function replace_coretypes!(src; rev::Bool=false)
 end
 
 function replace_coretypes_list!(list::AbstractVector; rev::Bool)
+    function rep(@nospecialize(x), rev::Bool)
+        if isa(x, rev ? SSAValue : Core.SSAValue)
+            return rev ? Core.SSAValue(x.id) : SSAValue(x.id)
+        elseif isa(x, rev ? SlotNumber : Core.SlotNumber)
+            return rev ? Core.SlotNumber(x.id) : SlotNumber(x.id)
+        end
+        return x
+    end
+
     for (i, stmt) in enumerate(list)
-        if isa(stmt, rev ? SSAValue : Core.SSAValue)
-            list[i] = rev ? Core.SSAValue(stmt.id) : SSAValue(stmt.id)
-        elseif isa(stmt, rev ? SlotNumber : Core.SlotNumber)
-            list[i] = rev ? Core.SlotNumber(stmt.id) : SlotNumber(stmt.id)
+        rstmt = rep(stmt, rev)
+        if rstmt !== stmt
+            list[i] = rstmt
+        elseif is_GotoIfNot(stmt)
+            stmt = stmt::Core.GotoIfNot
+            cond = stmt.cond
+            rcond = rep(cond, rev)
+            if rcond !== cond
+                list[i] = Core.GotoIfNot(rcond, stmt.dest)
+            end
+        elseif is_ReturnNode(stmt)
+            stmt = stmt::Core.ReturnNode
+            val = stmt.val
+            rval = rep(val, rev)
+            if rval !== val
+                list[i] = Core.ReturnNode(rval)
+            end
         elseif isa(stmt, Expr)
             replace_coretypes!(stmt; rev=rev)
         end

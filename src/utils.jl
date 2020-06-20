@@ -134,6 +134,22 @@ isidentical(x) = Base.Fix2(===, x)   # recommended over isequal(::Symbol) since 
 
 is_goto_node(@nospecialize(node)) = isa(node, GotoNode) || isexpr(node, :gotoifnot)
 
+if isdefined(Core, :GotoIfNot)
+    is_GotoIfNot(@nospecialize(node)) = isa(node, Core.GotoIfNot)
+    is_gotoifnot(@nospecialize(node)) = is_GotoIfNot(node)
+else
+    is_GotoIfNot(@nospecialize(node)) = false
+    is_gotoifnot(@nospecialize(node)) = isexpr(node, :gotoifnot)
+end
+
+if isdefined(Core, :ReturnNode)
+    is_ReturnNode(@nospecialize(node)) = isa(node, Core.ReturnNode)
+    is_return(@nospecialize(node)) = is_ReturnNode(node)
+else
+    is_ReturnNode(@nospecialize(node)) = false
+    is_return(@nospecialize(node)) = isexpr(node, :return)
+end
+
 is_loc_meta(@nospecialize(expr), @nospecialize(kind)) = isexpr(expr, :meta) && length(expr.args) >= 1 && expr.args[1] === kind
 
 """
@@ -165,7 +181,7 @@ function is_call(@nospecialize(node))
         (isexpr(node, :(=)) && (isexpr(node.args[2], :call)))
 end
 
-is_call_or_return(@nospecialize(node)) = is_call(node) || isexpr(node, :return)
+is_call_or_return(@nospecialize(node)) = is_call(node) || is_return(node)
 
 is_dummy(bpref::BreakpointRef) = bpref.stmtidx == 0 && bpref.err === nothing
 

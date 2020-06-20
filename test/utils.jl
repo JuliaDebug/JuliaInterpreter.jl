@@ -84,7 +84,7 @@ function evaluate_limited!(@nospecialize(recurse), frame::Frame, nstmts::Int, is
                 nstmts = refnstmts[]
             elseif istoplevel && stmt.head == :thunk
                 code = stmt.args[1]
-                if length(code.code) == 1 && isexpr(code.code[end], :return) && isexpr(code.code[end].args[1], :method)
+                if length(code.code) == 1 && JuliaInterpreter.is_return(code.code[end]) && isexpr(code.code[end].args[1], :method)
                     # Julia 1.2+ puts a :thunk before the start of each method
                     new_pc = pc + 1
                 else
@@ -121,7 +121,7 @@ function evaluate_limited!(@nospecialize(recurse), frame::Frame, nstmts::Int, is
     end
     # Handle the return
     stmt = pc_expr(frame, pc)
-    if nstmts == 0 && !isexpr(stmt, :return)
+    if nstmts == 0 && !JuliaInterpreter.is_return(stmt)
         ret = Aborted(frame, pc)
         return ret, nstmts
     end

@@ -135,7 +135,7 @@ end
         @test isa(pc, BreakpointRef)
         @test JuliaInterpreter.scopeof(f).name == :generatedfoo
         stmt = JuliaInterpreter.pc_expr(f)
-        @test stmt.head == :return && stmt.args[1] === Int
+        @test JuliaInterpreter.is_return(stmt) && JuliaInterpreter.lookup_return(frame, stmt) === Int
         @test debug_command(frame, :c) === nothing
         @test frame.callee === nothing
         @test get_return(frame) === Int
@@ -145,7 +145,7 @@ end
         @test isa(pc, BreakpointRef)
         @test JuliaInterpreter.scopeof(f).name == :generatedfoo
         stmt = JuliaInterpreter.pc_expr(f)
-        @test stmt.head == :return && @lookup(f, stmt.args[1]) === 1
+        @test JuliaInterpreter.is_return(stmt) && JuliaInterpreter.lookup_return(f, stmt) === 1
         f2, pc = debug_command(f, :finish)
         @test JuliaInterpreter.scopeof(f2).name == :callgenerated
         # Now finish the regular function
