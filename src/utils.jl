@@ -269,7 +269,7 @@ function linetable(arg)
     end
     return (arg::CodeInfo).linetable::Vector{Any}
 end
-linetable(arg, i::Integer) = linetable(arg)[i]::LineTypes
+linetable(arg, i::Integer) = linetable(arg)[i]::Union{Expr,LineTypes}
 
 function codelocs(arg)
     if isa(arg, Frame)
