@@ -417,7 +417,7 @@ function check_isdefined(frame, @nospecialize(node))
     error("unrecognized isdefined node ", node)
 end
 
-# For "profiling" where JuliaIntepreter spends its time. See the commented-out block
+# For "profiling" where JuliaInterpreter spends its time. See the commented-out block
 # in `step_expr!`
 const _location = Dict{Tuple{Method,Int},Int}()
 
@@ -449,7 +449,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
             elseif node.head === :gotoifnot
                 arg = @lookup(frame, node.args[1])
                 if !isa(arg, Bool)
-                    throw(TypeError(nameof(frame), "if", Bool, node.args[1]))
+                    throw(TypeError(nameof(frame), "if", Bool, arg))
                 end
                 if !arg
                     return (frame.pc = node.args[2]::Int)
@@ -528,6 +528,17 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
             end
         elseif isa(node, GotoNode)
             return (frame.pc = node.label)
+        elseif is_GotoIfNot(node)
+            node = node::Core.GotoIfNot
+            arg = @lookup(frame, node.cond)
+            if !isa(arg, Bool)
+                throw(TypeError(nameof(frame), "if", Bool, arg))
+            end
+            if !arg
+                return (frame.pc = node.dest)
+            end
+        elseif is_ReturnNode(node)
+            return nothing
         elseif isa(node, NewvarNode)
             # FIXME: undefine the slot?
         elseif istoplevel && isa(node, LineNumberNode)
@@ -606,6 +617,12 @@ function handle_err(@nospecialize(recurse), frame, err)
     return (frame.pc = data.exception_frames[end])
 end
 
+if isdefined(Core, :ReturnNode)
+    lookup_return(frame, node::Core.ReturnNode) = @lookup(frame, node.val)
+else
+    lookup_return(frame, node::Expr) = @lookup(frame, node.args[1])
+end
+
 """
     ret = get_return(frame)
 
@@ -615,7 +632,7 @@ e.g., [`JuliaInterpreter.finish!`](@ref)).
 """
 function get_return(frame)
     node = pc_expr(frame)
-    isexpr(node, :return) || error("expected return statement, got ", node)
-    return @lookup(frame, (node::Expr).args[1])
+    is_return(node) || error("expected return statement, got ", node)
+    return lookup_return(frame, node)
 end
 get_return(t::Tuple{Module,Expr,Frame}) = get_return(t[end])

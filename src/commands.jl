@@ -175,7 +175,7 @@ function next_line!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false
     return _next_line!(recurse, frame, istoplevel, initialline, initialfile) # avoid boxing
 end
 function _next_line!(@nospecialize(recurse), frame, istoplevel, initialline::Int, initialfile::String)
-    predicate(frame) = isexpr(pc_expr(frame), :return) || (linenumber(frame) != initialline || getfile(frame) != initialfile)
+    predicate(frame) = is_return(pc_expr(frame)) || (linenumber(frame) != initialline || getfile(frame) != initialfile)
 
     pc = next_until!(predicate, recurse, frame, istoplevel)
     (pc === nothing || isa(pc, BreakpointRef)) && return pc
@@ -195,7 +195,7 @@ function until_line!(@nospecialize(recurse), frame::Frame, line::Union{Nothing, 
     pc = frame.pc
     initialline, initialfile = linenumber(frame, pc), getfile(frame, pc)
     line === nothing && (line = initialline + 1)
-    predicate(frame) = isexpr(pc_expr(frame), :return) || (linenumber(frame) >= line && getfile(frame) == initialfile)
+    predicate(frame) = is_return(pc_expr(frame)) || (linenumber(frame) >= line && getfile(frame) == initialfile)
     pc = next_until!(predicate, frame, istoplevel)
     (pc === nothing || isa(pc, BreakpointRef)) && return pc
     maybe_step_through_kwprep!(recurse, frame, istoplevel)
@@ -443,7 +443,7 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootis
             is_si || maybe_step_through_kwprep!(recurse, frame, istoplevel)
             pc = frame.pc
             stmt0 = stmt = pc_expr(frame, pc)
-            isexpr(stmt0, :return) && return maybe_reset_frame!(recurse, frame, nothing, rootistoplevel)
+            is_return(stmt0) && return maybe_reset_frame!(recurse, frame, nothing, rootistoplevel)
             if isexpr(stmt, :(=))
                 stmt = stmt.args[2]
             end

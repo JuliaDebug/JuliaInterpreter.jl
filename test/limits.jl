@@ -32,7 +32,7 @@ using Test
     @test Aborted(frame, i).at.line == 6
     # Check conditional
     frame = JuliaInterpreter.prepare_thunk(modexs[4])
-    i = findfirst(stmt->isexpr(stmt, :gotoifnot), frame.framecode.src.code) + 1
+    i = findfirst(stmt->JuliaInterpreter.is_gotoifnot(stmt), frame.framecode.src.code) + 1
     @test Aborted(frame, i).at.line == 9
     # Check macro
     frame = JuliaInterpreter.prepare_thunk(modexs[5])

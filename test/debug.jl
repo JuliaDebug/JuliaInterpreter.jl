@@ -135,17 +135,19 @@ end
         @test isa(pc, BreakpointRef)
         @test JuliaInterpreter.scopeof(f).name == :generatedfoo
         stmt = JuliaInterpreter.pc_expr(f)
-        @test stmt.head == :return && stmt.args[1] === Int
+        @test JuliaInterpreter.is_return(stmt) && JuliaInterpreter.lookup_return(frame, stmt) === Int
         @test debug_command(frame, :c) === nothing
         @test frame.callee === nothing
         @test get_return(frame) === Int
         # This time, step into the generated function itself
         frame = enter_call_expr(:($(callgenerated)()))
         f, pc = debug_command(frame, :sg)
+            # Aside: generators can have `Expr(:line, ...)` in their line tables, test that this is OK
+            @test isexpr(JuliaInterpreter.linetable(f, 2), :line)
         @test isa(pc, BreakpointRef)
         @test JuliaInterpreter.scopeof(f).name == :generatedfoo
         stmt = JuliaInterpreter.pc_expr(f)
-        @test stmt.head == :return && @lookup(f, stmt.args[1]) === 1
+        @test JuliaInterpreter.is_return(stmt) && JuliaInterpreter.lookup_return(f, stmt) === 1
         f2, pc = debug_command(f, :finish)
         @test JuliaInterpreter.scopeof(f2).name == :callgenerated
         # Now finish the regular function
