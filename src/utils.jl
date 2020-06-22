@@ -160,6 +160,7 @@ Tests whether `g` is equal to `GlobalRef(mod, name)`.
 is_global_ref(@nospecialize(g), mod::Module, name::Symbol) = isa(g, GlobalRef) && g.mod === mod && g.name == name
 
 is_quotenode(@nospecialize(q), @nospecialize(val)) = isa(q, QuoteNode) && q.value == val
+is_quotenode_egal(@nospecialize(q), @nospecialize(val)) = isa(q, QuoteNode) && q.value === val
 
 function is_quoted_type(@nospecialize(a), name::Symbol)
     if isa(a, QuoteNode)
@@ -187,14 +188,14 @@ is_dummy(bpref::BreakpointRef) = bpref.stmtidx == 0 && bpref.err === nothing
 
 if VERSION >= v"1.4.0-DEV.304"
     function unpack_splatcall(stmt)
-        if isexpr(stmt, :call) && length(stmt.args) >= 3 && is_quotenode(stmt.args[1], Core._apply_iterate)
+        if isexpr(stmt, :call) && length(stmt.args) >= 3 && is_quotenode_egal(stmt.args[1], Core._apply_iterate)
             return true, stmt.args[3]
         end
         return false, nothing
     end
 else
     function unpack_splatcall(stmt)
-        if isexpr(stmt, :call) && length(stmt.args) >= 2 && is_quotenode(stmt.args[1], Core._apply)
+        if isexpr(stmt, :call) && length(stmt.args) >= 2 && is_quotenode_egal(stmt.args[1], Core._apply)
             return true, stmt.args[2]
         end
         return false, nothing
