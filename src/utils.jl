@@ -654,9 +654,15 @@ function Base.show_backtrace(io::IO, frame::Frame)
     print(io, "\nStacktrace:")
     try invokelatest(Base.update_stackframes_callback[], stackframes) catch end
     frame_counter = 0
-    for (last_frame, n) in stackframes
+    nd = ndigits(length(stackframes))
+    for (i, (last_frame, n)) in enumerate(stackframes)
         frame_counter += 1
-        Base.show_trace_entry(IOContext(io, :backtrace => true), last_frame, n, prefix = string(" [", frame_counter, "] "))
+        if isdefined(Base, :print_stackframe)
+            println(io)
+            Base.print_stackframe(io, i, last_frame, n, nd, Base.info_color())
+        else
+            Base.show_trace_entry(IOContext(io, :backtrace => true), last_frame, n, prefix = string(" [", frame_counter, "] "))
+        end
     end
 end
 
