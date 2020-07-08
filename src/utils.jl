@@ -268,7 +268,7 @@ function linetable(arg)
     if isa(arg, FrameCode)
         arg = arg.src
     end
-    return (arg::CodeInfo).linetable::Vector{Any}
+    return (arg::CodeInfo).linetable::Union{Vector{Core.LineInfoNode},Vector{Any}}  # issue #264
 end
 linetable(arg, i::Integer) = linetable(arg)[i]::Union{Expr,LineTypes}
 
