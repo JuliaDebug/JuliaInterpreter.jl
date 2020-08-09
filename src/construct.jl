@@ -360,8 +360,8 @@ function prepare_thunk(mod::Module, thunk::Expr, recursive::Bool=false; eval::Bo
         error("lowering returned an error, ", thunk)
     elseif recursive
         thunk = Meta.lower(mod, thunk)
-        if isa(thunk, Expr)
-            # If on 2nd attempt to lower it's still an Expr, just evaluate it
+        if !isexpr(thunk, :thunk)
+            # If on 2nd attempt to lower it's still an non-thunk Expr, just evaluate it
             eval && Core.eval(mod, thunk)
             return nothing
         end
