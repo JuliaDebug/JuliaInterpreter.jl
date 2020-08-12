@@ -31,6 +31,12 @@ else
     append_any(@nospecialize x...) = append!([], Core.svec((x...)...))
 end
 
+if isdefined(Base, :mapany)
+    const mapany = Base.mapany
+else
+    mapany(f, itr) = map!(f, Vector{Any}(undef, length(itr)::Int), itr)  # convenient for Expr.args
+end
+
 include("types.jl")
 include("utils.jl")
 include("construct.jl")

@@ -625,7 +625,7 @@ function Base.StackTraces.StackFrame(frame::Frame)
     if scopeof(frame) isa Method
         method = frame.framecode.scope
         method_args = something.(frame.framedata.locals[1:method.nargs])
-        atypes = Tuple{typeof.(method_args)...}
+        atypes = Tuple{mapany(_Typeof, method_args)...}
         sig = method.sig
         sparams = Core.svec(frame.framedata.sparams...)
         mi = specialize_method(method, atypes, sparams)
