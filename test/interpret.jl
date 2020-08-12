@@ -320,6 +320,10 @@ f113(;x) = x
 @test isa(JuliaInterpreter.prepare_thunk(Main, :(@static if ccall(:jl_get_UNAME, Any, ()) == :NoOS 1+1 end)), Nothing)
 @test isa(JuliaInterpreter.prepare_thunk(Main, :(Base.BaseDocs.@kw_str "using")), Nothing)
 
+# https://github.com/JuliaDebug/JuliaInterpreter.jl/pull/419
+@test JuliaInterpreter.prepare_thunk(Main, quote true end) === nothing
+@test JuliaInterpreter.prepare_thunk(Main, quote true end, true) === nothing
+
 @testset "locals" begin
     f_locals(x::Int64, y::T, z::Vararg{Symbol}) where {T} = x
     frame = JuliaInterpreter.enter_call(f_locals, Int64(1), 2.0, :a, :b)
