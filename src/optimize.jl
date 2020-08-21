@@ -421,19 +421,21 @@ function reverse_lookup_globalref!(list)
     # This only handles the function in calls
     for (i, stmt) in enumerate(list)
         if isexpr(stmt, :(=))
-            stmt = stmt.args[2]
+            stmt = (stmt::Expr).args[2]
         end
         if isexpr(stmt, :call)
+            stmt = stmt::Expr
             f = stmt.args[1]
             if isa(f, QuoteNode)
                 f = f.value
                 if isa(f, Function) && !isa(f, Core.IntrinsicFunction)
                     ft = typeof(f)
-                    name = String(ft.name.name)
+                    tn = ft.name::Core.TypeName
+                    name = String(tn.name)
                     if startswith(name, '#')
                         name = name[2:end]
                     end
-                    stmt.args[1] = GlobalRef(ft.name.module, Symbol(name))
+                    stmt.args[1] = GlobalRef(tn.module, Symbol(name))
                 end
             end
         end

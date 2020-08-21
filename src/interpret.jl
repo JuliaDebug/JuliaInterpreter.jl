@@ -296,7 +296,7 @@ function inplace_lookup!(ex, i, frame)
     if isa(a, SSAValue) || isa(a, SlotNumber)
         ex.args[i] = lookup_var(frame, a)
     elseif isexpr(a, :call)
-        for j = 1:length(a.args)
+        for j = 1:length((a::Expr).args)
             inplace_lookup!(a, j, frame)
         end
     end
@@ -458,7 +458,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                 rhs = node.args[1]
                 push!(data.exception_frames, rhs)
             elseif node.head === :leave
-                for _ = 1:node.args[1]
+                for _ = 1:node.args[1]::Int
                     pop!(data.exception_frames)
                 end
             elseif node.head === :pop_exception

@@ -294,8 +294,8 @@ function lineoffset(framecode::FrameCode)
     return offset
 end
 
-getline(ln) = Int(isexpr(ln, :line) ? ln.args[1] : ln.line)
-getfile(ln) = CodeTracking.maybe_fixup_stdlib_path(String(isexpr(ln, :line) ? ln.args[2] : ln.file))
+getline(ln) = Int(isexpr(ln, :line) ? ln.args[1] : ln.line)::Int
+getfile(ln) = CodeTracking.maybe_fixup_stdlib_path(String(isexpr(ln, :line) ? ln.args[2] : ln.file)::String)
 
 """
     loc = whereis(frame, pc=frame.pc)
