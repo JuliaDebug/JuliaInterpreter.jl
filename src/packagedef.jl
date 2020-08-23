@@ -37,6 +37,15 @@ else
     mapany(f, itr) = map!(f, Vector{Any}(undef, length(itr)::Int), itr)  # convenient for Expr.args
 end
 
+if isdefined(Base, :ntupleany)
+    const ntupleany = Base.ntupleany
+else
+    @noinline function ntupleany(f, n)
+        (n >= 0) || throw(ArgumentError(string("tuple length should be ≥ 0, got ", n)))
+        (Any[f(i) for i = 1:n]...,)
+    end
+end
+
 include("types.jl")
 include("utils.jl")
 include("construct.jl")
