@@ -133,7 +133,7 @@ julia> JuliaInterpreter.prepare_args(mymethod, [mymethod, 1, 2], [:verbose=>true
 function prepare_args(@nospecialize(f), allargs, kwargs)
     if !isempty(kwargs)
         f = Core.kwfunc(f)
-        allargs = [f, namedtuple(kwargs), allargs...]
+        allargs = Any[f, namedtuple(kwargs), allargs...]
     elseif f === Core._apply
         f = to_function(allargs[2])
         allargs = append_any((allargs[2],), allargs[3:end]...)
@@ -315,7 +315,7 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
             end
         end
         if islastva
-            locals[meth_nargs] =  (let i=meth_nargs; Some{Any}(ntuple(k->argvals[i+k-1], nargs-i+1)); end)
+            locals[meth_nargs] =  (let i=meth_nargs; Some{Any}(ntupleany(k->argvals[i+k-1], nargs-i+1)); end)
             last_reference[meth_nargs] = 1
         end
     end
@@ -555,7 +555,7 @@ function enter_call_expr(expr; enter_generated = false)
     clear_caches()
     r = determine_method_for_expr(expr; enter_generated = enter_generated)
     if r !== nothing && !isa(r[1], Compiled)
-        return prepare_frame(r[1:end-1]...)
+        return prepare_frame(Base.front(r)...)
     end
     nothing
 end
@@ -609,7 +609,7 @@ function enter_call(@nospecialize(finfo), @nospecialize(args...); kwargs...)
     end
     r = prepare_call(f, allargs; enter_generated=enter_generated)
     if r !== nothing && !isa(r[1], Compiled)
-        return prepare_frame(r[1:end-1]...)
+        return prepare_frame(Base.front(r)...)
     end
     return nothing
 end
@@ -631,7 +631,7 @@ function extract_args(__module__, ex0)
             return Expr(:tuple, :(<:), ex0.args...)
         else
             return Expr(:tuple,
-                map(x->isexpr(x,:parameters) ? QuoteNode(x) : x, ex0.args)...)
+                mapany(x->isexpr(x,:parameters) ? QuoteNode(x) : x, ex0.args)...)
         end
     end
     if isexpr(ex0, :macrocall) # Make @edit @time 1+2 edit the macro by using the types of the *expressions*
@@ -642,14 +642,14 @@ function extract_args(__module__, ex0)
         return error("expression is not a function call or symbol")
     elseif ex.head === :call
         return Expr(:tuple,
-            map(x->isexpr(x, :parameters) ? QuoteNode(x) : x, ex.args)...)
+            mapany(x->isexpr(x, :parameters) ? QuoteNode(x) : x, ex.args)...)
     elseif ex.head === :body
         a1 = ex.args[1]
         if isexpr(a1, :call)
             a11 = a1.args[1]
             if a11 === :setindex!
                 return Expr(:tuple,
-                    map(x->isexpr(x, :parameters) ? QuoteNode(x) : x, arg.args)...)
+                    mapany(x->isexpr(x, :parameters) ? QuoteNode(x) : x, arg.args)...)
             end
         end
     end

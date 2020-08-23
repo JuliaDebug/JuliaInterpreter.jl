@@ -80,7 +80,8 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         if !expand
             return Some{Any}(Core._apply_iterate(argswrapped...))
         end
-        @assert argswrapped[1] === Core.iterate || argswrapped[1] === Core.Compiler.iterate || argswrapped[1] === Base.iterate "cannot handle `_apply_iterate` with non iterate as first argument, got $(argswrapped[1]), $(typeof(argswrapped[1]))"
+        aw1 = argswrapped[1]::Function
+        @assert aw1 === Core.iterate || aw1 === Core.Compiler.iterate || aw1 === Base.iterate "cannot handle `_apply_iterate` with non iterate as first argument, got $(aw1), $(typeof(aw1))"
         new_expr = Expr(:call, argswrapped[2])
         popfirst!(argswrapped) # pop the iterate
         popfirst!(argswrapped) # pop the function
@@ -214,7 +215,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             return Some{Any}(throw(getargs(args, frame)...))
         end
     elseif f === tuple
-        return Some{Any}(ntuple(i->@lookup(frame, args[i+1]), length(args)-1))
+        return Some{Any}(ntupleany(i->@lookup(frame, args[i+1]), length(args)-1))
     elseif f === typeassert
         if nargs == 2
             return Some{Any}(typeassert(@lookup(frame, args[2]), @lookup(frame, args[3])))

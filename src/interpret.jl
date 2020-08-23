@@ -308,11 +308,11 @@ function evaluate_structtype(@nospecialize(recurse), frame, node)
 
     name, mod = structname(frame, node)
     supertype = lookup_or_eval(recurse, frame, node.args[4])::Type
-    ismutable = node.args[6]
-    ninit = node.args[7]
+    ismutable = node.args[6]::Bool
+    ninit = node.args[7]::Int
     newstructexpr = Expr(:struct_type, name, nothing, nothing, supertype, nothing, ismutable, ninit)
     for idx in (2, 3, 5)
-        ex = newstructexpr.args[idx] = grsvec!(copy(node.args[idx]))
+        ex = newstructexpr.args[idx] = grsvec!(copy(node.args[idx]::Expr))
         for i = 2:length(ex.args)
             inplace_lookup!(ex, i, frame)
         end
@@ -371,7 +371,9 @@ function eval_rhs(@nospecialize(recurse), frame, node::Expr)
     head = node.head
     if head === :new
         mod = moduleof(frame)
-        args = [@lookup(mod, frame, arg) for arg in node.args]
+        args = let mod=mod
+            Any[@lookup(mod, frame, arg) for arg in node.args]
+        end
         T = popfirst!(args)
         rhs = ccall(:jl_new_structv, Any, (Any, Ptr{Any}, UInt32), T, args, length(args))
         return rhs
