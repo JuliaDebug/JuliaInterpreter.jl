@@ -105,9 +105,9 @@ end
 @test @interpret(Array.body.body.name) === Array.body.body.name
 @test @interpret(Vararg.body.body.name) === Vararg.body.body.name
 @test !JuliaInterpreter.is_vararg_type(Union{})
-frame = JuliaInterpreter.prepare_thunk(Main, :(Vararg.body.body.name))
+frame = Frame(Main, :(Vararg.body.body.name))
 @test JuliaInterpreter.finish_and_return!(frame, true) === Vararg.body.body.name
-frame = JuliaInterpreter.prepare_thunk(Base, :(Union{AbstractChar,Tuple{Vararg{<:AbstractChar}},AbstractVector{<:AbstractChar},Set{<:AbstractChar}}))
+frame = Frame(Base, :(Union{AbstractChar,Tuple{Vararg{<:AbstractChar}},AbstractVector{<:AbstractChar},Set{<:AbstractChar}}))
 @test JuliaInterpreter.finish_and_return!(frame, true) isa Union
 
 # issue #8
@@ -117,7 +117,7 @@ ex = quote
         ccall(:jl_throw, Cvoid, (Any,), "Option structure mismatch")
     end
 end
-frame = JuliaInterpreter.prepare_thunk(Base, ex)
+frame = Frame(Base, ex)
 JuliaInterpreter.finish_and_return!(frame, true)
 
 # ccall with two Symbols
@@ -126,7 +126,7 @@ ex = quote
        @test 2 > 1
     end
 end
-frame = JuliaInterpreter.prepare_thunk(Main, ex)
+frame = Frame(Main, ex)
 JuliaInterpreter.finish_and_return!(frame, true)
 
 @test @interpret Base.Math.DoubleFloat64(-0.5707963267948967, 4.9789962508669555e-17).hi ≈ -0.5707963267948967
@@ -137,7 +137,7 @@ ex = quote   # in lowered code, cf is a Symbol
     cf = @eval @cfunction(fcfun, Int, (Int, Int))
     ccall(cf, Int, (Int, Int), 1, 2)
 end
-frame = JuliaInterpreter.prepare_thunk(Main, ex)
+frame = Frame(Main, ex)
 @test JuliaInterpreter.finish_and_return!(frame, true) == 1
 ex = quote
     let   # in lowered code, cf is a SlotNumber
@@ -145,7 +145,7 @@ ex = quote
         ccall(cf, Int, (Int, Int), 1, 2)
     end
 end
-frame = JuliaInterpreter.prepare_thunk(Main, ex)
+frame = Frame(Main, ex)
 @test JuliaInterpreter.finish_and_return!(frame, true) == 1
 function cfcfun()
     cf = @cfunction(fcfun, Int, (Int, Int))
@@ -165,14 +165,14 @@ ex = quote
         @test_throws(MethodError, ccall(cf, Int, (UInt8, Int), 1, 2))
     end
 end
-frame = JuliaInterpreter.prepare_thunk(Main, ex)
+frame = Frame(Main, ex)
 JuliaInterpreter.finish_and_return!(frame, true)
 
 # Core.Compiler
 ex = quote
     length(code_typed(fcfun, (Int, Int)))
 end
-frame = JuliaInterpreter.prepare_thunk(Main, ex)
+frame = Frame(Main, ex)
 @test JuliaInterpreter.finish_and_return!(frame, true) == 1
 
 # copyast
@@ -203,7 +203,7 @@ ex = quote
                 emit_function, emitted_function)
     end
 end
-frame = JuliaInterpreter.prepare_thunk(Isolated, ex)
+frame = Frame(Isolated, ex)
 JuliaInterpreter.finish_and_return!(frame, true)
 @test Isolated.CodegenParams(cached=false).cached === Cint(false)
 
@@ -320,9 +320,9 @@ end
 f113(;x) = x
 @test @interpret(f113(;x=[1,2,3])) == f113(;x=[1,2,3])
 
-# Some expression can appear nontrivial but lower to nothing
-@test isa(JuliaInterpreter.prepare_thunk(Main, :(@static if ccall(:jl_get_UNAME, Any, ()) == :NoOS 1+1 end)), Nothing)
-@test isa(JuliaInterpreter.prepare_thunk(Main, :(Base.BaseDocs.@kw_str "using")), Nothing)
+# Some expressions can appear nontrivial but lower to nothing
+# @test isa(Frame(Main, :(@static if ccall(:jl_get_UNAME, Any, ()) == :NoOS 1+1 end)), Nothing)
+# @test isa(Frame(Main, :(Base.BaseDocs.@kw_str "using")), Nothing)
 
 @testset "locals" begin
     f_locals(x::Int64, y::T, z::Vararg{Symbol}) where {T} = x
@@ -499,11 +499,11 @@ end
 
 try
     break_on(:error)
-    exs, _ = JuliaInterpreter.split_expressions(Main, quote
+    exs = collect(ExprSplitter(Main, quote
             g_1(2.0)
-        end)
+        end))
     line2_g = @__LINE__
-    frame = JuliaInterpreter.prepare_thunk(exs[1])
+    frame = Frame(exs[1]...)
     frame, bp = JuliaInterpreter.debug_command(frame, :c, true)
     stacktrace_lines = split(sprint(Base.display_error, bp.err, leaf(frame)), '\n')
     @test occursin(string("ERROR: ", sprint(showerror, ErrorException("foo"))), stacktrace_lines[1])

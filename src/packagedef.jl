@@ -10,7 +10,7 @@ using Random
 using Random.DSFMT
 using InteractiveUtils
 
-export @interpret, Compiled, Frame, root, leaf,
+export @interpret, Compiled, Frame, root, leaf, ExprSplitter,
        BreakpointRef, breakpoint, @breakpoint, breakpoints, enable, disable, remove, toggle,
        debug_command, @bp, break_on, break_off, on_breakpoints_updated
 

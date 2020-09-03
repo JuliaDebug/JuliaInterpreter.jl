@@ -9,14 +9,14 @@
 ## Frame creation
 
 ```@docs
+Frame(mod::Module, ex::Expr)
+ExprSplitter
 JuliaInterpreter.enter_call
 JuliaInterpreter.enter_call_expr
 JuliaInterpreter.prepare_frame
 JuliaInterpreter.determine_method_for_expr
 JuliaInterpreter.prepare_args
 JuliaInterpreter.prepare_call
-JuliaInterpreter.prepare_thunk
-JuliaInterpreter.split_expressions
 JuliaInterpreter.get_call_framecode
 JuliaInterpreter.optimize!
 ```
@@ -73,7 +73,7 @@ JuliaInterpreter.dummy_breakpoint
 ## Types
 
 ```@docs
-JuliaInterpreter.Frame
+Frame
 JuliaInterpreter.FrameCode
 JuliaInterpreter.FrameData
 JuliaInterpreter.FrameInstance

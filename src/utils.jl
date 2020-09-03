@@ -297,6 +297,17 @@ end
 getline(ln) = Int(isexpr(ln, :line) ? ln.args[1] : ln.line)::Int
 getfile(ln) = CodeTracking.maybe_fixup_stdlib_path(String(isexpr(ln, :line) ? ln.args[2] : ln.file)::String)
 
+function firstline(ex::Expr)
+    for a in ex.args
+        isa(a, LineNumberNode) && return a
+        if isa(a, Expr)
+            line = firstline(a)
+            isa(line, LineNumberNode) && return line
+        end
+    end
+    return nothing
+end
+
 """
     loc = whereis(frame, pc=frame.pc)
 
