@@ -4,6 +4,10 @@ using Test, InteractiveUtils, CodeTracking
 using Mmap
 using LinearAlgebra
 
+if !isdefined(@__MODULE__, :runframe)
+    include("utils.jl")
+end
+
 module Isolated end
 
 function summer(A)

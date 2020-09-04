@@ -1,5 +1,7 @@
 # This is a test-for-tests, verifying the code in utils.jl.
-using Test
+if !isdefined(@__MODULE__, :read_and_parse)
+    include("utils.jl")
+end
 
 @testset "Abort" begin
     ex = Base.parse_input_line("""

@@ -20,7 +20,7 @@ end
 close(io)
 include(tmppath)
 
-using JuliaInterpreter, Test
+using JuliaInterpreter, CodeTracking, Test
 
 function stacklength(frame)
     n = 1
