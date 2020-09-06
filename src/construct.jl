@@ -234,7 +234,7 @@ julia> framecode
 
 julia> frameargs
 2-element Array{Any,1}:
- mymethod
+ mymethod (generic function with 1 method)
  [1.0, 2.0]
 
 julia> lenv
