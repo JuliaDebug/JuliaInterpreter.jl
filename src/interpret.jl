@@ -492,7 +492,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                         Core.eval(mod, Expr(:const, name))
                     end
                 elseif node.head === :thunk
-                    newframe = prepare_thunk(moduleof(frame), node)
+                    newframe = Frame(moduleof(frame), node.args[1])
                     if isa(recurse, Compiled)
                         finish!(recurse, newframe, true)
                     else
@@ -506,11 +506,14 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                     Core.eval(moduleof(frame), node)
                 elseif node.head === :toplevel
                     mod = moduleof(frame)
-                    modexs, _ = split_expressions(mod, node)
+                    iter = ExprSplitter(mod, node)
                     rhs = Core.eval(mod, Expr(:toplevel,
-                        :(for modex in $modexs
-                              newframe = ($prepare_thunk)(modex)
-                              newframe === nothing && continue
+                        :(for (mod, ex) in $iter
+                              if ex.head === :toplevel
+                                  Core.eval(mod, ex)
+                                  continue
+                              end
+                              newframe = ($Frame)(mod, ex)
                               while true
                                   ($through_methoddef_or_done!)($recurse, newframe) === nothing && break
                               end
@@ -610,7 +613,7 @@ function handle_err(@nospecialize(recurse), frame, err)
             if (err.world != typemax(UInt) &&
                 hasmethod(err.f, arg_types) &&
                 !hasmethod(err.f, arg_types, world = err.world))
-                @warn "likely failure to return to toplevel, try JuliaInterpreter.split_expressions"
+                @warn "likely failure to return to toplevel, try `ExprSplitter`"
             end
         end
         rethrow(err)

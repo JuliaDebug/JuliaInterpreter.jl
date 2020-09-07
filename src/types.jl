@@ -210,7 +210,7 @@ mutable struct Frame
     caller::Union{Frame,Nothing}
     callee::Union{Frame,Nothing}
 end
-function Frame(framecode, framedata, pc=1, caller=nothing)
+function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing)
     if length(junk_frames) > 0
         frame = pop!(junk_frames)
         frame.framecode = framecode
@@ -223,6 +223,31 @@ function Frame(framecode, framedata, pc=1, caller=nothing)
     else
         return Frame(framecode, framedata, pc, 1, caller, nothing)
     end
+end
+"""
+    frame = Frame(mod::Module, src::CodeInfo)
+
+Construct a `Frame` to evaluate `src` in module `mod`.
+"""
+function Frame(mod::Module, src::CodeInfo)
+    framecode = FrameCode(mod, src)
+    return Frame(framecode, prepare_framedata(framecode, []))
+end
+"""
+    frame = Frame(mod::Module, ex::Expr)
+
+Construct a `Frame` to evaluate `ex` in module `mod`.
+
+This constructor can error, for example if lowering `ex` results in an `:error` or `:incomplete`
+expression, or if it otherwise fails to return a `:thunk`.
+"""
+function Frame(mod::Module, ex::Expr)
+    lwr = Meta.lower(mod, ex)
+    isexpr(lwr, :thunk) && return Frame(mod, lwr.args[1])
+    if isexpr(lwr, :error) || isexpr(lwr, :incomplete)
+        throw(ArgumentError("lowering returned an error, $lwr"))
+    end
+    throw(ArgumentError("lowering did not return a `:thunk` expression, got $lwr"))
 end
 
 caller(frame) = frame.caller

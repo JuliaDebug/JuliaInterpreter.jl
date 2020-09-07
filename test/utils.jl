@@ -2,7 +2,7 @@ using JuliaInterpreter
 using JuliaInterpreter: Frame, @lookup
 using JuliaInterpreter: finish_and_return!, evaluate_call!, step_expr!, shouldbreak,
                         do_assignment!, SSAValue, isassign, pc_expr, handle_err, get_return,
-                        moduleof, prepare_thunk
+                        moduleof
 using Base.Meta: isexpr
 using Test, Random, SHA
 
@@ -89,7 +89,7 @@ function evaluate_limited!(@nospecialize(recurse), frame::Frame, nstmts::Int, is
                     new_pc = pc + 1
                 else
                     refnstmts[] = nstmts
-                    newframe = prepare_thunk(moduleof(frame), stmt)
+                    newframe = Frame(moduleof(frame), stmt)
                     if isa(recurse, Compiled)
                         finish!(recurse, newframe, true)
                     else
@@ -180,12 +180,12 @@ function run_test_by_eval(test, fullpath, nstmts)
         ts = Test.DefaultTestSet($test)
         Test.push_testset(ts)
         current_task().storage[:SOURCE_PATH] = $fullpath
-        modexs, _ = JuliaInterpreter.split_expressions(JuliaTests, ex)
+        modexs = collect(ExprSplitter(JuliaTests, ex))
         for (i, modex) in enumerate(modexs)  # having the index can be useful for debugging
             nstmtsleft = $nstmts
             # mod, ex = modex
             # @show mod ex
-            frame = JuliaInterpreter.prepare_thunk(modex)
+            frame = Frame(modex)
             yield()  # allow communication between processes
             ret, nstmtsleft = evaluate_limited!(frame, nstmtsleft, true)
             if isa(ret, Aborted)

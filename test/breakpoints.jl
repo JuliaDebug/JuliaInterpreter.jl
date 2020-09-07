@@ -399,7 +399,7 @@ empty!(breakpoint_update_hooks)
         close(io)
 
         expr = Base.parse_input_line(String(read(path)), filename = path)
-        exprs, _ = JuliaInterpreter.split_expressions(Main, expr; filename = path)
+        exprs = collect(ExprSplitter(Main, expr))
 
         breakpoint(path, 1)
         breakpoint(path, 4)
@@ -407,7 +407,7 @@ empty!(breakpoint_update_hooks)
 
         # breakpoint in top-level line
         mod, ex = exprs[1]
-        frame = JuliaInterpreter.prepare_thunk(mod, ex)
+        frame = Frame(mod, ex)
         if VERSION < v"1.2"
             @test_broken JuliaInterpreter.shouldbreak(frame, frame.pc)
         else
@@ -418,14 +418,14 @@ empty!(breakpoint_update_hooks)
 
         # breakpoint in top-level block
         mod, ex = exprs[3]
-        frame = JuliaInterpreter.prepare_thunk(mod, ex)
+        frame = Frame(mod, ex)
         @test JuliaInterpreter.shouldbreak(frame, frame.pc)
         ret = JuliaInterpreter.finish_and_return!(frame, true)
         @test ret === 6
 
         # don't break for bp in function definition
         mod, ex = exprs[4]
-        frame = JuliaInterpreter.prepare_thunk(mod, ex)
+        frame = Frame(mod, ex)
         @test JuliaInterpreter.shouldbreak(frame, frame.pc) == false
         ret = JuliaInterpreter.finish_and_return!(frame, true)
         @test ret isa Function

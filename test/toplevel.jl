@@ -18,11 +18,6 @@ end
     end
     @test JuliaInterpreter.is_doc_expr(ex.args[2])
     @test !JuliaInterpreter.is_doc_expr(:(1+1))
-    ex = :(@doc doc"""
-       bla
-       """)
-    modexs, docexs = JuliaInterpreter.split_expressions(Main, ex; extract_docexprs=true)
-    @test isempty(docexs)
     # https://github.com/JunoLab/Juno.jl/issues/271
     ex = quote
         """
@@ -34,24 +29,18 @@ end
         end
         end
     end
-    modexs, docexs = JuliaInterpreter.split_expressions(Main, ex; extract_docexprs=true)
+    modexs = collect(ExprSplitter(Main, ex))
     m, ex = first(modexs)
-    @test m == Main.DocStringTest
-    dex = first(docexs[Main])
-    @test dex.args[4] == :DocStringTest
-    eval(dex)
+    @test JuliaInterpreter.is_doc_expr(ex.args[2])
+    Core.eval(m, ex)
     io = IOBuffer()
     show(io, @doc(Main.DocStringTest))
     @test occursin("Special", String(take!(io)))
 
-    @test JuliaInterpreter.prepare_thunk(Main, :(export foo)) === nothing
-    @test JuliaInterpreter.prepare_thunk(Base.Threads, :(global Condition)) === nothing
-    @test_throws ArgumentError JuliaInterpreter.prepare_thunk(Main, :(using NoPkgOfThisName))
-    @test JuliaInterpreter.prepare_thunk(Main, :(using NoPkgOfThisName); eval=false) === nothing
-
     @test !isdefined(Main, :JIInvisible)
-    JuliaInterpreter.split_expressions(JIVisible, :(module JIInvisible f() = 1 end))
+    collect(ExprSplitter(JIVisible, :(module JIInvisible f() = 1 end)))
     @test !isdefined(Main, :JIInvisible)
+    @test  isdefined(JIVisible, :JIInvisible)
     mktempdir() do path
         push!(LOAD_PATH, path)
         open(joinpath(path, "TmpPkg1.jl"), "w") do io
@@ -72,11 +61,11 @@ end
         # Every package is technically parented in Main but the name may not be visible in Main
         @test isdefined(@__MODULE__, :TmpPkg1)
         @test !isdefined(@__MODULE__, :TmpPkg2)
-        JuliaInterpreter.split_expressions(Main, quote
+        collect(ExprSplitter(Main, quote
                                                      module TmpPkg2
                                                      f() = 2
                                                      end
-                                                 end)
+                                                 end))
         @test isdefined(@__MODULE__, :TmpPkg1)
         @test !isdefined(@__MODULE__, :TmpPkg2)
     end
@@ -85,9 +74,9 @@ end
 module Toplevel end
 
 @testset "toplevel" begin
-    modexs, _ = JuliaInterpreter.split_expressions(Toplevel, read_and_parse(joinpath(@__DIR__, "toplevel_script.jl")))
-    for modex in modexs
-        frame = JuliaInterpreter.prepare_thunk(modex)
+    modexs = ExprSplitter(Toplevel, read_and_parse(joinpath(@__DIR__, "toplevel_script.jl")))
+    for (mod, ex) in modexs
+        frame = Frame(mod, ex)
         while true
             JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
         end
@@ -236,9 +225,9 @@ module Toplevel end
        end
        end
    end
-   modexs, _ = JuliaInterpreter.split_expressions(Toplevel, ex)
-   for modex in modexs
-       frame = JuliaInterpreter.prepare_thunk(modex)
+   modexs = ExprSplitter(Toplevel, ex)
+   for (mod, ex) in modexs
+       frame = Frame(mod, ex)
        while true
            JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
        end
@@ -277,9 +266,9 @@ ex = quote
         test_15703()
     end
 end
-modexs, _ = JuliaInterpreter.split_expressions(IncTest, ex)
-for (i, modex) in enumerate(modexs)
-    frame = JuliaInterpreter.prepare_thunk(modex)
+modexs = collect(ExprSplitter(IncTest, ex))
+for (i, (mod, ex)) in enumerate(modexs)
+    frame = Frame(mod, ex)
     while true
         JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
     end
@@ -294,9 +283,9 @@ end
               EnumChild0
               EnumChild1
           end))
-    modexs, _ = JuliaInterpreter.split_expressions(Toplevel, ex)
-    for modex in modexs
-        frame = JuliaInterpreter.prepare_thunk(modex)
+    modexs = ExprSplitter(Toplevel, ex)
+    for (mod, ex) in modexs
+        frame = Frame(mod, ex)
         while true
             JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
         end
@@ -316,18 +305,18 @@ end
     ex2 = quote
         ret[] = map(x->parse(Int16, x), AbstractString[])
     end
-    modexs, _ = JuliaInterpreter.split_expressions(LowerAnon, ex1)
-    for modex in modexs
-        frame = JuliaInterpreter.prepare_thunk(modex)
+    modexs = ExprSplitter(LowerAnon, ex1)
+    for (mod, ex) in modexs
+        frame = Frame(mod, ex)
         while true
             JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
         end
     end
     @test isa(LowerAnon.ret[], Vector{Int16})
     LowerAnon.ret[] = nothing
-    modexs, _ = JuliaInterpreter.split_expressions(LowerAnon, ex2)
-    for modex in modexs
-        frame = JuliaInterpreter.prepare_thunk(modex)
+    modexs = ExprSplitter(LowerAnon, ex2)
+    for (mod, ex) in modexs
+        frame = Frame(mod, ex)
         while true
             JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
         end
@@ -338,9 +327,9 @@ end
     ex3 = quote
         const BitIntegerType = Union{map(T->Type{T}, Base.BitInteger_types)...}
     end
-    modexs, _ = JuliaInterpreter.split_expressions(LowerAnon, ex3)
-    for modex in modexs
-        frame = JuliaInterpreter.prepare_thunk(modex)
+    modexs = ExprSplitter(LowerAnon, ex3)
+    for (mod, ex) in modexs
+        frame = Frame(mod, ex)
         while true
             JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
         end
@@ -352,9 +341,9 @@ end
         z = map(x->x^2+y, [1,2,3])
         y = 4
     end
-    modexs, _ = JuliaInterpreter.split_expressions(LowerAnon, ex4)
-    for modex in modexs
-        frame = JuliaInterpreter.prepare_thunk(modex)
+    modexs = ExprSplitter(LowerAnon, ex4)
+    for (mod, ex) in modexs
+        frame = Frame(mod, ex)
         while true
             JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
         end
@@ -385,21 +374,31 @@ end
         end
     end
     Core.eval(Toplevel, Expr(:toplevel, ex.args...))
-    modexs, docexprs = JuliaInterpreter.split_expressions(Toplevel, ex; extract_docexprs=true)
+    modexs = ExprSplitter(Toplevel, ex)
+    nt = nsub = 0
     for (mod, ex) in modexs
-        frame = JuliaInterpreter.prepare_thunk(mod, ex)
+        if JuliaInterpreter.is_doc_expr(ex.args[2])
+            mod == Toplevel && (nt += 1)
+            mod == Toplevel.Sub && (nsub += 1)
+            ex = ex.args[2].args[4]
+            ex isa Expr || continue
+            ex.head === :call && continue
+        end
+        frame = Frame(mod, ex)
         while true
             JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
         end
     end
-    @test length(docexprs[Toplevel]) == 2
-    @test length(docexprs[Toplevel.Sub]) == 1
+    @test nt == 2
+    @test nsub == 1
+    @test Toplevel.f("check") == 1
+    @test Toplevel.Sub.f("check") == 2
 end
 
 @testset "Self referential" begin
     # Revise issue #304
     ex = :(mutable struct Node t :: Node end)
-    frame = JuliaInterpreter.prepare_thunk(Toplevel, ex)
+    frame = Frame(Toplevel, ex)
     JuliaInterpreter.finish!(frame, true)
     @test Toplevel.Node isa Type
 end
@@ -414,11 +413,17 @@ end
             nfbar(x) = 1
             @deprecate nffoo nfbar
             global CoolStuff
+            const thresh = 1.0
+            export nfbar
             end
             """)
-    modexs, _ = JuliaInterpreter.split_expressions(Toplevel, ex)
+    modexs = ExprSplitter(Toplevel, ex)
     for (mod, ex) in modexs
-        frame = JuliaInterpreter.prepare_thunk(mod, ex)
+        if ex.head === :global
+            Core.eval(mod, ex)
+            continue
+        end
+        frame = Frame(mod, ex)
         frame === nothing && continue
         JuliaInterpreter.finish!(frame, true)
     end
@@ -439,7 +444,7 @@ end
     end
     str = read(filename, String)
     ex = Base.parse_input_line(str)
-    modexs, _ = JuliaInterpreter.split_expressions(Main, ex)
+    modexs = ExprSplitter(Main, ex)
     @test !isempty(modexs)
     pop!(LOAD_PATH)
     rm(tmpdir, recursive=true)
@@ -447,7 +452,7 @@ end
 
 @testset "`used` for abstract types" begin
     ex = :(abstract type AbstractType <: AbstractArray{Union{Int,Missing},2} end)
-    frame = JuliaInterpreter.prepare_thunk(Toplevel, ex)
+    frame = Frame(Toplevel, ex)
     JuliaInterpreter.finish!(frame, true)
     @test isabstracttype(Toplevel.AbstractType)
 end
@@ -455,7 +460,7 @@ end
 @testset "Recursive type definitions" begin
     # See https://github.com/timholy/Revise.jl/issues/417
     ex = :(struct RecursiveType x::Vector{RecursiveType} end)
-    frame = JuliaInterpreter.prepare_thunk(Toplevel, ex)
+    frame = Frame(Toplevel, ex)
     JuliaInterpreter.finish!(frame, true)
     @test Toplevel.RecursiveType(Vector{Toplevel.RecursiveType}()) isa Toplevel.RecursiveType
 end
@@ -472,6 +477,6 @@ end
            x::Array{<:Real, 1} = [.05]
         end
     end
-    frame = JuliaInterpreter.prepare_thunk(ToplevelParameters, ex)
+    frame = Frame(ToplevelParameters, ex)
     @test JuliaInterpreter.finish!(frame, true) === nothing
 end

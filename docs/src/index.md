@@ -94,7 +94,7 @@ At present, note that some of this functionality requires that you be running
 It is, in addition, possible to halt execution when otherwise an error would be thrown.
 This functionality is enabled using [`break_on`](@ref) and disabled with [`break_off`](@ref):
 
-```jldoctest demo1
+```jldoctest demo1; filter=r"none:\d"
 julia> function f_outer()
            println("before error")
            f_inner()
@@ -139,7 +139,7 @@ Stacktrace:
 
 Finally, you can set breakpoints using [`@bp`](@ref):
 
-```jldoctest demo1
+```jldoctest demo1; filter=r"none:\d"
 julia> function myfunction(x, y)
            a = 1
            b = 2

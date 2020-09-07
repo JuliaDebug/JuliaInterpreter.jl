@@ -17,27 +17,27 @@ end
     end
     @elapsed sum(rand(5))
     """; filename="fake.jl")
-    modexs, _ = JuliaInterpreter.split_expressions(Main, ex; filename="fake.jl")
+    modexs = collect(ExprSplitter(Main, ex))
     # find the 3rd assignment statement in the 2nd frame (corresponding to the x += 1 line)
-    frame = JuliaInterpreter.prepare_thunk(modexs[2])
+    frame = Frame(modexs[2]...)
     i = 0
     for k = 1:3
         i = findnext(stmt->isexpr(stmt, :(=)), frame.framecode.src.code, i+1)
     end
     @test Aborted(frame, i).at.line == 3
     # Check interior of let block
-    frame = JuliaInterpreter.prepare_thunk(modexs[3])
+    frame = Frame(modexs[3]...)
     i = 0
     for k = 1:2
         i = findnext(stmt->isexpr(stmt, :(=)), frame.framecode.src.code, i+1)
     end
     @test Aborted(frame, i).at.line == 6
     # Check conditional
-    frame = JuliaInterpreter.prepare_thunk(modexs[4])
+    frame = Frame(modexs[4]...)
     i = findfirst(stmt->JuliaInterpreter.is_gotoifnot(stmt), frame.framecode.src.code) + 1
     @test Aborted(frame, i).at.line == 9
     # Check macro
-    frame = JuliaInterpreter.prepare_thunk(modexs[5])
+    frame = Frame(modexs[5]...)
     if VERSION < v"1.4.0-DEV.475"
         @test Aborted(frame, 1).at.file == Symbol("util.jl")
     else
@@ -56,10 +56,10 @@ module EvalLimited end
         s += 1
     end
     """)
-    modexs, _ = JuliaInterpreter.split_expressions(EvalLimited, ex)
+    modexs = collect(ExprSplitter(EvalLimited, ex))
     nstmts = 1000  # enough to ensure it finishes
-    for modex in modexs
-        frame = JuliaInterpreter.prepare_thunk(modex)
+    for (mod, ex) in modexs
+        frame = Frame(mod, ex)
         @test isa(frame, Frame)
         nstmtsleft = nstmts
         while true
@@ -83,10 +83,10 @@ module EvalLimited end
         insert!(ex.args, 2, LineNumberNode(2, Symbol("fake.jl")))
         insert!(ex.args, 1, LineNumberNode(1, Symbol("fake.jl")))
     end
-    modexs, _ = JuliaInterpreter.split_expressions(EvalLimited, ex)
+    modexs = collect(ExprSplitter(EvalLimited, ex))
     nstmts = 100 # enough to ensure it gets into the loop but doesn't finish
-    for modex in modexs
-        frame = JuliaInterpreter.prepare_thunk(modex)
+    for (mod, ex) in modexs
+        frame = Frame(mod, ex)
         @test isa(frame, Frame)
         nstmtsleft = nstmts
         while true
@@ -101,9 +101,9 @@ module EvalLimited end
 
     # Now try again with recursive stack
     empty!(aborts)
-    modexs, _ = JuliaInterpreter.split_expressions(EvalLimited, ex)
-    for modex in modexs
-        frame = JuliaInterpreter.prepare_thunk(modex)
+    modexs = collect(ExprSplitter(EvalLimited, ex))
+    for (mod, ex) in modexs
+        frame = Frame(mod, ex)
         @test isa(frame, Frame)
         nstmtsleft = nstmts
         while true

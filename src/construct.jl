@@ -234,7 +234,7 @@ julia> framecode
 
 julia> frameargs
 2-element Array{Any,1}:
- mymethod
+ mymethod (generic function with 1 method)
  [1.0, 2.0]
 
 julia> lenv
@@ -348,152 +348,200 @@ function prepare_frame_caller(caller::Frame, framecode::FrameCode, args::Vector{
 end
 
 """
-    frame = prepare_thunk(mod::Module, expr::Expr)
+    ExprSplitter(mod::Module, ex::Expr; lnn=nothing)
 
-Prepare `expr` for evaluation in `mod`. `expr` should be a "straightforward" expression,
-one that does not require special top-level handling (see [`JuliaInterpreter.split_expressions`](@ref)).
-"""
-function prepare_thunk(mod::Module, thunk::Expr, recursive::Bool=false; eval::Bool=true)
-    if isexpr(thunk, :thunk)
-        framecode = FrameCode(mod, thunk.args[1])
-    elseif isexpr(thunk, :error) || isexpr(thunk, :incomplete)
-        error("lowering returned an error, ", thunk)
-    elseif recursive
-        thunk = Meta.lower(mod, thunk)
-        if isa(thunk, Expr)
-            # If on 2nd attempt to lower it's still an Expr, just evaluate it
-            eval && Core.eval(mod, thunk)
-            return nothing
+Create an iterable that returns individual expressions together with their module of evaluation.
+Optionally supply an initial `LineNumberNode` `lnn`.
+
+# Example
+
+```
+julia> expr = quote
+           public(x::Integer) = true
+           module Private
+           private(y::String) = false
+           end
+           const threshold = 0.1
+       end;
+
+julia> for (mod, ex) in ExprSplitter(Main, expr)
+           @show mod ex
+       end
+mod = Main
+ex = quote
+    #= REPL[7]:2 =#
+    public(x::Integer) = begin
+            #= REPL[7]:2 =#
+            true
         end
-        framecode = FrameCode(mod, thunk.args[1])
-    else
-        lwr = Meta.lower(mod, thunk)
-        isa(lwr, Expr) && return prepare_thunk(mod, lwr, true; eval=eval)
-        return nothing
-    end
-    return Frame(framecode, prepare_framedata(framecode, []))
 end
-prepare_thunk((mod, ex)::Tuple{Module,Expr}) = prepare_thunk(mod, ex)
-
-"""
-    modexs, docexprs = split_expressions(mod::Module, expr::Expr; extract_docexprs=false)
-
-Break `expr` into a list `modexs` of sequential blocks. This is often needed when `expr`
-needs to be evaluated at top level.
-
-`modexs[i]` is a `(mod::Module, ex::Expr)` tuple, where `ex` is to be evaluated in `mod`.
-
-# Toplevel evaluation
-
-For code that defines new structs, new methods, or new macros, it can be important to evaluate
-these expressions carefully:
-
-    stack = Frame[]
-    for modex in modexs    # or use `for (mod, ex) in modexs` to split the tuple
-        frame = JuliaInterpreter.prepare_thunk(modex)
-        while true
-            JuliaInterpreter.through_methoddef_or_done!(stack, frame) === nothing && break
+mod = Main.Private
+ex = quote
+    #= REPL[7]:4 =#
+    private(y::String) = begin
+            #= REPL[7]:4 =#
+            false
         end
-    end
-
-The `while` loop here deserves some explanation. Occasionally, a frame may define new methods
-(e.g., anonymous or local functions) and then call those methods. In such cases, running
-the entire frame as a single block (e.g., with [`JuliaInterpreter.finish_and_return!`](@ref)
-can trigger "method is too new..." errors. Instead, the approach above runs each frame,
-but returns to the caller after any new method is defined. When this loop is running at
-top level (e.g., in the REPL), this allows the world age to update and thus avoid
-"method is too new..." errors.
-
-Putting the above nested loop inside a function defeats its purpose, because inside a
-compiled function the world age will not update. If necessary, use the following strategy:
-
-    Core.eval(somemodule, Expr(:toplevel, quote
-        body
-    ))
-
-where `body` contains the nested loop, plus any preparatory statements required to make the
-necessary variables available at top level in `somemodule`.
-"""
-function split_expressions(mod::Module, expr::Expr; filename=nothing, kwargs...)
-    modexs = Tuple{Module,Expr}[]
-    docexprs = Dict{Module,Vector{Expr}}()
-    if filename === nothing
-        # On Julia 1.2+, the first line of a :toplevel expr may contain line info
-        if length(expr.args) >= 1 && isa(expr.args[1], LineNumberNode)
-            filename = expr.args[1].file
-        else
-            filename="toplevel"
-        end
-    end
-    return split_expressions!(modexs, docexprs, mod, expr; filename=filename, kwargs...)
 end
-split_expressions!(modexs, docexprs, mod::Module, ex::Expr; kwargs...) =
-    split_expressions!(modexs, docexprs, Expr(:block), mod, ex; kwargs...)
+mod = Main
+ex = :($(Expr(:toplevel, :(#= REPL[7]:6 =#), :(const threshold = 0.1))))
+```
 
-function split_expressions!(modexs, docexprs, lex::Expr, mod::Module, ex::Expr; extract_docexprs=false, filename="toplevel")
-    # lex is the expression we'll lower; it will accumulate LineNumberNodes and a
-    # single top-level expression. We split blocks, module defs, etc.
+Note that `Main.Private` was created for you so that its internal expressions could be evaluated.
+`ExprSplitter` will check to see whether the module already exists and if so return it rather than
+try to create a new module with the same name.
+
+In general each returned expression is a block with two parts: a `LineNumberNode` followed by a single expression.
+In some cases the returned expression may be `:toplevel`, as shown in the `const` declaration,
+but otherwise it will be a `:block`.
+
+# World age, frame creation, and evaluation
+
+The primary purpose of `ExprSplitter` is to allow sequential return to top-level (e.g., the REPL)
+after evaluation of each expression. Returning to top-level allows the world age to update, and hence allows one to call
+methods and use types defined in earlier expressions in a block.
+
+For evaluation by JuliaInterpreter, the returned module/expression pairs can be passed directly to
+the `Frame` constructor. However, some expressions cannot be converted into `Frame`s and may need
+special handling:
+
+```julia
+julia> for (mod, ex) in ExprSplitter(Main, expr)
+           if ex.head === :global
+               # global declarations can't be lowered to a CodeInfo.
+               # In this demo we choose to evaluate them, but you can do something else.
+               Core.eval(mod, ex)
+               continue
+           end
+           frame = Frame(mod, ex)
+           debug_command(frame, :c, true)
+       end
+
+julia> threshold
+0.1
+
+julia> public(3)
+true
+```
+
+If you're parsing package code, `ex` might be a docstring-expression; you may wish
+to check for such expressions and take distinct actions.
+
+See [`Frame(mod::Module, ex::Expr)`](@ref) for more information about frame creation.
+"""
+mutable struct ExprSplitter
+    # Non-mutating fields
+    stack::Vector{Tuple{Module,Expr}}   # mod[i] is module of evaluation for
+    index::Vector{Int}    # next-to-handle argument index for :block or :toplevel exprs
+    # Mutating fields
+    lnn::Union{LineNumberNode,Nothing}
+end
+function ExprSplitter(mod::Module, ex::Expr; lnn=nothing)
+    index = []
+    if ex.head === :block || ex.head === :toplevel
+        push!(index, 1)
+    end
+    iter = ExprSplitter([(mod,ex)], index, lnn)
+    queuenext!(iter)
+    return iter
+end
+
+Base.IteratorSize(::Type{ExprSplitter}) = Base.SizeUnknown()
+Base.eltype(::Type{ExprSplitter}) = Tuple{Module,Expr}
+
+function push_modex!(iter::ExprSplitter, mod::Module, ex::Expr)
+    push!(iter.stack, (mod, ex))
     if ex.head === :toplevel || ex.head === :block
-        split_expressions!(modexs, docexprs, lex, mod, ex.args; extract_docexprs=extract_docexprs, filename=filename)
-    elseif ex.head === :module
+        push!(iter.index, 1)
+    end
+    return iter
+end
+
+function pop_modex!(iter)
+    mod, ex = pop!(iter.stack)
+    if ex.head === :toplevel || ex.head === :block
+        pop!(iter.index)
+    end
+    return mod, ex
+end
+
+# Load the next-to-evaluate expression into `iter.stack[end]`.
+function queuenext!(iter::ExprSplitter)
+    isempty(iter.stack) && return nothing
+    mod, ex = iter.stack[end]
+    head = ex.head
+    if head === :module
+        # Find or create the module
         newname = ex.args[2]::Symbol
         if isdefined(mod, newname)
-            newmod = getfield(mod, newname)
-            newmod isa Module || throw(ErrorException("invalid redefinition of constant $(newname)"))
+            mod = getfield(mod, newname)
+            mod isa Module || throw(ErrorException("invalid redefinition of constant $(newname)"))
         else
             if (id = Base.identify_package(mod, String(newname))) !== nothing && haskey(Base.loaded_modules, id)
-                newmod = Base.root_module(id)
+                mod = Base.root_module(id)
             else
-                newmod = Core.eval(mod, :(module $newname end))
+                loc = firstline(ex)
+                mod = Core.eval(mod, Expr(:module, ex.args[1], ex.args[2], Expr(:block, loc, loc)))
             end
         end
-        split_expressions!(modexs, docexprs, lex, newmod, ex.args[3]; extract_docexprs=extract_docexprs, filename=filename)
-    elseif extract_docexprs && is_doc_expr(ex) && length(ex.args) >= 4
-        body = ex.args[4]
-        if isa(body, Expr) && body.head != :call
-            split_expressions!(modexs, docexprs, lex, mod, body; extract_docexprs=extract_docexprs, filename=filename)
-        end
-        docexs = get(docexprs, mod, nothing)
-        if docexs === nothing
-            docexs = docexprs[mod] = Expr[]
-        end
-        if isexpr(body, :module)
-            # If it's a module expression, don't include the entire expression, just document the module itself.
-            excopy = Expr(ex.head, ex.args[1], ex.args[2], ex.args[3])
-            push!(excopy.args, body.args[2])
-            if length(ex.args) > 4
-                append!(excopy.args, ex.args[5:end])   # there should only be a 5th, but just for robustness
+        # We've handled the module declaration, remove it and queue the body
+        pop!(iter.stack)
+        ex = ex.args[3]::Expr
+        push_modex!(iter, mod, ex)
+        return queuenext!(iter)
+    elseif VERSION < v"1.2" && is_function_def(ex)
+        # Newer Julia versions insert a LineNumberNode between statements, but at least Julia 1.0 does not.
+        # Scan the function body for a LNN
+        lnn = firstline(ex)
+        if isa(lnn, LineNumberNode)
+            if iter.lnn === nothing || iter.lnn.line < lnn.line
+                iter.lnn = LineNumberNode(lnn.line-1, lnn.file)
             end
-            push!(docexs, excopy)
-        else
-            push!(docexs, ex)
         end
-    else
-        if isempty(lex.args) || (isexpr(ex, :global) && all(item->isa(item, LineNumberNode), lex.args))
-            push!(modexs, (mod, copy(ex)))
-        else
-            push!(lex.args, ex)
-            push!(modexs, (mod, copy(lex)))
-            empty!(lex.args)
+    elseif head === :macrocall
+        iter.lnn = ex.args[2]
+    elseif head === :block || head === :toplevel
+        # Container expression
+        idx = iter.index[end]
+        while idx <= length(ex.args)
+            a = ex.args[idx]
+            if isa(a, LineNumberNode)
+                iter.lnn = a
+            elseif isa(a, Expr)
+                iter.index[end] = idx + 1
+                push_modex!(iter, mod, a)
+                return queuenext!(iter)
+            end
+            idx += 1
         end
+        # We exhausted the expression without returning anything to evaluate
+        pop!(iter.stack)
+        pop!(iter.index)
+        return queuenext!(iter)
     end
-    return modexs, docexprs
+    return nothing  # mod, ex will be returned by iterate
 end
 
-function split_expressions!(frames, docexprs, lex, mod::Module, args::Vector{Any}; filename="toplevel", kwargs...)
-    for a in args
-        if isa(a, Expr)
-            split_expressions!(frames, docexprs, lex, mod, a; filename=filename, kwargs...)
-        elseif isa(a, LineNumberNode)
-            if a.file === nothing  # happens with toplevel expressions on Julia 1.2
-                push!(lex.args, LineNumberNode(a.line, Symbol(filename)))
-            else
-                push!(lex.args, a)
-            end
-        else
-            push!(lex.args, a)
+function Base.iterate(iter::ExprSplitter, state=nothing)
+    isempty(iter.stack) && return nothing
+    mod, ex = pop_modex!(iter)
+    lnn = iter.lnn
+    if is_doc_expr(ex)
+        body = ex.args[4]
+        if isa(body, Expr) && body.head === :module
+            # Just document the module itself and push the module def onto the stack
+            excopy = Expr(ex.head, ex.args[1], ex.args[2], ex.args[3])
+            push!(excopy.args, body.args[2])
+            append!(excopy.args, ex.args[5:end])   # there should only be at most a 5th, but just for robustness
+            ex = excopy
+            push_modex!(iter, mod, body)
         end
     end
+    queuenext!(iter)
+    # :global expressions can't be lowered. For debugging it might be nice
+    # to still return the lnn, but then we have to work harder on detecting them.
+    ex.head === :global && return (mod, ex), nothing
+    return (mod, Expr(:block, lnn, ex)), nothing
 end
 
 """

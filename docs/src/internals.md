@@ -143,7 +143,7 @@ or `JuliaInterpreter.finish_and_return!(frame)` to also obtain the return value.
 ## More complex expressions
 
 Sometimes you might have a whole sequence of expressions you want to run.
-In such cases, your first thought should be `prepare_thunk`.
+In such cases, your first thought should be to construct the `Frame` manually.
 Here's a demonstration:
 
 ```jldoctest; setup=(using JuliaInterpreter; JuliaInterpreter.clear_caches())
@@ -154,7 +154,7 @@ ex = quote
     @test x + y == 3
 end
 
-frame = JuliaInterpreter.prepare_thunk(Main, ex)
+frame = Frame(Main, ex)
 JuliaInterpreter.finish_and_return!(frame)
 
 # output
@@ -179,7 +179,7 @@ Here's a demonstration of the problem:
 
 ```julia
 ex = :(map(x->x^2, [1, 2, 3]))
-frame = JuliaInterpreter.prepare_thunk(Main, ex)
+frame = Frame(Main, ex)
 julia> JuliaInterpreter.finish_and_return!(frame)
 ERROR: this frame needs to be run a top level
 ```
@@ -226,13 +226,12 @@ julia> JuliaInterpreter.finish_and_return!(frame, true)
  9
 ```
 
-Here's a more fine-grained look at what's happening under the hood (and a robust strategy
-for more complex situations where there may be nested calls of new methods):
+In other cases, such as nested calls of new methods, you may need to allow the world age to update
+between evaluations. In such cases you want to use `ExprSplitter`:
 
 ```julia
-modexs, _ = JuliaInterpreter.split_expressions(Main, ex)
-for (mod, e) in modexs
-    frame = JuliaInterpreter.prepare_thunk(mod, e)
+for (mod, e) in ExprSplitter(Main, ex)
+    frame = Frame(mod, e)
     while true
         JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
     end
