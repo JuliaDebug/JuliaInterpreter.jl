@@ -5,7 +5,7 @@ Normally, Julia compiles your code when you first execute it; using JuliaInterpr
 avoid compilation and execute the expressions that define your code directly.
 Interpreters have a number of applications, including support for stepping debuggers.
 
-## Use an an interpreter
+## Use as an interpreter
 
 Using this package as an interpreter is straightforward:
 
