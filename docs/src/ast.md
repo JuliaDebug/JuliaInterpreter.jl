@@ -13,7 +13,7 @@ The key advantage of lowered representation is that it is fairly well circumscri
 - Names are fully resolved by module
 - Macros are expanded
 
-[Julia AST](https://docs.julialang.org/en/latest/devdocs/ast/) describes the kinds of
+[Julia AST](https://docs.julialang.org/en/v1/devdocs/ast/) describes the kinds of
 objects that can appear in lowered code.
 
 Let's start with a demonstration on a simple function:
