@@ -167,7 +167,7 @@ Test Passed
 Code that defines new `struct`s, new methods, or new modules is a bit more complicated
 and requires special handling. In such cases, calling `finish_and_return!` on a frame that
 defines these new objects and then calls them can trigger a
-[world age error](https://docs.julialang.org/en/latest/manual/methods/#Redefining-Methods-1),
+[world age error](https://docs.julialang.org/en/v1/manual/methods/#Redefining-Methods-1),
 in which the method is considered to be too new to be run by the currently compiled code.
 While one can resolve this by using `Base.invokelatest`, we'd have to use that strategy
 throughout the entire package.  This would cause a major reduction in performance.
