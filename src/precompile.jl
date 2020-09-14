@@ -23,6 +23,8 @@ function _precompile_()
     @assert precompile(Tuple{Type{Frame}, Module, Expr})
     @assert precompile(Tuple{Type{ExprSplitter}, Module, Expr})
     # @assert precompile(Tuple{typeof(Core.kwfunc(ExprSplitter)), NamedTuple{(:lnn,),Tuple{LineNumberNode}}, typeof(ExprSplitter), Module, Expr})
+    @assert precompile(Tuple{typeof(queuenext!), ExprSplitter})
+    @assert precompile(Tuple{typeof(Base.iterate), ExprSplitter})  # won't entirely work, but any dependents might help
     @assert precompile(Tuple{typeof(prepare_framedata), FrameCode, Vector{Any}, SimpleVector, Bool})
     @assert precompile(Tuple{typeof(prepare_args), Any, Vector{Any}, Vector{Any}})
     @assert precompile(Tuple{typeof(prepare_call), Any, Vector{Any}})
