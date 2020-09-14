@@ -233,12 +233,13 @@ Test whether expression `ex` is a `@doc` expression.
 function is_doc_expr(@nospecialize(ex))
     docsym = Symbol("@doc")
     if isexpr(ex, :macrocall)
+        ex::Expr
         a = ex.args[1]
         is_global_ref(a, Core, docsym) && return true
         isa(a, Symbol) && a == docsym && return true
         if isexpr(a, :.)
             mod, name = (a::Expr).args[1], (a::Expr).args[2]
-            return mod === :Core && isa(name, QuoteNode) && name.value == docsym
+            return mod === :Core && isa(name, QuoteNode) && name.value === docsym
         end
     end
     return false

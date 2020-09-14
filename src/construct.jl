@@ -437,7 +437,7 @@ mutable struct ExprSplitter
     lnn::Union{LineNumberNode,Nothing}
 end
 function ExprSplitter(mod::Module, ex::Expr; lnn=nothing)
-    index = []
+    index = Int[]
     if ex.head === :block || ex.head === :toplevel
         push!(index, 1)
     end
@@ -474,14 +474,15 @@ function queuenext!(iter::ExprSplitter)
         # Find or create the module
         newname = ex.args[2]::Symbol
         if isdefined(mod, newname)
-            mod = getfield(mod, newname)
-            mod isa Module || throw(ErrorException("invalid redefinition of constant $(newname)"))
+            newmod = getfield(mod, newname)
+            newmod isa Module || throw(ErrorException("invalid redefinition of constant $(newname)"))
+            mod = newmod
         else
             if (id = Base.identify_package(mod, String(newname))) !== nothing && haskey(Base.loaded_modules, id)
-                mod = Base.root_module(id)
+                mod = Base.root_module(id)::Module
             else
                 loc = firstline(ex)
-                mod = Core.eval(mod, Expr(:module, ex.args[1], ex.args[2], Expr(:block, loc, loc)))
+                mod = Core.eval(mod, Expr(:module, ex.args[1], ex.args[2], Expr(:block, loc, loc)))::Module
             end
         end
         # We've handled the module declaration, remove it and queue the body
