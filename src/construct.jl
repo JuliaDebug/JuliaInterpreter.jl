@@ -437,11 +437,8 @@ mutable struct ExprSplitter
     lnn::Union{LineNumberNode,Nothing}
 end
 function ExprSplitter(mod::Module, ex::Expr; lnn=nothing)
-    index = Int[]
-    if ex.head === :block || ex.head === :toplevel
-        push!(index, 1)
-    end
-    iter = ExprSplitter([(mod,ex)], index, lnn)
+    iter = ExprSplitter(Tuple{Module,Expr}[], Int[], lnn)
+    push_modex!(iter, mod, ex)
     queuenext!(iter)
     return iter
 end
@@ -452,7 +449,15 @@ Base.eltype(::Type{ExprSplitter}) = Tuple{Module,Expr}
 function push_modex!(iter::ExprSplitter, mod::Module, ex::Expr)
     push!(iter.stack, (mod, ex))
     if ex.head === :toplevel || ex.head === :block
-        push!(iter.index, 1)
+        # Issue #427
+        modifies_scope = false
+        for a in ex.args
+            if isa(a, Expr) && a.head ∈ (:local, :global)
+                modifies_scope = true
+                break
+            end
+        end
+        push!(iter.index, modifies_scope ? 0 : 1)
     end
     return iter
 end
@@ -504,6 +509,10 @@ function queuenext!(iter::ExprSplitter)
     elseif head === :block || head === :toplevel
         # Container expression
         idx = iter.index[end]
+        if idx == 0
+            # return the whole block (issue #427)
+            return nothing
+        end
         while idx <= length(ex.args)
             a = ex.args[idx]
             if isa(a, LineNumberNode)
@@ -537,6 +546,15 @@ function Base.iterate(iter::ExprSplitter, state=nothing)
             ex = excopy
             push_modex!(iter, mod, body)
         end
+    end
+    if ex.head === :block || ex.head === :toplevel
+        # This was a block that we couldn't safely descend into (issue #427)
+        if !isempty(iter.index) && iter.index[end] > length(iter.stack[end][2].args)
+            pop!(iter.stack)
+            pop!(iter.index)
+            queuenext!(iter)
+        end
+        return (mod, ex), nothing
     end
     queuenext!(iter)
     # :global expressions can't be lowered. For debugging it might be nice

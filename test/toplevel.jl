@@ -480,3 +480,37 @@ end
     frame = Frame(ToplevelParameters, ex)
     @test JuliaInterpreter.finish!(frame, true) === nothing
 end
+
+@testset "Issue #427" begin
+    ex = :(begin
+        local foo = 10
+        sin(foo)
+    end)
+    for (mod, ex) in ExprSplitter(@__MODULE__, ex)
+        @test JuliaInterpreter.finish!(Frame(mod, ex), true) === nothing
+    end
+    @test length(collect(ExprSplitter(@__MODULE__, ex))) == 1
+    ex = :(begin
+        3 + 7
+        module Local
+            local foo = 10
+            sin(foo)
+        end
+    end)
+    modexs = collect(ExprSplitter(@__MODULE__, ex))
+    @test length(modexs) == 2
+    @test modexs[2][1] == getfield(@__MODULE__, :Local)
+    for (mod, ex) in modexs
+        @test JuliaInterpreter.finish!(Frame(mod, ex), true) === nothing
+    end
+    ex = :(begin
+        3 + 7
+        module Local
+            local foo = 10
+            sin(foo)
+        end
+        3 + 7
+    end)
+    modexs = collect(ExprSplitter(@__MODULE__, ex))
+    @test length(modexs) == 3
+end
