@@ -273,7 +273,7 @@ function build_compiled_call!(stmt::Expr, fcall, code, idx, nargs::Int, sparams:
                 @assert arg isa SSAValue
                 unsafe_convert_expr = code.code[arg.id]::Expr
                 push!(delete_idx, arg.id) # delete the unsafe_convert
-                cconvert_stmt = unsafe_convert_expr.args[3]
+                cconvert_stmt = unsafe_convert_expr.args[3]::SSAValue
                 push!(delete_idx, cconvert_stmt.id) # delete the cconvert
                 cconvert_expr = code.code[cconvert_stmt.id]::Expr
                 push!(args, cconvert_expr.args[3])
@@ -295,7 +295,7 @@ function build_compiled_call!(stmt::Expr, fcall, code, idx, nargs::Int, sparams:
                 pc === nothing && error("this should never happen")
             end
         end
-        cfunc, RetType, ArgType = @lookup(frame, stmt.args[2]), @lookup(frame, stmt.args[3]), @lookup(frame, stmt.args[4])::Type{<:Tuple}
+        cfunc, RetType, ArgType = @lookup(frame, stmt.args[2]), @lookup(frame, stmt.args[3]), @lookup(frame, stmt.args[4])::DataType
         args = stmt.args[5:end]
     end
     dynamic_ccall = false
@@ -321,7 +321,7 @@ function build_compiled_call!(stmt::Expr, fcall, code, idx, nargs::Int, sparams:
     argnames = Any[Symbol(:arg, i) for i = 1:nargs]
     if f === nothing
         if fcall == :ccall
-            ArgType = Expr(:tuple, Any[parametric_type_to_expr(t) for t in ArgType]...)
+            ArgType = Expr(:tuple, Any[parametric_type_to_expr(t) for t in ArgType::SimpleVector]...)
         end
         RetType = parametric_type_to_expr(RetType)
         # #285: test whether we can evaluate an type constraints on parametric expressions
