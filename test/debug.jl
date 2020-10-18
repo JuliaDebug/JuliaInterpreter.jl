@@ -1,6 +1,7 @@
-using JuliaInterpreter, Test
+using CodeTracking, JuliaInterpreter, Test
 using JuliaInterpreter: enter_call, enter_call_expr, get_return, @lookup
 using Base.Meta: isexpr
+include("utils.jl")
 
 const ALL_COMMANDS = (:n, :s, :c, :finish, :nc, :se, :si, :until)
 
@@ -143,7 +144,8 @@ end
         frame = enter_call_expr(:($(callgenerated)()))
         f, pc = debug_command(frame, :sg)
             # Aside: generators can have `Expr(:line, ...)` in their line tables, test that this is OK
-            @test isexpr(JuliaInterpreter.linetable(f, 2), :line)
+            lt = JuliaInterpreter.linetable(f, 2)
+            @test isexpr(lt, :line) || isa(lt, Core.LineInfoNode)
         @test isa(pc, BreakpointRef)
         @test JuliaInterpreter.scopeof(f).name == :generatedfoo
         stmt = JuliaInterpreter.pc_expr(f)
