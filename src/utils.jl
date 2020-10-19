@@ -310,19 +310,19 @@ function firstline(ex::Expr)
 end
 
 """
-    loc = whereis(frame, pc=frame.pc)
+    loc = whereis(frame, pc::Int=frame.pc)
 
 Return the file and line number for `frame` at `pc`.  If this cannot be
 determined, `loc == nothing`. Otherwise `loc == (filepath, line)`.
 """
-function CodeTracking.whereis(framecode::FrameCode, pc)
+function CodeTracking.whereis(framecode::FrameCode, pc::Int)
     codeloc = codelocation(framecode.src, pc)
     codeloc == 0 && return nothing
     lineinfo = linetable(framecode, codeloc)
     return isa(framecode.scope, Method) ?
         whereis(lineinfo, framecode.scope) : (getfile(lineinfo), getline(lineinfo))
 end
-CodeTracking.whereis(frame::Frame, pc=frame.pc) = whereis(frame.framecode, pc)
+CodeTracking.whereis(frame::Frame, pc::Int=frame.pc) = whereis(frame.framecode, pc)
 
 """
     line = linenumber(framecode, pc)
@@ -345,7 +345,7 @@ function getfile(framecode::FrameCode, pc)
 end
 getfile(frame::Frame, pc=frame.pc) = getfile(frame.framecode, pc)
 
-function codelocation(code::CodeInfo, idx)
+function codelocation(code::CodeInfo, idx::Int)
     codeloc = codelocs(code)[idx]
     while codeloc == 0 && (code.code[idx] === nothing || isexpr(code.code[idx], :meta)) && idx < length(code.code)
         idx += 1

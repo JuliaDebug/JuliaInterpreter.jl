@@ -409,7 +409,7 @@ macro breakpoint(call_expr, args...)
         end
         args = Base.tail(args)
     end
-    condexpr = condition === nothing ? nothing : Expr(:quote, condition)
+    condexpr = condition === nothing ? nothing : esc(Expr(:quote, condition))
     if haveline
         return quote
             local method = $whichexpr
