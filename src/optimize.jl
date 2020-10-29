@@ -243,7 +243,7 @@ function parametric_type_to_expr(t::Type)
     t isa Core.TypeofBottom && return t
     t isa UnionAll && (t = t.body)
     t = t::DataType
-    if t <: Vararg
+    if Base.isvarargtype(t)
         return Expr(:(...), t.parameters[1])
     end
     if t.hasfreetypevars
