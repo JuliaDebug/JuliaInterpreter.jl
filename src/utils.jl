@@ -208,7 +208,7 @@ function is_bodyfunc(@nospecialize(arg))
         arg = arg.value
     end
     if isa(arg, Function)
-        fname = String(typeof(arg).name.name)
+        fname = String((typeof(arg).name::Core.TypeName).name)
         return startswith(fname, "##") && match(r"#\d+$", fname) !== nothing
     end
     return false
@@ -319,8 +319,8 @@ function CodeTracking.whereis(framecode::FrameCode, pc::Int)
     codeloc = codelocation(framecode.src, pc)
     codeloc == 0 && return nothing
     lineinfo = linetable(framecode, codeloc)
-    return isa(framecode.scope, Method) ?
-        whereis(lineinfo, framecode.scope) : (getfile(lineinfo), getline(lineinfo))
+    m = framecode.scope
+    return isa(m, Method) ? whereis(lineinfo, m) : (getfile(lineinfo), getline(lineinfo))
 end
 CodeTracking.whereis(frame::Frame, pc::Int=frame.pc) = whereis(frame.framecode, pc)
 

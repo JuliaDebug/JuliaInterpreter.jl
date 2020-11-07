@@ -158,7 +158,7 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
                         argtypes, sig)::SimpleVector
     enter_generated &= is_generated(method)
     if is_generated(method) && !enter_generated
-        framecode = get(genframedict, (method, argtypes), nothing)
+        framecode = get(genframedict, (method, argtypes::Type), nothing)
     else
         framecode = get(framedict, method, nothing)
     end
@@ -505,7 +505,7 @@ function queuenext!(iter::ExprSplitter)
             end
         end
     elseif head === :macrocall
-        iter.lnn = ex.args[2]
+        iter.lnn = ex.args[2]::LineNumberNode
     elseif head === :block || head === :toplevel
         # Container expression
         idx = iter.index[end]

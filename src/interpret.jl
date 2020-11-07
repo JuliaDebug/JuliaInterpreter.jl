@@ -100,7 +100,6 @@ function lookup_or_eval(@nospecialize(recurse), frame, @nospecialize(node))
                 error("unknown call f ", f)
             end
         else
-            dump(ex)
             error("unknown expr ", ex)
         end
     elseif isa(node, Int) || isa(node, Number)   # Number is slow, requires subtyping
@@ -425,10 +424,10 @@ const _location = Dict{Tuple{Method,Int},Int}()
 
 function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplevel::Bool)
     pc, code, data = frame.pc, frame.framecode, frame.framedata
-    if !is_leaf(frame)
-        show_stackloc(frame)
-        @show node
-    end
+    # if !is_leaf(frame)
+    #     show_stackloc(frame)
+    #     @show node
+    # end
     @assert is_leaf(frame)
     local rhs
     # For debugging:
@@ -557,9 +556,9 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
     end
     @isdefined(rhs) && isa(rhs, BreakpointRef) && return rhs
     if isassign(frame, pc)
-        if !@isdefined(rhs)
-            @show frame node
-        end
+        # if !@isdefined(rhs)
+        #     @show frame node
+        # end
         lhs = SSAValue(pc)
         do_assignment!(frame, lhs, rhs)
     end

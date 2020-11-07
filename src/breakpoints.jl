@@ -156,7 +156,7 @@ end
 
 function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointFileLocation)
     if framecode.scope isa Method
-        meth = framecode.scope
+        meth = framecode.scope::Method
         methpath = CodeTracking.maybe_fix_path(String(meth.file))
         ispath(methpath) && (methpath = realpath(methpath))
         if bp.abspath == methpath || endswith(methpath, bp.path)
