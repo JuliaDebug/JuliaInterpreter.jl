@@ -278,8 +278,12 @@ function build_compiled_call!(stmt::Expr, fcall, code, idx, nargs::Int, sparams:
                     cconvert_expr = code.code[cconvert_stmt.id]::Expr
                     push!(args, cconvert_expr.args[3])
                 elseif arg isa SlotNumber
-                    unsafe_convert_expr = code.code[arg.id]::Expr
-                    push!(delete_idx, arg.id) # delete the unsafe_convert
+                    index = findfirst(code.code) do expr
+                        lhs = expr.args[1]
+                        return lhs isa SlotNumber && lhs.id === arg.id
+                    end
+                    unsafe_convert_expr = code.code[index]::Expr
+                    push!(delete_idx, index) # delete the unsafe_convert
                     push!(args, unsafe_convert_expr.args[2])
                 else
                     error("unexpected foreigncall argument type encountered: $(typeof(arg))")
