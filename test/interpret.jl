@@ -702,3 +702,8 @@ end
     frame = JuliaInterpreter.enter_call(A396, 3)
     @test length(JuliaInterpreter.locals(frame)) > 0
 end
+
+@testset "logging" begin
+    foo(x) = @info x
+    @test @interpret(foo(2)) === nothing
+end
