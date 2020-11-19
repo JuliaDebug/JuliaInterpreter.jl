@@ -279,6 +279,7 @@ function build_compiled_call!(stmt::Expr, fcall, code, idx, nargs::Int, sparams:
                     push!(args, cconvert_expr.args[3])
                 elseif arg isa SlotNumber
                     index = findfirst(code.code) do expr
+                        expr isa Expr || return false
                         lhs = expr.args[1]
                         return lhs isa SlotNumber && lhs.id === arg.id
                     end
