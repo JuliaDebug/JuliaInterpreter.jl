@@ -47,7 +47,7 @@ macro lookup(args...)
     nodetmp = gensym(:node)  # used to hoist, e.g., args[4]
     if havemod
         fallback = quote
-            isa($nodetmp, Symbol) ? getfield($(esc(mod)), $nodetmp) :
+            isa($nodetmp, Symbol) && isdefined($(esc(mod)), $nodetmp) ? getfield($(esc(mod)), $nodetmp) :
             $nodetmp
         end
     else
@@ -61,7 +61,7 @@ macro lookup(args...)
         isa($nodetmp, GlobalRef) ? lookup_var($(esc(frame)), $nodetmp) :
         isa($nodetmp, SlotNumber) ? lookup_var($(esc(frame)), $nodetmp) :
         isa($nodetmp, QuoteNode) ? $nodetmp.value :
-        isa($nodetmp, Symbol) ? getfield(moduleof($(esc(frame))), $nodetmp) :
+        isa($nodetmp, Symbol) && isdefined(moduleof($(esc(frame))), $nodetmp) ? getfield(moduleof($(esc(frame))), $nodetmp) :
         isa($nodetmp, Expr) ? lookup_expr($(esc(frame)), $nodetmp) :
         $fallback
     end
