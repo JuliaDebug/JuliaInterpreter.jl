@@ -702,3 +702,10 @@ end
     frame = JuliaInterpreter.enter_call(A396, 3)
     @test length(JuliaInterpreter.locals(frame)) > 0
 end
+
+@static if VERSION >= v"1.5" && Sys.islinux()
+    @testset "@ccall" begin
+        f(s) = @ccall strlen(s::Cstring)::Csize_t
+        @test @interpret(f("asd")) == 3
+    end
+end
