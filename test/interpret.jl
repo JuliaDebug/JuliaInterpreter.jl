@@ -693,6 +693,10 @@ end
     f(m::AbstractMatrix{T}) where {T} = T
     D = Diagonal([1.0, 2.0])
     @test @interpret(f(D)) === f(D)
+
+    # issue #441
+    flog() = @info "logging macros"
+    @test @interpret flog() === nothing
 end
 
 struct A396
