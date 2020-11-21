@@ -264,7 +264,19 @@ function evaluate_methoddef(frame, node)
     f = node.args[1]
     if isa(f, Symbol)
         mod = moduleof(frame)
-        f = isdefined(mod, f) ? getfield(mod, f) : Core.eval(moduleof(frame), Expr(:function, f))  # create a new function
+        createnew = true
+        if isdefined(mod, f)
+            flkup = getfield(mod, f)
+            fmod = typeof(flkup).name.module
+            if fmod === scopeof(frame)
+                f = flkup
+                createnew = false
+            end
+        end
+        if createnew
+            @show f typeof(f) moduleof(frame)
+            f = Core.eval(moduleof(frame), Expr(:function, f))  # create a new function
+        end
     end
     length(node.args) == 1 && return f
     sig = @lookup(frame, node.args[2])::SimpleVector

@@ -235,6 +235,18 @@ module Toplevel end
    @test Toplevel.Testing.Frame === Frame
 end
 
+# Proper handling of namespaces
+# https://github.com/timholy/Revise.jl/issues/579
+module Namespace end
+@testset "Namespace" begin
+    frame = Frame(Namespace, :(sin(::Int) = 10))
+    while true
+        JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
+    end
+    @test Namespace.sin(0) == 10
+    @test Base.sin(0) == 0
+end
+
 # incremental interpretation solves world-age problems
 # Taken straight from Julia's test/tuple.jl
 module IncTest
