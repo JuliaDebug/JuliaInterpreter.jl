@@ -177,11 +177,11 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             return Some{Any}(ifelse(getargs(args, frame)...))
         end
     elseif f === invoke
-            argswrapped = getargs(args, frame)
             if !expand
+                argswrapped = getargs(args, frame)
                 return Some{Any}(invoke(argswrapped...))
             end
-            return Expr(:call, invoke, argswrapped...)
+            return Expr(:call, invoke, args[2:end]...)
     elseif f === isa
         if nargs == 2
             return Some{Any}(isa(@lookup(frame, args[2]), @lookup(frame, args[3])))
