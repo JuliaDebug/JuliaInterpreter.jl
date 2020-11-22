@@ -244,7 +244,11 @@ module Namespace end
         JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
     end
     @test Namespace.sin(0) == 10
-    @test Base.sin(0) == 0
+    if Base.VERSION >= v"1.5"
+        @test Base.sin(0) == 0
+    else
+        @test_broken Base.sin(0) == 0
+    end
 end
 
 # incremental interpretation solves world-age problems

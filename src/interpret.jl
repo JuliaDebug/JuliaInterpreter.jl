@@ -264,7 +264,7 @@ function evaluate_methoddef(frame, node)
     f = node.args[1]
     if isa(f, Symbol)
         mod = moduleof(frame)
-        if Base.isbindingresolved(mod, f)  # `isdefined` accesses the binding, making it impossible to create a new one
+        if Base.isbindingresolved(mod, f) && isdefined(mod, f)  # `isdefined` accesses the binding, making it impossible to create a new one
             f = getfield(mod, f)
         else
             f = Core.eval(moduleof(frame), Expr(:function, f))  # create a new function
