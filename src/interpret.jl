@@ -264,25 +264,19 @@ function evaluate_methoddef(frame, node)
     f = node.args[1]
     if isa(f, Symbol)
         mod = moduleof(frame)
-        createnew = true
-        if isdefined(mod, f)
-            flkup = getfield(mod, f)
-            fmod = typeof(flkup).name.module
-            if fmod === scopeof(frame)
-                f = flkup
-                createnew = false
-            end
-        end
-        if createnew
-            @show f typeof(f) moduleof(frame)
+        if Base.isbindingresolved(mod, f)  # `isdefined` accesses the binding, making it impossible to create a new one
+            f = getfield(mod, f)
+        else
             f = Core.eval(moduleof(frame), Expr(:function, f))  # create a new function
         end
+    elseif isa(f, GlobalRef)
+        f = getfield(f.mod, f.name)
     end
     length(node.args) == 1 && return f
     sig = @lookup(frame, node.args[2])::SimpleVector
     body = @lookup(frame, node.args[3])
     ccall(:jl_method_def, Cvoid, (Any, Any, Any), sig, body, moduleof(frame))
-    return nothing
+    return f
 end
 
 function structname(frame, node)
