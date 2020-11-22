@@ -248,6 +248,7 @@ module Namespace end
         @test Base.sin(0) == 0
     else
         @test_broken Base.sin(0) == 0
+        Core.eval(Base, :(sin(x::Int) = sin(float(x))))    # fix the definition of `sin`
     end
 end
 
