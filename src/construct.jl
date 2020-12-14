@@ -483,7 +483,19 @@ function queuenext!(iter::ExprSplitter)
             newmod isa Module || throw(ErrorException("invalid redefinition of constant $(newname)"))
             mod = newmod
         else
-            if (id = Base.identify_package(mod, String(newname))) !== nothing && haskey(Base.loaded_modules, id)
+            newnamestr = String(newname)
+            id = Base.identify_package(mod, newnamestr)
+            # If we're in a test environment and Julia's internal stdlibs are not a declared dependency of the package,
+            # we might fail to find it. Try really hard to find it.
+            if id === nothing && mod === Base.__toplevel__
+                for loaded_id in keys(Base.loaded_modules)
+                    if loaded_id.name == newnamestr
+                        id = loaded_id
+                        break
+                    end
+                end
+            end
+            if id !== nothing && haskey(Base.loaded_modules, id)
                 mod = Base.root_module(id)::Module
             else
                 loc = firstline(ex)

@@ -251,6 +251,28 @@ module Namespace end
         Core.eval(Base, :(sin(x::Int) = sin(float(x))))    # fix the definition of `sin`
     end
 end
+# When retrospectively parsing through modules to analyze code, Julia's stdlibs pose a bit
+# of a namespace challenge too: we never want to redefine new modules with the same name.
+@testset "Namespace stdlibs" begin
+    # Get the "real" LibCURL_jll module (Julia 1.6 and higher)
+    modref = nothing
+    for (id, mod) in Base.loaded_modules
+        if id.name == "LibCURL_jll"
+            modref = mod
+            break
+        end
+    end
+    if modref !== nothing
+        # Now try to find it by splitting
+        exsplit = JuliaInterpreter.ExprSplitter(Base.__toplevel__, :(
+            baremodule LibCURL_jll
+            using Base
+            Base.Experimental.@compiler_options compile=min optimize=0 infer=false
+            end))
+        (mod1, ex1), state1 = iterate(exsplit)
+        @test mod1 === modref
+    end
+end
 
 # incremental interpretation solves world-age problems
 # Taken straight from Julia's test/tuple.jl
