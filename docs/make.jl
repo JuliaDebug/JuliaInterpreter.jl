@@ -25,4 +25,5 @@ makedocs(
 
 deploydocs(
     repo = "github.com/JuliaDebug/JuliaInterpreter.jl.git",
+    push_preview = true
 )
