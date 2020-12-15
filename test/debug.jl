@@ -390,7 +390,7 @@ end
         @test get_return(frame) == f_inv(2)
     end
 
-    f_inv_latest(x::Real) = 1 + Core._apply_latest(f_inv, x)
+    f_inv_latest(x::Real) = 1 + (@static isdefined(Core, :_call_latest) ? Core._call_latest(f_inv, x) : Core._apply_latest(f_inv, x))
     @testset "invokelatest" begin
         fr = JuliaInterpreter.enter_call(f_inv_latest, 2.0)
         fr, pc = JuliaInterpreter.debug_command(fr, :nc)
