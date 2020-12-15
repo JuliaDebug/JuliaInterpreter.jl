@@ -282,7 +282,7 @@ end
 function structname(frame, node)
     name = node.args[1]
     if isa(name, GlobalRef)
-        mod = name.module
+        mod = name.mod
         name = name.name
     else
         mod = moduleof(frame)
@@ -489,7 +489,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                 elseif node.head === :const
                     g = node.args[1]
                     if isa(g, GlobalRef)
-                        mod, name = g.module, g.name
+                        mod, name = g.mod, g.name
                     else
                         mod, name = moduleof(frame), g::Symbol
                     end

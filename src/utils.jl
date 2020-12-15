@@ -299,7 +299,8 @@ function lineoffset(framecode::FrameCode)
     return offset
 end
 
-getline(ln) = Int(isexpr(ln, :line) ? ln.args[1] : ln.line)::Int
+getline(ln::LineTypes) = ln.line::Int
+getline(ln::Expr)      = ln.args[1]::Int # assuming ln.head === :line
 # work around compiler error on 1.2
 @static if v"1.2.0" <= VERSION < v"1.3"
     getfile(ln) = begin
@@ -317,7 +318,11 @@ getline(ln) = Int(isexpr(ln, :line) ? ln.args[1] : ln.line)::Int
         CodeTracking.maybe_fixup_stdlib_path(path)
     end
 else
-    getfile(ln) = CodeTracking.maybe_fixup_stdlib_path(String(isexpr(ln, :line) ? ln.args[2] : ln.file)::String)
+    function getfile(ln::Union{LineTypes,Expr})
+        _getfile(ln::LineTypes) = ln.file::Symbol
+        _getfile(ln::Expr)      = ln.args[2]::Symbol # assuming ln.head === :line
+        return CodeTracking.maybe_fixup_stdlib_path(String(_getfile(ln)))
+    end
 end
 
 function firstline(ex::Expr)
