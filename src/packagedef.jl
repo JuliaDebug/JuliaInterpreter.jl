@@ -51,7 +51,21 @@ include("utils.jl")
 include("construct.jl")
 include("localmethtable.jl")
 include("interpret.jl")
-include("builtins.jl")
+
+# search for the latest builtins that is compatible with this Julia
+const BUILTINS_FILE = try
+    fs = readdir(normpath(@__DIR__, "builtins"))
+    vs = VersionNumber.(fs)
+    sort!(vs; rev = true)
+    i = findfirst(v->v≤(VERSION), vs)
+    i === nothing && throw(ErrorException("failed to find any compatible builtins file"))
+    normpath("builtins", string(vs[i]))
+catch err
+    @warn "following err happened while searching the latest compatible builtins file, use the fallback" err
+    normpath("builtins", "0.0.0")
+end
+include(BUILTINS_FILE)
+
 include("optimize.jl")
 include("commands.jl")
 include("breakpoints.jl")
