@@ -56,7 +56,7 @@ function renumber_ssa!(stmts::Vector{Any}, ssalookup)
         elseif isa(stmt, Expr)
             replace_ssa!(stmt, ssalookup)
             if (stmt.head === :gotoifnot || stmt.head === :enter) && isa(stmt.args[end], Int)
-                stmt.args[end] = ssalookup[stmt.args[end]]
+                stmt.args[end] = jumplookup(ssalookup, stmt.args[end])
             end
         elseif is_GotoIfNot(stmt)
             cond = stmt.cond
