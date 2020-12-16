@@ -47,4 +47,8 @@ function _precompile_()
     @assert precompile(Tuple{typeof(find_used), Core.CodeInfo})
     @assert precompile(Tuple{typeof(do_assignment!), Frame, Any, Any})
     @assert precompile(Tuple{typeof(pc_expr), Frame})
+    if VERSION >= v"1.3.0-DEV.179"  # there are different definitions depending on Julia version
+        @assert precompile(Tuple{typeof(append_any), Any})
+        @assert precompile(Tuple{typeof(append_any), Any, Vararg{Any, 100}})
+    end
 end
