@@ -229,10 +229,10 @@ using PyCall
 let np = pyimport("numpy")
     @test @interpret(PyCall.pystring_query(np.zeros)) === Union{}
 end
-# Issue #354 (partial fix)
+# Issue #354
 using HTTP
 headers = Dict("User-Agent" => "Debugger.jl")
-@test_broken @interpret(HTTP.request("GET", "https://api.github.com/", headers))
+@test @interpret(HTTP.request("GET", "https://api.github.com/", headers))
 
 # "correct" line numbers
 defline = @__LINE__() + 1

@@ -99,6 +99,11 @@ function set_compiled_methods()
         end
     end
 
+    # Does an atomic operation via llvmcall (this fixes #354)
+    for m in methods(Base.load_state_acquire)
+        push!(compiled_methods, m)
+    end
+
     ###########
     # Modules #
     ###########
