@@ -212,6 +212,16 @@ val = @interpret(BigInt())
 @test isa(val, BigInt) && val == 0
 @test isa(@interpret(Base.GMP.version()), VersionNumber)
 
+# Issue #455
+using PyCall
+let np = pyimport("numpy")
+    @test @interpret(PyCall.pystring_query(np.zeros)) === Union{}
+end
+# Issue #354 (partial fix)
+using HTTP
+headers = Dict("User-Agent" => "Debugger.jl")
+@test_broken @interpret(HTTP.request("GET", "https://api.github.com/", headers))
+
 # "correct" line numbers
 defline = @__LINE__() + 1
 function f(x)

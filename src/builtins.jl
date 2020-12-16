@@ -231,9 +231,14 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     # Intrinsics
     elseif f === Base.cglobal
         if nargs == 1
+            call_expr = copy(call_expr)
+            args2 = args[2]
+            call_expr.args[2] = isa(args2, QuoteNode) ? args2 : @lookup(frame, args2)
             return Some{Any}(Core.eval(moduleof(frame), call_expr))
         elseif nargs == 2
             call_expr = copy(call_expr)
+            args2 = args[2]
+            call_expr.args[2] = isa(args2, QuoteNode) ? args2 : @lookup(frame, args2)
             call_expr.args[3] = @lookup(frame, args[3])
             return Some{Any}(Core.eval(moduleof(frame), call_expr))
         end
