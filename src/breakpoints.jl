@@ -166,7 +166,9 @@ function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointFileLo
         end
     else
         path, _ = whereis(framecode, 1)
+        println("input path: ", path)
         path = CodeTracking.maybe_fix_path(path)
+        println("output path: ", path)
         ispath(path) && (path = realpath(path))
 
         if bp.abspath == path || endswith(path, bp.path)
