@@ -307,7 +307,7 @@ ex = quote
 end
 modexs = collect(ExprSplitter(IncTest, ex))
 for (i, (mod, ex)) in enumerate(modexs)
-    frame = Frame(mod, ex)
+    local frame = Frame(mod, ex)
     while true
         JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
     end

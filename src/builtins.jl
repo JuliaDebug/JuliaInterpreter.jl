@@ -63,7 +63,19 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             push!(new_expr.args, (isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode)) ? QuoteNode(x) : x)
         end
         return new_expr
-    elseif f === Core._apply_latest
+    elseif @static isdefined(Core, :_call_latest) ? f === Core._call_latest : false
+        argswrapped = getargs(args, frame)
+        if !expand
+            return Some{Any}(Core._call_latest(argswrapped...))
+        end
+        new_expr = Expr(:call, argswrapped[1])
+        popfirst!(argswrapped)
+        argsflat = append_any(argswrapped...)
+        for x in argsflat
+            push!(new_expr.args, (isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode)) ? QuoteNode(x) : x)
+        end
+        return new_expr
+    elseif @static isdefined(Core, :_apply_latest) ? f === Core._apply_latest : false
         argswrapped = getargs(args, frame)
         if !expand
             return Some{Any}(Core._apply_latest(argswrapped...))
