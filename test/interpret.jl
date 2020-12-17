@@ -103,11 +103,23 @@ end
 @test @interpret(10.0^4) == 10.0^4
 # issue #6
 @test @interpret(Array.body.body.name) === Array.body.body.name
-@test @interpret(Vararg.body.body.name) === Vararg.body.body.name
+if Vararg isa UnionAll
+    @test @interpret(Vararg.body.body.name) === Vararg.body.body.name
+else
+    @test @interpret(Vararg{Int}.T) === Vararg{Int}.T
+    @test @interpret(Vararg{Any,3}.N) === Vararg{Any,3}.N
+end
 @test !JuliaInterpreter.is_vararg_type(Union{})
-frame = Frame(Main, :(Vararg.body.body.name))
-@test JuliaInterpreter.finish_and_return!(frame, true) === Vararg.body.body.name
-frame = Frame(Base, :(Union{AbstractChar,Tuple{Vararg{<:AbstractChar}},AbstractVector{<:AbstractChar},Set{<:AbstractChar}}))
+if Vararg isa UnionAll
+    frame = Frame(Main, :(Vararg.body.body.name))
+    @test JuliaInterpreter.finish_and_return!(frame, true) === Vararg.body.body.name
+else
+    frame = Frame(Main, :(Vararg{Int}.T))
+    @test JuliaInterpreter.finish_and_return!(frame, true) === Vararg{Int}.T
+    frame = Frame(Main, :(Vararg{Any,3}.N))
+    @test JuliaInterpreter.finish_and_return!(frame, true) === Vararg{Any,3}.N
+end
+frame = Frame(Base, :(Union{AbstractChar,Tuple{Vararg{AbstractChar}},AbstractVector{<:AbstractChar},Set{<:AbstractChar}}))
 @test JuliaInterpreter.finish_and_return!(frame, true) isa Union
 
 # issue #8
@@ -475,7 +487,7 @@ g_3(x) = error("foo")
 line_g = @__LINE__
 try
     break_on(:error)
-    frame, bp = @interpret g_1(2.0)
+    local frame, bp = @interpret g_1(2.0)
     stacktrace_lines = split(sprint(Base.display_error, bp.err, leaf(frame)), '\n')
     @test occursin(string("ERROR: ", sprint(showerror, ErrorException("foo"))), stacktrace_lines[1])
     if isdefined(Base, :print_stackframe)
@@ -503,7 +515,7 @@ try
             g_1(2.0)
         end))
     line2_g = @__LINE__
-    frame = Frame(exs[1]...)
+    local frame = Frame(exs[1]...)
     frame, bp = JuliaInterpreter.debug_command(frame, :c, true)
     stacktrace_lines = split(sprint(Base.display_error, bp.err, leaf(frame)), '\n')
     @test occursin(string("ERROR: ", sprint(showerror, ErrorException("foo"))), stacktrace_lines[1])
