@@ -248,7 +248,7 @@ end
 is_leaf(frame::Frame) = frame.callee === nothing
 
 function is_vararg_type(x)
-    if isa(Vararg, Type)
+    @static if isa(Vararg, Type)
         if isa(x, Type)
             (x <: Vararg && !(x <: Union{})) && return true
             if isa(x, UnionAll)
