@@ -40,9 +40,15 @@ function replace_ssa!(stmt, ssalookup)
 end
 
 function renumber_ssa!(stmts::Vector{Any}, ssalookup)
+    # When updating jumps, when lines get split into multiple lines
+    # (see "Un-nest :call expressions" below), we need to jump to the first of them.
+    # Consequently we use the previous "old-code" offset and add one.
+    # Fixes #455.
+    jumplookup(l, idx) = idx > 1 ? l[idx-1] + 1 : idx
+
     for (i, stmt) in enumerate(stmts)
         if isa(stmt, GotoNode)
-            stmts[i] = GotoNode(ssalookup[stmt.label])
+            stmts[i] = GotoNode(jumplookup(ssalookup, stmt.label))
         elseif isa(stmt, SSAValue)
             stmts[i] = SSAValue(ssalookup[stmt.id])
         elseif isa(stmt, NewSSAValue)
@@ -50,14 +56,14 @@ function renumber_ssa!(stmts::Vector{Any}, ssalookup)
         elseif isa(stmt, Expr)
             replace_ssa!(stmt, ssalookup)
             if (stmt.head === :gotoifnot || stmt.head === :enter) && isa(stmt.args[end], Int)
-                stmt.args[end] = ssalookup[stmt.args[end]]
+                stmt.args[end] = jumplookup(ssalookup, stmt.args[end])
             end
         elseif is_GotoIfNot(stmt)
             cond = stmt.cond
             if isa(cond, SSAValue)
                 cond = SSAValue(ssalookup[cond.id])
             end
-            stmts[i] = Core.GotoIfNot(cond, ssalookup[stmt.dest])
+            stmts[i] = Core.GotoIfNot(cond, jumplookup(ssalookup, stmt.dest))
         elseif is_ReturnNode(stmt)
             val = (stmt::Core.ReturnNode).val
             if isa(val, SSAValue)
