@@ -299,8 +299,11 @@ function lineoffset(framecode::FrameCode)
     return offset
 end
 
-getline(ln::LineTypes) = ln.line::Int
-getline(ln::Expr)      = ln.args[1]::Int # assuming ln.head === :line
+function getline(ln::Union{LineTypes,Expr})
+    _getline(ln::LineTypes) = ln.line
+    _getline(ln::Expr)      = ln.args[1] # assuming ln.head === :line
+    return Int(_getline(ln))::Int
+end
 # work around compiler error on 1.2
 @static if v"1.2.0" <= VERSION < v"1.3"
     getfile(ln) = begin
