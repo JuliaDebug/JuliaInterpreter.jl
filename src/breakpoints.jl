@@ -165,7 +165,9 @@ function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointFileLo
             return false
         end
     else
-        path, _ = whereis(framecode, 1)
+        w = whereis(framecode, 1)
+        w === nothing && return false
+        path, _ = w
         path = CodeTracking.maybe_fix_path(path)
         ispath(path) && (path = realpath(path))
 
@@ -186,7 +188,6 @@ function shouldbreak(frame::Frame, pc::Int)
 end
 
 function prepare_slotfunction(framecode::FrameCode, body::Union{Symbol,Expr})
-    ismeth = framecode.scope isa Method
     uslotnames = Set{Symbol}()
     slotnames  = Symbol[]
     for name in framecode.src.slotnames
@@ -223,13 +224,14 @@ function prepare_slotfunction(framecode::FrameCode, body::Union{Symbol,Expr})
         push!(assignments, :($maxexsym = $maxexpr))
         push!(assignments, :($slotname = $maxexsym > 0 ? something($dataname.locals[$maxexsym]) : $default))
     end
-    if ismeth
-        syms = sparam_syms(framecode.scope)
+    scope = framecode.scope
+    if isa(scope, Method)
+        syms = sparam_syms(scope)
         for i = 1:length(syms)
             push!(assignments, Expr(:(=), syms[i], :($dataname.sparams[$i])))
         end
     end
-    funcname = ismeth ? gensym("slotfunction") : gensym(Symbol(framecode.scope, "_slotfunction"))
+    funcname = isa(scope, Method) ? gensym("slotfunction") : gensym(Symbol(scope, "_slotfunction"))
     return Expr(:function, Expr(:call, funcname, framename), Expr(:block, assignments..., body))
 end
 
