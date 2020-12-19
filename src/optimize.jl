@@ -25,7 +25,7 @@ function extract_inner_call!(stmt::Expr, idx, once::Bool=false)
     return nothing
 end
 
-function replace_ssa!(stmt, ssalookup)
+function replace_ssa!(@nospecialize(stmt), ssalookup)
     isa(stmt, Expr) || return nothing
     for (i, a) in enumerate(stmt.args)
         if isa(a, SSAValue)
@@ -59,7 +59,7 @@ function renumber_ssa!(stmts::Vector{Any}, ssalookup)
                 stmt.args[end] = jumplookup(ssalookup, stmt.args[end])
             end
         elseif is_GotoIfNot(stmt)
-            cond = stmt.cond
+            cond = (stmt::Core.GotoIfNot).cond
             if isa(cond, SSAValue)
                 cond = SSAValue(ssalookup[cond.id])
             end
@@ -403,10 +403,18 @@ end
 
 function replace_coretypes_list!(list::AbstractVector; rev::Bool)
     function rep(@nospecialize(x), rev::Bool)
-        if isa(x, rev ? SSAValue : Core.SSAValue)
-            return rev ? Core.SSAValue(x.id) : SSAValue(x.id)
-        elseif isa(x, rev ? SlotNumber : Core.SlotNumber)
-            return rev ? Core.SlotNumber(x.id) : SlotNumber(x.id)
+        if rev
+            if isa(x, SSAValue)
+                return Core.SSAValue(x.id)
+            elseif isa(x, SlotNumber)
+                return Core.SlotNumber(x.id)
+            end
+            return x
+        end
+        if isa(x, Core.SSAValue)
+            return SSAValue(x.id)
+        elseif isa(x, Core.SlotNumber)
+            return SlotNumber(x.id)
         end
         return x
     end
