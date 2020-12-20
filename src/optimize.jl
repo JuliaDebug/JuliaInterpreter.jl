@@ -245,7 +245,7 @@ function optimize!(code::CodeInfo, scope)
     return code, methodtables
 end
 
-function parametric_type_to_expr(t::Type)
+function parametric_type_to_expr(@nospecialize(t::Type))
     t isa Core.TypeofBottom && return t
     t isa UnionAll && (t = t.body)
     t = t::DataType
@@ -253,7 +253,7 @@ function parametric_type_to_expr(t::Type)
         return Expr(:(...), t.parameters[1])
     end
     if t.hasfreetypevars
-        params = map(t.parameters) do p
+        params = map(t.parameters) do @nospecialize(p)
             isa(p, TypeVar) ? p.name :
             isa(p, DataType) && p.hasfreetypevars ? parametric_type_to_expr(p) : p
         end

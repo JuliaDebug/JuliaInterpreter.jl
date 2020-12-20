@@ -125,12 +125,13 @@ function scopename(tn::TypeName)
     modpath = Base.fullname(tn.module)
     if isa(modpath, Tuple{Symbol})
         return Expr(:., modpath[1], QuoteNode(tn.name))
-    else
-        return Expr(:., _scopename(modpath...), QuoteNode(tn.name))
     end
+    ex = Expr(:., modpath[end-1], QuoteNode(modpath[end]))
+    for i = length(modpath)-2:-1:1
+        ex = Expr(:., modpath[i], ex)
+    end
+    return Expr(:., ex, QuoteNode(tn.name))
 end
-_scopename(parent, child) = Expr(:., parent, QuoteNode(child))
-_scopename(parent, child, rest...) = Expr(:., parent, _scopename(child, rest...))
 
 ## Predicates
 

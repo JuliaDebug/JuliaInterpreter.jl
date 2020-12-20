@@ -17,6 +17,7 @@ function _precompile_()
     @assert precompile(Tuple{typeof(eval_rhs), Any, Frame, Expr})
     @assert precompile(Tuple{typeof(step_expr!), Any, Frame, Any, Bool})
     for f in (finish!, finish_and_return!, finish_stack!, next_call!, maybe_next_call!, next_line!)
+        @assert precompile(Tuple{typeof(f), Any, Frame})
         @assert precompile(Tuple{typeof(f), Any, Frame, Bool})
     end
     @assert precompile(Tuple{typeof(through_methoddef_or_done!), Any, Frame})
@@ -51,4 +52,5 @@ function _precompile_()
         @assert precompile(Tuple{typeof(append_any), Any})
         @assert precompile(Tuple{typeof(append_any), Any, Vararg{Any, 100}})
     end
+    @assert precompile(Tuple{typeof(whichtt), Any})
 end
