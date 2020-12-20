@@ -123,11 +123,15 @@ end
 
 function scopename(tn::TypeName)
     modpath = Base.fullname(tn.module)
-    return Expr(:., _scopename(modpath...), QuoteNode(tn.name))
+    if isa(modpath, Tuple{Symbol})
+        return Expr(:., modpath[1], QuoteNode(tn.name))
+    end
+    ex = Expr(:., modpath[end-1], QuoteNode(modpath[end]))
+    for i = length(modpath)-2:-1:1
+        ex = Expr(:., modpath[i], ex)
+    end
+    return Expr(:., ex, QuoteNode(tn.name))
 end
-_scopename(sym) = sym
-_scopename(parent, child) = Expr(:., parent, QuoteNode(child))
-_scopename(parent, child, rest...) = Expr(:., parent, _scopename(child, rest...))
 
 ## Predicates
 
@@ -146,9 +150,11 @@ end
 if isdefined(Core, :ReturnNode)
     is_ReturnNode(@nospecialize(node)) = isa(node, Core.ReturnNode)
     is_return(@nospecialize(node)) = is_ReturnNode(node)
+    get_return_node(@nospecialize(node)) = (node::Core.ReturnNode).val
 else
     is_ReturnNode(@nospecialize(node)) = false
     is_return(@nospecialize(node)) = isexpr(node, :return)
+    get_return_node(@nospecialize(node)) = node.args[1]
 end
 
 is_loc_meta(@nospecialize(expr), @nospecialize(kind)) = isexpr(expr, :meta) && length(expr.args) >= 1 && expr.args[1] === kind

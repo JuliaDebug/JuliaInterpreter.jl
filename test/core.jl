@@ -23,4 +23,11 @@ using Test
     if isdefined(Base.IRShow, :show_ir_stmt)   # only works on Julia 1.6 and higher
         @test any(str->occursin(":copyast", str) && occursin("println", str), lines)
     end
+
+    thunk = Meta.lower(Main, :(return 1+2))
+    stmt = thunk.args[1].code[end]   # the return
+    @test JuliaInterpreter.get_return_node(stmt) isa Core.SSAValue
+
+    @test string(JuliaInterpreter.parametric_type_to_expr(Base.Iterators.Stateful{String})) ∈
+        ("Base.Iterators.Stateful{String, VS}", "(Base.Iterators).Stateful{String, VS}")
 end
