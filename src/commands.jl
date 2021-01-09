@@ -12,7 +12,8 @@ by normal dispatch, whereas the default `recurse = finish_and_return!` uses recu
 function finish!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
     while true
         pc = step_expr!(recurse, frame, istoplevel)
-        (pc === nothing || isa(pc, BreakpointRef)) && return pc
+        pc === nothing && return pc
+        isa(pc, BreakpointRef) && return pc
         shouldbreak(frame, pc) && return BreakpointRef(frame.framecode, pc)
     end
 end
