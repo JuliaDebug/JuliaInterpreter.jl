@@ -212,11 +212,12 @@ function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr:
         throw(err)
     end
     if fargs[1] === Core.invoke # invoke needs special handling
-        f_invoked = which(fargs[2], fargs[3])
+        f_invoked = which(fargs[2], fargs[3])::Method
         fargs_pruned = [fargs[2]; fargs[4:end]]
         sig = Tuple{mapany(_Typeof, fargs_pruned)...}
         ret = prepare_framecode(f_invoked, sig; enter_generated=enter_generated)
-        isa(ret, Compiled) && invoke(fargs[2:end]...)
+        isa(ret, Compiled) && return invoke(fargs[2:end]...)
+        @assert ret !== nothing
         framecode, lenv = ret
         lenv === nothing && return framecode  # this was a Builtin
         fargs = fargs_pruned
