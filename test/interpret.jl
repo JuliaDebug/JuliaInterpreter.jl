@@ -735,3 +735,7 @@ end
         @test @interpret(f("asd")) == 3
     end
 end
+
+@testset "#466 parametric_type_to_expr" begin
+    @test JuliaInterpreter.parametric_type_to_expr(Array) == :(Core.Array{T, N})
+end
