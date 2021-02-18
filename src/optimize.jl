@@ -247,7 +247,9 @@ end
 
 function parametric_type_to_expr(@nospecialize(t::Type))
     t isa Core.TypeofBottom && return t
-    t isa UnionAll && (t = t.body)
+    while t isa UnionAll
+        t = t.body
+    end
     t = t::DataType
     if Base.isvarargtype(t)
         return Expr(:(...), t.parameters[1])
