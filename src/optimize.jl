@@ -289,6 +289,7 @@ function build_compiled_call!(stmt::Expr, fcall, code, idx, nargs::Int, sparams:
                         lhs = expr.args[1]
                         return lhs isa SlotNumber && lhs.id === arg.id
                     end
+                    index = index::Int
                     unsafe_convert_expr = code.code[index]::Expr
                     push!(delete_idx, index) # delete the unsafe_convert
                     push!(args, unsafe_convert_expr.args[2])

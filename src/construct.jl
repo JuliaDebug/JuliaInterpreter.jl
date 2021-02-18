@@ -256,13 +256,13 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     method = whichtt(argtypes)
     if method === nothing
         # Call it to generate the exact error
-        f(allargs[2:end]...)
+        return f(allargs[2:end]...)
     end
     ret = prepare_framecode(method, argtypes; enter_generated=enter_generated)
     # Exceptional returns
     if ret === nothing
         # The generator threw an error. Let's generate the same error by calling it.
-        f(allargs[2:end]...)
+        return f(allargs[2:end]...)
     end
     isa(ret, Compiled) && return ret, argtypes
     # Typical return

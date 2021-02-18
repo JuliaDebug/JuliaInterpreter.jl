@@ -23,7 +23,7 @@ function get_call_framecode(fargs::Vector{Any}, parentframe::FrameCode, idx::Int
                 # If this is generated, match only if `enter_generated` also matches
                 fi = d_meth.frameinstance
                 if fi isa FrameInstance
-                    matches = !is_generated(scopeof(fi.framecode)) || enter_generated == fi.enter_generated
+                    matches = !is_generated(scopeof(fi.framecode)::Method) || enter_generated == fi.enter_generated
                 else
                     matches = !enter_generated
                 end
@@ -69,18 +69,17 @@ function get_call_framecode(fargs::Vector{Any}, parentframe::FrameCode, idx::Int
     else
         framecode, args, env, argtypes = ret
         # Store the results of the method lookup in the local method table
-        fi = FrameInstance(framecode, env, is_generated(scopeof(framecode)) && enter_generated)
+        fi = FrameInstance(framecode, env, is_generated(scopeof(framecode::FrameCode)::Method) && enter_generated)
         d_meth = DispatchableMethod(nothing, fi, argtypes)
     end
     if isassigned(parentframe.methodtables, idx)
-        d_meth.next = parentframe.methodtables[idx]
         # Drop the oldest d_meth, if necessary
-        d_methtmp = d_meth.next
+        d_methtmp = d_meth.next = parentframe.methodtables[idx]::DispatchableMethod
         depth = 2
         while d_methtmp.next !== nothing
             depth += 1
-            d_methtmp = d_methtmp.next
             depth >= max_methods && break
+            d_methtmp = d_methtmp.next::DispatchableMethod
         end
         if depth >= max_methods
             d_methtmp.next = nothing

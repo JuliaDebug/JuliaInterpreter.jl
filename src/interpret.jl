@@ -17,7 +17,7 @@ function lookup_expr(frame, e::Expr)
         if isassigned(frame.framedata.sparams, arg)
             return frame.framedata.sparams[arg]
         else
-            syms = sparam_syms(frame.framecode.scope)
+            syms = sparam_syms(frame.framecode.scope::Method)
             throw(UndefVarError(syms[arg]))
         end
     end
