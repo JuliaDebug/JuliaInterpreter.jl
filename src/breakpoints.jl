@@ -82,8 +82,8 @@ function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointSignat
         end
     end
 
-    framecode.scope isa Method || return false
     meth = framecode.scope
+    meth isa Method || return false
     bp.f isa Method && return meth === bp.f
     bp.f === extract_function_from_method(meth) || return false
     bp.sig === nothing && return true
