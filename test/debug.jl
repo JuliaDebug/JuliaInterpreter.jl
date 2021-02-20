@@ -509,4 +509,12 @@ end
         frame, pc = JuliaInterpreter.debug_command(frame, :n)
         @test pc isa BreakpointRef
     end
+
+    @testset "toplevel functions in compiled mode" begin
+        frame = Frame(@__MODULE__, quote
+            foo() = nothing
+            foo()
+        end)
+        @test (debug_command(Compiled(), frame, :c, true); true) # just check this doesn't yield `The applicable method may be too new: ...`
+    end
 # end

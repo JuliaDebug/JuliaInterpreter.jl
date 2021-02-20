@@ -194,7 +194,8 @@ function evaluate_call_compiled!(::Compiled, frame::Frame, call_expr::Expr; ente
     fargs = collect_args(frame, call_expr)
     f = fargs[1]
     popfirst!(fargs)  # now it's really just `args`
-    return f(fargs...)
+    # TODO `invokelatest` is only needed for toplevel functions, don't use it when interpreting local code
+    return Base.invokelatest(f, fargs...)
 end
 
 function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr::Expr; enter_generated::Bool=false)
