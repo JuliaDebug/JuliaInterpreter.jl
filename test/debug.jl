@@ -510,3 +510,25 @@ end
         @test pc isa BreakpointRef
     end
 # end
+
+module Foo
+    using ..JuliaInterpreter
+    function f(x)
+        x
+        @bp
+        x
+    end
+end
+@testset "interpreted methods" begin
+    g(x) = Foo.f(x)
+
+    push!(JuliaInterpreter.compiled_modules, Foo)
+    frame = JuliaInterpreter.enter_call(g, 5)
+    frame, pc = JuliaInterpreter.debug_command(frame, :n)
+    @test !(pc isa BreakpointRef)
+
+    push!(JuliaInterpreter.interpreted_methods, first(methods(Foo.f)))
+    frame = JuliaInterpreter.enter_call(g, 5)
+    frame, pc = JuliaInterpreter.debug_command(frame, :n)
+    @test pc isa BreakpointRef
+end

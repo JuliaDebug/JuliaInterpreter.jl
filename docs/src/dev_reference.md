@@ -91,6 +91,7 @@ JuliaInterpreter.framedict
 JuliaInterpreter.genframedict
 JuliaInterpreter.compiled_methods
 JuliaInterpreter.compiled_modules
+JuliaInterpreter.interpreted_methods
 ```
 
 ## Utilities
