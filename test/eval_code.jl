@@ -96,3 +96,9 @@ JuliaInterpreter.step_expr!(fr)
 @test eval_code(fr, "output") == :sym
 eval_code(fr, "output = :foo")
 @test eval_code(fr, "output") == :foo
+
+let f() = (x = GlobalRef(Main, :doesnotexist);)
+    fr = JuliaInterpreter.enter_call(f)
+    JuliaInterpreter.step_expr!(fr)
+    @test eval_code(fr, :var"%1") == GlobalRef(Main, :doesnotexist)
+end
