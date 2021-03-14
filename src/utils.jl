@@ -619,7 +619,6 @@ function eval_code end
 
 eval_code(frame::Frame, command::AbstractString) = eval_code(frame, Base.parse_input_line(command))
 function eval_code(frame::Frame, expr)
-    maybe_quote(x) = (isa(x, Expr) || isa(x, Symbol)) ? QuoteNode(x) : x
     code = frame.framecode
     data = frame.framedata
     isexpr(expr, :toplevel) && (expr = expr.args[end])
@@ -633,9 +632,9 @@ function eval_code(frame::Frame, expr)
     defined_locals = findall(x -> x isa Some, data.locals)
     res = gensym()
     eval_expr = Expr(:let,
-                     Expr(:block, map(x->Expr(:(=), x...), [(v.name, maybe_quote(v.value isa Core.Box ? v.value.contents : v.value)) for v in vars])...,
-                     map(x->Expr(:(=), x...), [(Symbol("%$i"), maybe_quote(data.ssavalues[i])) for i in defined_ssa])...,
-                     map(x->Expr(:(=), x...), [(Symbol("@_$i"), maybe_quote(data.locals[i].value)) for i in defined_locals])...),
+                     Expr(:block, map(x->Expr(:(=), x...), [(v.name, QuoteNode(v.value isa Core.Box ? v.value.contents : v.value)) for v in vars])...,
+                     map(x->Expr(:(=), x...), [(Symbol("%$i"), QuoteNode(data.ssavalues[i])) for i in defined_ssa])...,
+                     map(x->Expr(:(=), x...), [(Symbol("@_$i"), QuoteNode(data.locals[i].value)) for i in defined_locals])...),
         Expr(:block,
             Expr(:(=), res, expr),
             Expr(:tuple, res, Expr(:tuple, [v.name for v in vars]...))
