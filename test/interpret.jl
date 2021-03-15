@@ -232,7 +232,7 @@ end
 # Issue #354
 using HTTP
 headers = Dict("User-Agent" => "Debugger.jl")
-@test @interpret(HTTP.request("GET", "https://api.github.com/", headers)) isa HTTP.Messages.Response
+@test @interpret(HTTP.request("GET", "https://httpbingo.julialang.org", headers)) isa HTTP.Messages.Response
 
 # "correct" line numbers
 defline = @__LINE__() + 1
