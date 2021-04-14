@@ -495,6 +495,13 @@ g_1(x) = g_2(x)
 g_2(x) = g_3(x)
 g_3(x) = error("foo")
 line_g = @__LINE__
+
+if isdefined(Base, :replaceuserpath)
+    _contractuser = Base.replaceuserpath
+else
+    _contractuser = Base.contractuser
+end
+
 try
     break_on(:error)
     local frame, bp = @interpret g_1(2.0)
@@ -503,7 +510,7 @@ try
     if isdefined(Base, :print_stackframe)
         @test occursin("[1] error(s::String)", stacktrace_lines[3])
         @test occursin("[2] g_3(x::Float64)", stacktrace_lines[5])
-        thefile = Base.replaceuserpath(@__FILE__)
+        thefile = _contractuser(@__FILE__)
         @test occursin("$thefile:$(line_g - 1)", stacktrace_lines[6])
         @test occursin("[3] g_2(x::Float64)", stacktrace_lines[7])
         @test occursin("$thefile:$(line_g - 2)", stacktrace_lines[8])
@@ -531,7 +538,7 @@ try
     @test occursin(string("ERROR: ", sprint(showerror, ErrorException("foo"))), stacktrace_lines[1])
     if isdefined(Base, :print_stackframe)
         @test occursin("[1] error(s::String)", stacktrace_lines[3])
-        thefile = Base.replaceuserpath(@__FILE__)
+        thefile = _contractuser(@__FILE__)
         @test occursin("[2] g_3(x::Float64)", stacktrace_lines[5])
         @test occursin("$thefile:$(line_g - 1)", stacktrace_lines[6])
         @test occursin("[3] g_2(x::Float64)", stacktrace_lines[7])
