@@ -596,7 +596,7 @@ julia> JuliaInterpreter.step_expr!(frame);
 julia> JuliaInterpreter.step_expr!(frame);
 
 julia> JuliaInterpreter.locals(frame)
-2-element Array{JuliaInterpreter.Variable,1}:
+2-element Vector{JuliaInterpreter.Variable}:
  #self# = capture
  x = Core.Box(1)
 
@@ -607,7 +607,7 @@ julia> JuliaInterpreter.eval_code(frame, "x = 2")
 2
 
 julia> JuliaInterpreter.locals(frame)
-2-element Array{JuliaInterpreter.Variable,1}:
+2-element Vector{JuliaInterpreter.Variable}:
  #self# = capture
  x = Core.Box(2)
 ```

@@ -13,7 +13,7 @@ Using this package as an interpreter is straightforward:
 julia> using JuliaInterpreter
 
 julia> list = [1, 2, 5]
-3-element Array{Int64,1}:
+3-element Vector{Int64}:
  1
  2
  5
@@ -53,11 +53,12 @@ julia> @interpret sum([1,2,3])  # no element bigger than 4, breakpoint should no
 6
 
 julia> frame, bpref = @interpret sum([1,2,5])  # should trigger breakpoint
-(Frame for sum(a::AbstractArray; dims) in Base at reducedim.jl:652
-c 1* 652  1 ─      nothing
-  2  652  │   %2 = (Base.#sum#583)(Colon(), #self#, a)
-  3  652  └──      return %2
-a = [1, 2, 5], breakpoint(sum(a::AbstractArray; dims) in Base at reducedim.jl:652, line 652))
+(Frame for sum(a::AbstractArray; dims, kw...) in Base at reducedim.jl:873
+c 1* 873  1 ─      nothing
+  2  873  │   %2 = ($(QuoteNode(NamedTuple)))()
+  3  873  │   %3 = Base.pairs(%2)
+⋮
+a = [1, 2, 5], breakpoint(sum(a::AbstractArray; dims, kw...) in Base at reducedim.jl:873, line 873))
 ```
 
 `frame` is described in more detail on the next page; for now, suffice it to say
@@ -74,11 +75,12 @@ julia> @interpret sum([1,2,5])
 julia> enable(bp)
 
 julia> @interpret sum([1,2,5])
-(Frame for sum(a::AbstractArray; dims) in Base at reducedim.jl:652
-c 1* 652  1 ─      nothing
-  2  652  │   %2 = (Base.#sum#583)(Colon(), #self#, a)
-  3  652  └──      return %2
-a = [1, 2, 5], breakpoint(sum(a::AbstractArray; dims) in Base at reducedim.jl:652, line 652))
+(Frame for sum(a::AbstractArray; dims, kw...) in Base at reducedim.jl:873
+c 1* 873  1 ─      nothing
+  2  873  │   %2 = ($(QuoteNode(NamedTuple)))()
+  3  873  │   %3 = Base.pairs(%2)
+⋮
+a = [1, 2, 5], breakpoint(sum(a::AbstractArray; dims, kw...) in Base at reducedim.jl:873, line 873))
 ```
 
 [`disable`](@ref) and [`enable`](@ref) allow you to turn breakpoints off and on without losing any
@@ -107,17 +109,17 @@ julia> break_on(:error)
 
 julia> fr, pc = @interpret f_outer()
 before error
-(Frame for f_outer() in Main at none:2
-  1  2  1 ─      (println)("before error")
-  2* 3  │        (f_inner)()
-  3  4  │   %3 = (println)("after error")
+(Frame for f_outer() in Main at none:1
+  1  2  1 ─      Base.println("before error")
+  2* 3  │        f_inner()
+  3  4  │   %3 = Base.println("after error")
   4  4  └──      return %3
 callee: f_inner() in Main at none:1, breakpoint(error(s::AbstractString) in Base at error.jl:33, line 33, ErrorException("inner error")))
 
 julia> leaf(fr)
 Frame for error(s::AbstractString) in Base at error.jl:33
-  1  33  1 ─ %1 = (ErrorException)(s)
-  2* 33  │   %2 = (throw)(%1)
+  1  33  1 ─ %1 = ($(QuoteNode(ErrorException)))(_2)
+  2* 33  │   %2 = Core.throw(%1)
   3  33  └──      return %2
 s = "inner error"
 caller: f_inner() in Main at none:1
@@ -152,18 +154,18 @@ julia> @interpret myfunction(1, 2)
 6
 
 julia> @interpret myfunction(5, 6)
-(Frame for myfunction(x, y) in Main at none:2
+(Frame for myfunction(x, y) in Main at none:1
 ⋮
-  3  4  │   %3 = (>)(x, 3)
+  3  4  │   %3 = _2 > 3
   4  4  └──      goto #3 if not %3
 b 5* 4  2 ─      nothing
   6  4  └──      goto #3
-  7  5  3 ┄ %7 = (+)(a, b, x, y)
+  7  5  3 ┄ %7 = _5 + _4 + _2 + _3
 ⋮
 x = 5
 y = 6
-a = 1
-b = 2, breakpoint(myfunction(x, y) in Main at none:2, line 4))
+b = 2
+a = 1, breakpoint(myfunction(x, y) in Main at none:1, line 4))
 ```
 
 Here the breakpoint is marked with a `b` indicating that it is an unconditional breakpoint.

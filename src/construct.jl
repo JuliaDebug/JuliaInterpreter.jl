@@ -240,7 +240,7 @@ julia> framecode
   1  1  1 ─     return 1
 
 julia> frameargs
-2-element Array{Any,1}:
+2-element Vector{Any}:
  mymethod (generic function with 1 method)
  [1.0, 2.0]
 
@@ -248,7 +248,7 @@ julia> lenv
 svec(Float64)
 
 julia> argtypes
-Tuple{typeof(mymethod),Array{Float64,1}}
+Tuple{typeof(mymethod), Vector{Float64}}
 ```
 """
 function prepare_call(@nospecialize(f), allargs; enter_generated = false)
@@ -616,7 +616,7 @@ mymethod (generic function with 1 method)
 
 julia> JuliaInterpreter.enter_call_expr(:(\$mymethod(1)))
 Frame for mymethod(x) in Main at none:1
-  1* 1  1 ─ %1 = (+)(x, 1)
+  1* 1  1 ─ %1 = _2 + 1
   2  1  └──      return %1
 x = 1
 
@@ -624,12 +624,12 @@ julia> mymethod(x::Vector{T}) where T = 1
 mymethod (generic function with 2 methods)
 
 julia> a = [1.0, 2.0]
-2-element Array{Float64,1}:
+2-element Vector{Float64}:
  1.0
  2.0
 
 julia> JuliaInterpreter.enter_call_expr(:(\$mymethod(\$a)))
-Frame for mymethod(x::Array{T,1}) where T in Main at none:1
+Frame for mymethod(x::Vector{T}) where T in Main at none:1
   1* 1  1 ─     return 1
 x = [1.0, 2.0]
 T = Float64
@@ -659,7 +659,7 @@ mymethod (generic function with 1 method)
 
 julia> JuliaInterpreter.enter_call(mymethod, 1)
 Frame for mymethod(x) in Main at none:1
-  1* 1  1 ─ %1 = (+)(x, 1)
+  1* 1  1 ─ %1 = _2 + 1
   2  1  └──      return %1
 x = 1
 
@@ -667,7 +667,7 @@ julia> mymethod(x::Vector{T}) where T = 1
 mymethod (generic function with 2 methods)
 
 julia> JuliaInterpreter.enter_call(mymethod, [1.0, 2.0])
-Frame for mymethod(x::Array{T,1}) where T in Main at none:1
+Frame for mymethod(x::Vector{T}) where T in Main at none:1
   1* 1  1 ─     return 1
 x = [1.0, 2.0]
 T = Float64
@@ -753,7 +753,7 @@ Evaluate `f` on the specified arguments using the interpreter.
 
 ```jldoctest
 julia> a = [1, 7]
-2-element Array{Int64,1}:
+2-element Vector{Int64}:
  1
  7
 
