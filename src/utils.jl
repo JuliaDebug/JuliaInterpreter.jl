@@ -444,7 +444,8 @@ function framecode_lines(src::CodeInfo)
         lines = String[]
         src = replace_coretypes!(copy_codeinfo(src); rev=true)
         reverse_lookup_globalref!(src.code)
-        io = IOContext(buf, :displaysize=>displaysize(stdout))
+        io = IOContext(buf, :displaysize => displaysize(stdout),
+                       :SOURCE_SLOTNAMES => Base.sourceinfo_slotnames(src))
         used = BitSet()
         cfg = Core.Compiler.compute_basic_blocks(src.code)
         for stmt in src.code
