@@ -616,7 +616,7 @@ mymethod (generic function with 1 method)
 
 julia> JuliaInterpreter.enter_call_expr(:(\$mymethod(1)))
 Frame for mymethod(x) in Main at none:1
-  1* 1  1 ─ %1 = _2 + 1
+  1* 1  1 ─ %1 = x + 1
   2  1  └──      return %1
 x = 1
 
@@ -659,7 +659,7 @@ mymethod (generic function with 1 method)
 
 julia> JuliaInterpreter.enter_call(mymethod, 1)
 Frame for mymethod(x) in Main at none:1
-  1* 1  1 ─ %1 = _2 + 1
+  1* 1  1 ─ %1 = x + 1
   2  1  └──      return %1
 x = 1
 

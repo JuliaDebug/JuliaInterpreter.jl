@@ -118,7 +118,7 @@ callee: f_inner() in Main at none:1, breakpoint(error(s::AbstractString) in Base
 
 julia> leaf(fr)
 Frame for error(s::AbstractString) in Base at error.jl:33
-  1  33  1 ─ %1 = ($(QuoteNode(ErrorException)))(_2)
+  1  33  1 ─ %1 = ($(QuoteNode(ErrorException)))(s)
   2* 33  │   %2 = Core.throw(%1)
   3  33  └──      return %2
 s = "inner error"
@@ -156,11 +156,11 @@ julia> @interpret myfunction(1, 2)
 julia> @interpret myfunction(5, 6)
 (Frame for myfunction(x, y) in Main at none:1
 ⋮
-  3  4  │   %3 = _2 > 3
+  3  4  │   %3 = x > 3
   4  4  └──      goto #3 if not %3
 b 5* 4  2 ─      nothing
   6  4  └──      goto #3
-  7  5  3 ┄ %7 = _5 + _4 + _2 + _3
+  7  5  3 ┄ %7 = a + b + x + y
 ⋮
 x = 5
 y = 6
