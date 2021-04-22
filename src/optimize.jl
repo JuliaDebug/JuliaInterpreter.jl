@@ -182,14 +182,16 @@ function optimize!(code::CodeInfo, scope)
                 arg1 = stmt.args[1]
                 if (arg1 === :llvmcall || lookup_stmt(code.code, arg1) === Base.llvmcall) && isempty(sparams) && scope isa Method
                     nargs = length(stmt.args)-4
-                    delete_idx = build_compiled_call!(stmt, Base.llvmcall, code, idx, nargs, sparams, evalmod)
+                    # Call via `invokelatest` to avoid compiling it until we need it
+                    delete_idx = Base.invokelatest(build_compiled_call!, stmt, Base.llvmcall, code, idx, nargs, sparams, evalmod)
                     delete_idx === nothing && error("llvmcall must be compiled, but exited early from build_compiled_call!")
                     push!(foreigncalls_idx, idx)
                     append!(delete_idxs, delete_idx)
                 end
             elseif stmt.head === :foreigncall && scope isa Method
                 nargs = foreigncall_version == 0 ? stmt.args[5]::Int : length(stmt.args[3]::SimpleVector)
-                delete_idx = build_compiled_call!(stmt, :ccall, code, idx, nargs, sparams, evalmod)
+                # Call via `invokelatest` to avoid compiling it until we need it
+                delete_idx = Base.invokelatest(build_compiled_call!, stmt, :ccall, code, idx, nargs, sparams, evalmod)
                 if delete_idx !== nothing
                     push!(foreigncalls_idx, idx)
                     append!(delete_idxs, delete_idx)
