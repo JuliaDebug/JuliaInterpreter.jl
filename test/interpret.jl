@@ -746,3 +746,15 @@ end
 @testset "#466 parametric_type_to_expr" begin
     @test JuliaInterpreter.parametric_type_to_expr(Array) == :(Core.Array{T, N})
 end
+
+@testset "#476 isdefined QuoteNode" begin
+    f() = !true
+
+    @generated function g()
+        ci = @code_lowered f()
+        ci.code[1] = Expr(:isdefined, QuoteNode(Float64))
+        return ci
+    end
+
+    @test @interpret(g()) === true
+end
