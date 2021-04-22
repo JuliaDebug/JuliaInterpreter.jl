@@ -415,14 +415,17 @@ function check_isdefined(frame, @nospecialize(node))
     data = frame.framedata
     if isa(node, SlotNumber)
         return data.locals[node.id] !== nothing
+    elseif isa(node, Core.Compiler.Argument) # just to be safe, since base handles this
+        return data.locals[node.n] !== nothing
     elseif isexpr(node, :static_parameter)
         return isassigned(data.sparams, node.args[1]::Int)
     elseif isa(node, GlobalRef)
         return isdefined(node.mod, node.name)
     elseif isa(node, Symbol)
         return isdefined(moduleof(frame), node)
+    else # QuoteNode or other implicitly quoted object
+        return true
     end
-    error("unrecognized isdefined node ", node)
 end
 
 # For "profiling" where JuliaInterpreter spends its time. See the commented-out block
