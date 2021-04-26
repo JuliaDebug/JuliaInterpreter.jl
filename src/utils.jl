@@ -32,7 +32,7 @@ Like `which` except it operates on the complete tuple-type `tt`.
 """
 function whichtt(@nospecialize(tt))
     # TODO: provide explicit control over world age? In case we ever need to call "old" methods.
-    m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), tt, typemax(UInt))
+    m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), tt, Base.get_world_counter())
     m === nothing && return nothing
     isa(m, Method) && return m
     return m.func::Method
