@@ -25,6 +25,12 @@ function to_function(@nospecialize(x))
     isa(x, GlobalRef) ? getfield(x.mod, x.name) : x
 end
 
+@static if isdefined(Base, :get_world_counter)
+    import Base: get_world_counter
+else
+    get_world_counter() = ccall(:jl_get_world_counter, UInt, ())
+end
+
 """
     method = whichtt(tt)
 
@@ -32,7 +38,7 @@ Like `which` except it operates on the complete tuple-type `tt`.
 """
 function whichtt(@nospecialize(tt))
     # TODO: provide explicit control over world age? In case we ever need to call "old" methods.
-    m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), tt, typemax(UInt))
+    m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), tt, get_world_counter())
     m === nothing && return nothing
     isa(m, Method) && return m
     return m.func::Method

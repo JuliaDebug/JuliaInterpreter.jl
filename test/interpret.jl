@@ -758,3 +758,28 @@ end
 
     @test @interpret(g()) === true
 end
+
+const override_world = typemax(Csize_t) - 1
+macro unreachable(ex)
+    quote
+        world_counter = cglobal(:jl_world_counter, Csize_t)
+        regular_world = unsafe_load(world_counter)
+
+        $(Expr(:tryfinally, # don't introduce scope
+            quote
+                unsafe_store!(world_counter, $(override_world-1))
+                $(esc(ex))
+            end,
+            quote
+                unsafe_store!(world_counter, regular_world)
+            end
+        ))
+    end
+end
+
+@testset "unreachable worlds" begin
+    foobar() = 42
+    @unreachable foobar() = "nope"
+
+    @test @interpret(foobar()) == foobar()
+end
