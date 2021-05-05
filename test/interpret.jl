@@ -783,3 +783,11 @@ end
 
     @test @interpret(foobar()) == foobar()
 end
+
+@testset "issue #479" begin
+    function f()
+        ptr = @cfunction(+, Int, (Int, Int))
+        ccall(ptr::Ptr{Cvoid}, Int, (Int, Int), 1, 2)
+    end
+    @test @interpret(f()) === 3
+end

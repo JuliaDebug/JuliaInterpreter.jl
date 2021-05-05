@@ -25,18 +25,18 @@ function extract_inner_call!(stmt::Expr, idx, once::Bool=false)
     return nothing
 end
 
-function replace_ssa!(@nospecialize(stmt), ssalookup)
-    isa(stmt, Expr) || return nothing
-    for (i, a) in enumerate(stmt.args)
+function replace_ssa(@nospecialize(stmt), ssalookup)
+    isa(stmt, Expr) || return stmt
+    return Expr(stmt.head, Any[
         if isa(a, SSAValue)
-            stmt.args[i] = SSAValue(ssalookup[a.id])
+            SSAValue(ssalookup[a.id])
         elseif isa(a, NewSSAValue)
-            stmt.args[i] = SSAValue(a.id)
+            SSAValue(a.id)
         else
-            replace_ssa!(a, ssalookup)
+            replace_ssa(a, ssalookup)
         end
-    end
-    return nothing
+        for a in stmt.args
+    ]...)
 end
 
 function renumber_ssa!(stmts::Vector{Any}, ssalookup)
@@ -54,10 +54,11 @@ function renumber_ssa!(stmts::Vector{Any}, ssalookup)
         elseif isa(stmt, NewSSAValue)
             stmts[i] = SSAValue(stmt.id)
         elseif isa(stmt, Expr)
-            replace_ssa!(stmt, ssalookup)
+            stmt = replace_ssa(stmt, ssalookup)
             if (stmt.head === :gotoifnot || stmt.head === :enter) && isa(stmt.args[end], Int)
                 stmt.args[end] = jumplookup(ssalookup, stmt.args[end])
             end
+            stmts[i] = stmt
         elseif is_GotoIfNot(stmt)
             cond = (stmt::Core.GotoIfNot).cond
             if isa(cond, SSAValue)
@@ -287,7 +288,7 @@ function build_compiled_call!(stmt::Expr, fcall, code, idx, nargs::Int, sparams:
                     push!(args, cconvert_expr.args[3])
                 elseif arg isa SlotNumber
                     index = findfirst(code.code) do expr
-                        expr isa Expr || return false
+                        Meta.isexpr(expr, :(=)) || return false
                         lhs = expr.args[1]
                         return lhs isa SlotNumber && lhs.id === arg.id
                     end
