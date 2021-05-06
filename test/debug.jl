@@ -94,10 +94,12 @@ end
             end
         end
 
-        f22() = string(:(a+b))
-        @test step_through(f22) == "a + b"
-        f22() = string(QuoteNode(:a))
-        @test step_through(f22) == ":a"
+        let f22() = string(:(a+b))
+            @test step_through(f22) == "a + b"
+        end
+        let f22() = string(QuoteNode(:a))
+            @test step_through(f22) == ":a"
+        end
 
         frame = enter_call(trivial, 2)
         @test debug_command(frame, :s) === nothing

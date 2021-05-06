@@ -57,7 +57,7 @@ function sparam_syms(meth::Method)
     return s
 end
 
-separate_kwargs(args...; kwargs...) = (args, kwargs.data)
+separate_kwargs(args...; kwargs...) = (args, values(kwargs))
 
 pc_expr(src::CodeInfo, pc) = src.code[pc]
 pc_expr(framecode::FrameCode, pc) = pc_expr(framecode.src, pc)
