@@ -187,6 +187,14 @@ struct FrameData
     callargs::Vector{Any}  # a temporary for processing arguments of :call exprs
 end
 
+"""
+    _INACTIVE_EXCEPTION
+
+Represents a case where no exceptions are thrown yet.
+End users will not see this singleton type, otherwise it usually means there is missing
+error handling in the interpretation process.
+"""
+struct _INACTIVE_EXCEPTION end
 
 """
 `Frame` represents the current execution state in a particular call frame.

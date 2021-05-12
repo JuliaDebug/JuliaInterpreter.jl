@@ -76,6 +76,7 @@ JuliaInterpreter.dummy_breakpoint
 Frame
 JuliaInterpreter.FrameCode
 JuliaInterpreter.FrameData
+JuliaInterpreter._INACTIVE_EXCEPTION
 JuliaInterpreter.FrameInstance
 JuliaInterpreter.BreakpointState
 JuliaInterpreter.BreakpointRef

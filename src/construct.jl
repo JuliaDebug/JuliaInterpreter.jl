@@ -299,7 +299,7 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         resize!(sparams, 0)
         empty!(exception_frames)
         resize!(last_reference, ns)
-        last_exception[] = nothing
+        last_exception[] = _INACTIVE_EXCEPTION.instance
     else
         locals = Vector{Union{Nothing,Some{Any}}}(nothing, ns)
         ssavalues = Vector{Any}(undef, ng)
@@ -307,7 +307,7 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         exception_frames = Int[]
         last_reference = Vector{Int}(undef, ns)
         callargs = Any[]
-        last_exception = Ref{Any}(nothing)
+        last_exception = Ref{Any}(_INACTIVE_EXCEPTION.instance)
     end
     fill!(last_reference, 0)
     if isa(framecode.scope, Method)
