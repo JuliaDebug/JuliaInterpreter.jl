@@ -132,9 +132,19 @@ next_call!(frame::Frame, istoplevel::Bool=false) = next_call!(finish_and_return!
 Return the current program counter of `frame` if it is a `:return` or `:call` expression.
 Otherwise, step through the statements of `frame` until the next `:return` or `:call` expression.
 """
-maybe_next_call!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false) =
-    maybe_next_until!(frame -> is_call_or_return(pc_expr(frame)), recurse, frame, istoplevel)
-maybe_next_call!(frame::Frame, istoplevel::Bool=false) = maybe_next_call!(finish_and_return!, frame, istoplevel)
+function maybe_next_call!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false; sameline::Bool=false)
+    sameline || return maybe_next_until!(frame -> is_call_or_return(pc_expr(frame)), recurse, frame, istoplevel)
+    code = frame.framecode.src.code
+    current = linenumber(frame)
+    pc = frame.pc + 1
+    while pc ≤ lastindex(code) && linenumber(frame, pc) == current
+        is_call_or_return(pc_expr(frame, pc)) &&
+            return next_until!(f -> f.pc == pc, recurse, frame, istoplevel)
+        pc += 1
+    end
+    return frame.pc
+end
+maybe_next_call!(frame::Frame, istoplevel::Bool=false; sameline::Bool=true) = maybe_next_call!(finish_and_return!, frame, istoplevel; sameline)
 
 """
     pc = through_methoddef_or_done!(recurse, frame)
@@ -177,11 +187,10 @@ function next_line!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false
 end
 function _next_line!(@nospecialize(recurse), frame, istoplevel, initialline::Int, initialfile::String)
     predicate(frame) = is_return(pc_expr(frame)) || (linenumber(frame) != initialline || getfile(frame) != initialfile)
-
     pc = next_until!(predicate, recurse, frame, istoplevel)
     (pc === nothing || isa(pc, BreakpointRef)) && return pc
     maybe_step_through_kwprep!(recurse, frame, istoplevel)
-    maybe_next_call!(recurse, frame, istoplevel)
+    maybe_next_call!(recurse, frame, istoplevel, sameline = true)
 end
 next_line!(frame::Frame, istoplevel::Bool=false) = next_line!(finish_and_return!, frame, istoplevel)
 
