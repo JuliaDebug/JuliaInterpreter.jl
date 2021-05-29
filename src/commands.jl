@@ -134,15 +134,11 @@ Otherwise, step through the statements of `frame` until the next `:return` or `:
 """
 function maybe_next_call!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false; sameline::Bool=false)
     sameline || return maybe_next_until!(frame -> is_call_or_return(pc_expr(frame)), recurse, frame, istoplevel)
-    code = frame.framecode.src.code
-    current = linenumber(frame)
-    pc = frame.pc + 1
-    while pc ≤ lastindex(code) && linenumber(frame, pc) == current
-        is_call_or_return(pc_expr(frame, pc)) &&
-            return next_until!(f -> f.pc == pc, recurse, frame, istoplevel)
-        pc += 1
+    function next(frame)
+        expr = pc_expr(frame)
+        return is_call_or_return(expr) || expr isa Expr && expr.head == :(=) && expr.args[1] isa SlotNumber && frame.framecode.src.slotnames[expr.args[1].id] !== Symbol("") || is_gotoifnot(expr) || expr isa Core.GotoNode
     end
-    return frame.pc
+    return maybe_next_until!(next, recurse, frame, istoplevel)
 end
 maybe_next_call!(frame::Frame, istoplevel::Bool=false; sameline::Bool=true) = maybe_next_call!(finish_and_return!, frame, istoplevel; sameline)
 
