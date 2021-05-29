@@ -132,15 +132,9 @@ next_call!(frame::Frame, istoplevel::Bool=false) = next_call!(finish_and_return!
 Return the current program counter of `frame` if it is a `:return` or `:call` expression.
 Otherwise, step through the statements of `frame` until the next `:return` or `:call` expression.
 """
-function maybe_next_call!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false; sameline::Bool=false)
-    sameline || return maybe_next_until!(frame -> is_call_or_return(pc_expr(frame)), recurse, frame, istoplevel)
-    function next(frame)
-        expr = pc_expr(frame)
-        return is_call_or_return(expr) || expr isa Expr && expr.head == :(=) && expr.args[1] isa SlotNumber && frame.framecode.src.slotnames[expr.args[1].id] !== Symbol("") || is_gotoifnot(expr) || expr isa Core.GotoNode
-    end
-    return maybe_next_until!(next, recurse, frame, istoplevel)
-end
-maybe_next_call!(frame::Frame, istoplevel::Bool=false; sameline::Bool=true) = maybe_next_call!(finish_and_return!, frame, istoplevel; sameline)
+maybe_next_call!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false) =
+    maybe_next_until!(frame -> is_call_or_return(pc_expr(frame)), recurse, frame, istoplevel)
+maybe_next_call!(frame::Frame, istoplevel::Bool=false) = maybe_next_call!(finish_and_return!, frame, istoplevel)
 
 """
     pc = through_methoddef_or_done!(recurse, frame)
@@ -186,9 +180,27 @@ function _next_line!(@nospecialize(recurse), frame, istoplevel, initialline::Int
     pc = next_until!(predicate, recurse, frame, istoplevel)
     (pc === nothing || isa(pc, BreakpointRef)) && return pc
     maybe_step_through_kwprep!(recurse, frame, istoplevel)
-    maybe_next_call!(recurse, frame, istoplevel, sameline = true)
+    maybe_next_until!(is_next_stop, recurse, frame, istoplevel)
 end
 next_line!(frame::Frame, istoplevel::Bool=false) = next_line!(finish_and_return!, frame, istoplevel)
+
+function is_next_stop(frame::Frame)
+    expr = pc_expr(frame)
+    return is_call(expr) || is_assignment(frame) || is_return(expr) || is_gotoifnot(expr) || expr isa Core.GotoNode
+end
+
+function is_assignment(frame::Frame)
+    expr = pc_expr(frame)
+    isexpr(expr, :(=)) || return false
+    var = expr.args[1]
+    if var isa SlotNumber
+        # assignment to a local variable
+        return frame.framecode.src.slotnames[var.id] !== Symbol("")
+    else
+        # assignment to a global variable
+        return true
+    end
+end
 
 """
     pc = until_line!(recurse, frame, line=nothing istoplevel=false)
