@@ -189,19 +189,18 @@ end
 
 function prepare_slotfunction(framecode::FrameCode, body::Union{Symbol,Expr})
     uslotnames = Set{Symbol}()
-    slotnames  = Symbol[]
-    for name in framecode.src.slotnames
-        if name ∉ uslotnames
-            push!(slotnames, name)
-            push!(uslotnames, name)
-        end
-    end
     framename, dataname = gensym("frame"), gensym("data")
     assignments = Expr[:($dataname = $framename.framedata)]
     default = Unassigned()
-    for i = 1:length(slotnames)
-        slotname = framecode.src.slotnames[i]
-        qslotname = QuoteNode(slotname)
+    for slotname in framecode.src.slotnames
+        if slotname === Symbol("")
+            continue
+        end
+        if slotname ∉ uslotnames
+            push!(uslotnames, slotname)
+        else
+            continue
+        end
         list = framecode.slotnamelists[slotname]
         if length(list) == 1
             maxexpr = :($dataname.last_reference[$(list[1])] > 0 ? $(list[1]) : 0)
