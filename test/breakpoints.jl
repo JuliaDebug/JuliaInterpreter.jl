@@ -451,7 +451,13 @@ end
         f = JuliaInterpreter.enter_call(duplnames, (1,2))
         ex = JuliaInterpreter.prepare_slotfunction(f.framecode, :(i==1))
         @test ex isa Expr
-        @test ex.args[end].args[end-1].args[1] == :i
+        found = false
+        for arg in ex.args[end].args
+            if arg.args[1] == :i
+                found = true
+            end
+        end
+        @test found
         @test last(JuliaInterpreter.debug_command(f, :c)) isa BreakpointRef
     end
 end
