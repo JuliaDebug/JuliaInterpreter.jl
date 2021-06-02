@@ -433,3 +433,31 @@ empty!(breakpoint_update_hooks)
         remove()
     end
 end
+
+@testset "duplicate slotnames" begin
+    tmp_dupl() = (1,2,3,4)
+    ln = @__LINE__
+    function duplnames(x)
+        for iter in Iterators.CartesianIndices(x)
+            i = iter[1]
+            c = i
+            a, b, c, d = tmp_dupl()
+        end
+        return x
+    end
+    bp = breakpoint(@__FILE__, ln+5, :(i == 1))
+    c = @code_lowered(duplnames((1,2)))
+    if length(unique(c.slotnames)) < length(c.slotnames)
+        f = JuliaInterpreter.enter_call(duplnames, (1,2))
+        ex = JuliaInterpreter.prepare_slotfunction(f.framecode, :(i==1))
+        @test ex isa Expr
+        found = false
+        for arg in ex.args[end].args
+            if arg.args[1] == :i
+                found = true
+            end
+        end
+        @test found
+        @test last(JuliaInterpreter.debug_command(f, :c)) isa BreakpointRef
+    end
+end
