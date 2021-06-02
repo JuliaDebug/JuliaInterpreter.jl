@@ -193,9 +193,6 @@ function prepare_slotfunction(framecode::FrameCode, body::Union{Symbol,Expr})
     assignments = Expr[:($dataname = $framename.framedata)]
     default = Unassigned()
     for slotname in framecode.src.slotnames
-        if slotname === Symbol("")
-            continue
-        end
         if slotname ∉ uslotnames
             push!(uslotnames, slotname)
         else
