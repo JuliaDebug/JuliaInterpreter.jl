@@ -791,3 +791,16 @@ end
     end
     @test @interpret(f()) === 3
 end
+
+@testset "https://github.com/JuliaLang/julia/pull/41018" begin
+    m = Module()
+    @eval m begin
+        struct Foo
+            foo::Int
+            bar
+        end
+    end
+    # this shouldn't throw "type DataType has no field hasfreetypevars"
+    # even after https://github.com/JuliaLang/julia/pull/41018
+    @test Int === @interpret Core.Compiler.getfield_tfunc(m.Foo, Core.Compiler.Const(:foo))
+end

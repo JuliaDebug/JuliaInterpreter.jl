@@ -255,10 +255,10 @@ function parametric_type_to_expr(@nospecialize(t::Type))
     if Base.isvarargtype(t)
         return Expr(:(...), t.parameters[1])
     end
-    if t.hasfreetypevars
+    if Base.has_free_typevars(t)
         params = map(t.parameters) do @nospecialize(p)
             isa(p, TypeVar) ? p.name :
-            isa(p, DataType) && p.hasfreetypevars ? parametric_type_to_expr(p) : p
+            isa(p, DataType) && Base.has_free_typevars(p) ? parametric_type_to_expr(p) : p
         end
         return Expr(:curly, scopename(t.name), params...)::Expr
     end
