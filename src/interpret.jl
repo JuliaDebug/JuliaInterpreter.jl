@@ -278,7 +278,7 @@ function evaluate_methoddef(frame, node)
     body = @lookup(frame, node.args[3])
     # branching on https://github.com/JuliaLang/julia/pull/41137
     @static if isdefined(Core.Compiler, :OverlayMethodTable)
-        ccall(:jl_method_def, Cvoid, (Any,Ptr{Cvoid},Any,Any), sig, C_NULL, body, moduleof(frame))
+        ccall(:jl_method_def, Cvoid, (Any, Ptr{Cvoid}, Any, Any), sig, C_NULL, body, moduleof(frame))
     else
         ccall(:jl_method_def, Cvoid, (Any, Any, Any), sig, body, moduleof(frame))
     end
