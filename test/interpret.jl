@@ -804,3 +804,10 @@ end
     # even after https://github.com/JuliaLang/julia/pull/41018
     @test Int === @interpret Core.Compiler.getfield_tfunc(m.Foo, Core.Compiler.Const(:foo))
 end
+
+@testset "https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/488" begin
+    m = Module()
+    ex = :(foo() = return)
+    JuliaInterpreter.finish_and_return!(Frame(m, ex), true)
+    @test isdefined(m, :foo)
+end
