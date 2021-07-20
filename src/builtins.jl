@@ -52,13 +52,14 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             return Some{Any}(===(getargs(args, frame)...))
         end
     elseif f === Core._apply
-        args = getargs(args, frame)
+        argswrapped = getargs(args, frame)
         if !expand
-            return Some{Any}(Core._apply(args...))
+            return Some{Any}(Core._apply(argswrapped...))
         end
-        new_expr = Expr(:call, args[1])
-        popfirst!(args)
-        for x in args
+        new_expr = Expr(:call, argswrapped[1])
+        popfirst!(argswrapped)
+        argsflat = append_any(argswrapped...)
+        for x in argsflat
             push!(new_expr.args, (isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode)) ? QuoteNode(x) : x)
         end
         return new_expr
