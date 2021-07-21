@@ -106,6 +106,13 @@ function set_compiled_methods()
         end
     end
 
+    # This is about performance, not safety (issue #462)
+    push!(compiled_methods, which(nameof, (Module,)))
+    push!(compiled_methods, which(Base.binding_module, (Module, Symbol)))
+    push!(compiled_methods, which(Base.unsafe_pointer_to_objref, (Ptr,)))
+    push!(compiled_methods, which(Vector{Int}, (UndefInitializer, Int)))
+    push!(compiled_methods, which(fill!, (Vector{Int8}, Int)))
+
     ###########
     # Modules #
     ###########
