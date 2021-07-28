@@ -811,3 +811,10 @@ end
     JuliaInterpreter.finish_and_return!(Frame(m, ex), true)
     @test isdefined(m, :foo)
 end
+
+# Related to fixing https://github.com/timholy/Revise.jl/issues/625
+module ForInclude end
+@testset "include" begin
+    ex = :(include("dummy_file.jl"))
+    @test JuliaInterpreter.finish_and_return!(Frame(ForInclude, ex), true) == 55
+end

@@ -64,26 +64,24 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         end
         return new_expr
     elseif @static isdefined(Core, :_call_latest) ? f === Core._call_latest : false
-        argswrapped = getargs(args, frame)
+        args = getargs(args, frame)
         if !expand
-            return Some{Any}(Core._call_latest(argswrapped...))
+            return Some{Any}(Core._call_latest(args...))
         end
-        new_expr = Expr(:call, argswrapped[1])
-        popfirst!(argswrapped)
-        argsflat = append_any(argswrapped...)
-        for x in argsflat
+        new_expr = Expr(:call, args[1])
+        popfirst!(args)
+        for x in args
             push!(new_expr.args, (isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode)) ? QuoteNode(x) : x)
         end
         return new_expr
     elseif @static isdefined(Core, :_apply_latest) ? f === Core._apply_latest : false
-        argswrapped = getargs(args, frame)
+        args = getargs(args, frame)
         if !expand
-            return Some{Any}(Core._apply_latest(argswrapped...))
+            return Some{Any}(Core._apply_latest(args...))
         end
-        new_expr = Expr(:call, argswrapped[1])
-        popfirst!(argswrapped)
-        argsflat = append_any(argswrapped...)
-        for x in argsflat
+        new_expr = Expr(:call, args[1])
+        popfirst!(args)
+        for x in args
             push!(new_expr.args, (isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode)) ? QuoteNode(x) : x)
         end
         return new_expr
