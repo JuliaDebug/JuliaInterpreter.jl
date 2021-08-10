@@ -299,8 +299,11 @@ end
 # issue #76
 let TT = Union{UInt8, Int8}
     a = TT[0x0, 0x1]
-    pa = pointer(a)
-    @interpret unsafe_store!(pa, 0x1, 2)
+    pa = Ptr{UInt8}(pointer(a))
+    GC.@preserve a begin
+        @interpret unsafe_store!(pa, 0x2, 2)
+    end
+    @test a == TT[0x0, 0x2]
 end
 
 # issue #92
