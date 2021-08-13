@@ -48,7 +48,7 @@ end
 
 if !isdefined(Base, Symbol("@something"))
     macro something(x...)
-        :($(GlobalRef(Base, :something))($(map(esc, x)...)))
+        :(something($(map(esc, x)...)))
     end
 end
 
