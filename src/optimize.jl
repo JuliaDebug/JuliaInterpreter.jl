@@ -419,7 +419,7 @@ function replace_coretypes_list!(list::AbstractVector; rev::Bool)
         end
         if isa(x, Core.SSAValue)
             return SSAValue(x.id)
-        elseif isa(x, Core.SlotNumber)
+        elseif isa(x, Core.SlotNumber) || isa(x, Core.TypedSlot)
             return SlotNumber(x.id)
         end
         return x

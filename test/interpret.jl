@@ -821,3 +821,23 @@ module ForInclude end
     ex = :(include("dummy_file.jl"))
     @test JuliaInterpreter.finish_and_return!(Frame(ForInclude, ex), true) == 55
 end
+
+@testset "TypedSlots" begin
+    function foo(x, y)
+        z = x + y
+        if z < 4
+            z += 1
+        end
+        u = (x -> x + z)(x)
+        v = Ref{Union{Int, Missing}}(x)[] + y
+        return u + v
+    end
+
+    ci = code_typed(foo, NTuple{2, Int}; optimize=false)[][1]
+    mi = Core.Compiler.method_instances(foo, NTuple{2, Int})[]
+
+    frameargs = Any[foo, 1, 2]
+    framecode = JuliaInterpreter.FrameCode(mi.def, ci)
+    frame = JuliaInterpreter.prepare_frame(framecode, frameargs, mi.sparam_vals)
+    @test JuliaInterpreter.finish_and_return!(frame) === 8
+end
