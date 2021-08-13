@@ -46,7 +46,7 @@ else
     end
 end
 
-if !@isdefined(var"@something")
+if !isdefined(Base, Symbol("@something"))
     macro something(x...)
         :($(GlobalRef(Base, :something))($(map(esc, x)...)))
     end
