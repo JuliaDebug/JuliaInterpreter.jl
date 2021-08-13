@@ -46,6 +46,12 @@ else
     end
 end
 
+if !isdefined(Base, Symbol("@something"))
+    macro something(x...)
+        :(something($(map(esc, x)...)))
+    end
+end
+
 include("types.jl")
 include("utils.jl")
 include("construct.jl")

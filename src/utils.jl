@@ -695,8 +695,9 @@ show_stackloc(frame) = show_stackloc(stdout, frame)
 
 # Printing of stacktraces and errors with Frame
 function Base.StackTraces.StackFrame(frame::Frame)
-    if scopeof(frame) isa Method
-        method = frame.framecode.scope
+    scope = scopeof(frame)
+    if scope isa Method
+        method = scope
         method_args = something.(frame.framedata.locals[1:method.nargs])
         atypes = Tuple{mapany(_Typeof, method_args)...}
         sig = method.sig
@@ -709,8 +710,8 @@ function Base.StackTraces.StackFrame(frame::Frame)
     end
     Base.StackFrame(
         fname,
-        Symbol(JuliaInterpreter.getfile(frame)),
-        JuliaInterpreter.linenumber(frame),
+        Symbol(getfile(frame)),
+        @something(linenumber(frame), getline(linetable(frame, 1))),
         mi,
         false,
         false,
