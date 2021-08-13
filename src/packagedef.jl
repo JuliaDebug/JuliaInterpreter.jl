@@ -46,6 +46,12 @@ else
     end
 end
 
+if !@isdefined(var"@something")
+    macro something(x...)
+        :($(GlobalRef(Base, :something))($(map(esc, x)...)))
+    end
+end
+
 include("types.jl")
 include("utils.jl")
 include("construct.jl")
