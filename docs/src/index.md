@@ -197,7 +197,7 @@ To return to our example of keeping GUI up to date, the hooks would look somethi
 using JuliaInterpreter
 using JuliaInterpreter: AbstractBreakpoint, update_states!, on_breakpoints_updated
 
-breakpoint_gui_elements = Dict{AbstractBreakpoint, MarginDot}[]
+breakpoint_gui_elements = Dict{AbstractBreakpoint, MarginDot}()
 # ...
 function breakpoint_gui_hook(::typeof(breakpoint), bp::AbstractBreakpoint)
     bp_dot = MarginDot(bp)
