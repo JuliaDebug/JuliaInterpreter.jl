@@ -9,11 +9,14 @@ end
 
 const juliadir = dirname(dirname(Sys.BINDIR))
 const testdir = joinpath(juliadir, "test")
-if isdir(testdir)
-    include(joinpath(testdir, "choosetests.jl"))
-else
-    @error "Julia's test/ directory not found, can't run Julia tests"
+if !isdir(testdir)
+    run(`git clone https://github.com/JuliaLang/julia.git`)
+    cd("julia") do
+        run(`git checkout $(Base.GIT_VERSION_INFO.commit)`)
+        run(`cp -r test $testdir`)
+    end
 end
+include(joinpath(testdir, "choosetests.jl"))
 
 function test_path(test)
     t = split(test, '/')
