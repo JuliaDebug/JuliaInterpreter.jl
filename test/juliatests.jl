@@ -83,7 +83,7 @@ move_to_node1("stress")
 move_to_node1("Distributed")
 
 @testset "Julia tests" begin
-    nworkers = min(Sys.CPU_THREADS, length(tests))
+    nworkers = 1 #min(Sys.CPU_THREADS, length(tests))
     println("Using $nworkers workers")
     results = Dict{String,Any}()
     tests0 = copy(tests)
