@@ -63,6 +63,19 @@ mutable struct DispatchableMethod
     sig::Type # for speed of matching, this is a *concrete* signature. `sig <: frameinstance.framecode.scope.sig`
 end
 
+# 0: none
+# 1: user
+# 2: all
+const COVERAGE = Ref{Int8}()
+function do_coverage(m::Module)
+    COVERAGE[] == 2 && return true
+    if COVERAGE[] == 1
+       root = Base.moduleroot(m)
+       return root !== Base && root !== Core
+    end
+    return false
+end
+
 """
 `FrameCode` holds static information about a method or toplevel code.
 One `FrameCode` can be shared by many calling `Frame`s.
@@ -83,6 +96,7 @@ struct FrameCode
     slotnamelists::Dict{Symbol,Vector{Int}}
     used::BitSet
     generator::Bool   # true if this is for the expression-generator of a @generated function
+    report_coverage::Bool
 end
 
 const BREAKPOINT_EXPR = :($(QuoteNode(getproperty))($JuliaInterpreter, :__BREAKPOINT_MARKER__))
@@ -116,7 +130,8 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
         slotnamelists[sym] = push!(list, i)
     end
     used = find_used(src)
-    framecode = FrameCode(scope, src, methodtables, breakpoints, slotnamelists, used, generator)
+    report_coverage = do_coverage(moduleof(scope))
+    framecode = FrameCode(scope, src, methodtables, breakpoints, slotnamelists, used, generator, report_coverage)
     if scope isa Method
         for bp in _breakpoints
             # Manual union splitting
@@ -217,6 +232,7 @@ mutable struct Frame
     assignment_counter::Int64
     caller::Union{Frame,Nothing}
     callee::Union{Frame,Nothing}
+    last_codeloc::Int32
 end
 function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing)
     if length(junk_frames) > 0
@@ -227,9 +243,10 @@ function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing)
         frame.assignment_counter = 1
         frame.caller = caller
         frame.callee = nothing
+        frame.last_codeloc = 0
         return frame
     else
-        return Frame(framecode, framedata, pc, 1, caller, nothing)
+        return Frame(framecode, framedata, pc, 1, caller, nothing, 0)
     end
 end
 """
