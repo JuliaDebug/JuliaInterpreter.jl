@@ -17,5 +17,11 @@ end
     i = findfirst(contains(r"coverage_example\.jl\.\d+\.cov"), files)
     i === nothing && error("no coverage files found in $dir: $files")
     cov_file = joinpath(dir, files[i])
-    @test read(cov_file, String) == read(joinpath(dir, "coverage_example.jl.cov"), String)
+    cov_data = read(cov_file, String)
+    expected = read(joinpath(dir, "coverage_example.jl.cov"), String)
+    if Sys.iswindows()
+        cov_data = replace(cov_data, "\r\n" => "\n")
+        expected = replace(cov_data, "\r\n" => "\n")
+    end
+    @test cov_data == expected
 end
