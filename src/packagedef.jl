@@ -127,6 +127,7 @@ end
 
 function __init__()
     set_compiled_methods()
+    COVERAGE[] = Base.JLOptions().code_coverage
     # If we interpret into Core.Compiler, we need to take precautions to avoid needing
     # inference of JuliaInterpreter methods in the middle of a `ccall(:jl_typeinf_begin, ...)`
     # block.

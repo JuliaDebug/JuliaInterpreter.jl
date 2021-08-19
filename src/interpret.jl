@@ -433,6 +433,20 @@ function check_isdefined(frame, @nospecialize(node))
     end
 end
 
+function coverage_visit_line!(frame::Frame)
+    pc, code = frame.pc, frame.framecode
+    code.report_coverage || return
+    src = code.src
+    codeloc = src.codelocs[pc]
+    if codeloc != frame.last_codeloc
+        linetable = src.linetable::Vector{Any}
+        lineinfo = linetable[codeloc]::Core.LineInfoNode
+        file, line = String(lineinfo.file), lineinfo.line
+        ccall(:jl_coverage_visit_line, Cvoid, (Cstring, Csize_t, Cint), file, sizeof(file), line)
+        frame.last_codeloc = codeloc
+    end
+end
+
 # For "profiling" where JuliaInterpreter spends its time. See the commented-out block
 # in `step_expr!`
 const _location = Dict{Tuple{Method,Int},Int}()
@@ -444,6 +458,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
     #     @show node
     # end
     @assert is_leaf(frame)
+    @static VERSION >= v"1.8.0-DEV.370" && coverage_visit_line!(frame)
     local rhs
     # For debugging:
     # show_stackloc(frame)
