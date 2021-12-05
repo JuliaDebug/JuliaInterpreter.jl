@@ -133,9 +133,6 @@ function lookup_global_refs!(ex::Expr)
     return nothing
 end
 
-# See https://github.com/JuliaLang/julia/pull/32800
-const foreigncall_version = VERSION < v"1.3.0-alpha.108" ? 0 : 1
-
 """
     optimize!(code::CodeInfo, mod::Module)
 
@@ -190,7 +187,7 @@ function optimize!(code::CodeInfo, scope)
                     append!(delete_idxs, delete_idx)
                 end
             elseif stmt.head === :foreigncall && scope isa Method
-                nargs = foreigncall_version == 0 ? stmt.args[5]::Int : length(stmt.args[3]::SimpleVector)
+                nargs = length(stmt.args[3]::SimpleVector)
                 # Call via `invokelatest` to avoid compiling it until we need it
                 delete_idx = Base.invokelatest(build_compiled_call!, stmt, :ccall, code, idx, nargs, sparams, evalmod)
                 if delete_idx !== nothing
@@ -365,7 +362,7 @@ function build_compiled_call!(stmt::Expr, fcall, code, idx, nargs::Int, sparams:
             push!(wrapargs, :(::$TVal{$sparam}))
         end
         methname = gensym("compiledcall")
-        calling_convention = stmt.args[foreigncall_version == 0 ? 4 : 5]
+        calling_convention = stmt.args[5]
         if calling_convention === :(:llvmcall)
             def = :(
                 function $methname($(wrapargs...)) where {$(sparams...)}

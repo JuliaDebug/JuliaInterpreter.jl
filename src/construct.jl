@@ -94,22 +94,6 @@ function get_source(g::GeneratedFunctionStub, env)
     return eval(b)
 end
 
-function copy_codeinfo(code::CodeInfo)
-    @static if VERSION < v"1.1.0-DEV.762"
-        newcode = ccall(:jl_new_struct_uninit, Any, (Any,), CodeInfo)::CodeInfo
-        for (i, name) in enumerate(fieldnames(CodeInfo))
-            if isdefined(code, name)
-                val = getfield(code, name)
-                ccall(:jl_set_nth_field, Cvoid, (Any, Csize_t, Any), newcode, i-1, val===nothing || isa(val, Union{Type, Method}) ? val : copy(val))
-            end
-        end
-        return newcode
-    else
-        # Inline this when support for VERSION above is dropped
-        return copy(code)
-    end
-end
-
 """
     frun, allargs = prepare_args(fcall, fargs, kwargs)
 
@@ -148,13 +132,6 @@ function prepare_args(@nospecialize(f), allargs, kwargs)
     return f, allargs
 end
 
-if VERSION < v"1.2-" || !isdefined(Core.Compiler, :specialize_method)
-    specialize_method(method::Method, @nospecialize(atypes), sparams::SimpleVector) =
-        Core.Compiler.code_for_method(method, atypes, sparams, typemax(UInt))
-else
-    const specialize_method = Core.Compiler.specialize_method
-end
-
 function prepare_framecode(method::Method, @nospecialize(argtypes); enter_generated=false)
     sig = method.sig
     if (method.module ∈ compiled_modules || method ∈ compiled_methods) && !(method ∈ interpreted_methods)
@@ -174,7 +151,7 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
             # If we're stepping into a staged function, we need to use
             # the specialization, rather than stepping through the
             # unspecialized method.
-            code = Core.Compiler.get_staged(specialize_method(method, argtypes, lenv))
+            code = Core.Compiler.get_staged(Core.Compiler.specialize_method(method, argtypes, lenv))
             code === nothing && return nothing
             generator = false
         else
@@ -282,7 +259,7 @@ end
 
 function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=empty_svec, caller_will_catch_err::Bool=false)
     src = framecode.src
-    slotnames = src.slotnames::SlotNamesType
+    slotnames = src.slotnames
     ssavt = src.ssavaluetypes
     ng, ns = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any}), length(src.slotflags)
     if length(junk_framedata) > 0
@@ -514,15 +491,6 @@ function queuenext!(iter::ExprSplitter)
         ex = ex.args[3]::Expr
         push_modex!(iter, mod, ex)
         return queuenext!(iter)
-    elseif VERSION < v"1.2" && is_function_def(ex)
-        # Newer Julia versions insert a LineNumberNode between statements, but at least Julia 1.0 does not.
-        # Scan the function body for a LNN
-        lnn = firstline(ex)
-        if isa(lnn, LineNumberNode)
-            if iter.lnn === nothing || iter.lnn.line < lnn.line
-                iter.lnn = LineNumberNode(lnn.line-1, lnn.file)
-            end
-        end
     elseif head === :macrocall
         iter.lnn = ex.args[2]::LineNumberNode
     elseif head === :block || head === :toplevel

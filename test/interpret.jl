@@ -648,8 +648,7 @@ end
 let
     # NOTE we need to make sure this code block is compiled, since vecadd is generated function,
     # but currently `@interpret` doesn't handle a call to generated functions very well
-    @static if isdefined(Base, :Experimental) &&
-               isdefined(Base.Experimental, Symbol("@force_compile"))
+    @static if isdefined(Base.Experimental, Symbol("@force_compile"))
         Base.Experimental.@force_compile
     end
     a = (VecElement{Float64}(1.0), VecElement{Float64}(2.0))
@@ -746,7 +745,7 @@ end
     @test length(JuliaInterpreter.locals(frame)) > 0
 end
 
-@static if VERSION >= v"1.5" && Sys.islinux()
+@static if Sys.islinux()
     @testset "@ccall" begin
         f(s) = @ccall strlen(s::Cstring)::Csize_t
         @test @interpret(f("asd")) == 3
