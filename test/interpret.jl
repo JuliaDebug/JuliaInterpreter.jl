@@ -645,7 +645,14 @@ module VecTest
     end
     f() = 1.0 * one(Tensor{2,3})
 end
-let a = (VecElement{Float64}(1.0), VecElement{Float64}(2.0))
+let
+    # NOTE we need to make sure this code block is compiled, since vecadd is generated function,
+    # but currently `@interpret` doesn't handle a call to generated functions very well
+    @static if isdefined(Base, :Experimental) &&
+               isdefined(Base.Experimental, Symbol("@force_compile"))
+        Base.Experimental.@force_compile
+    end
+    a = (VecElement{Float64}(1.0), VecElement{Float64}(2.0))
     @test @interpret(VecTest.vecadd(a, a)) == VecTest.vecadd(a, a)
 end
 @test @interpret(VecTest.f()) == [1 0 0; 0 1 0; 0 0 1]
