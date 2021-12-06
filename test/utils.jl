@@ -38,7 +38,8 @@ end
 function Aborted(frame::Frame, pc)
     src = frame.framecode.src
     lineidx = src.codelocs[pc]
-    return Aborted(src.linetable[lineidx])
+    lineinfo = JuliaInterpreter.linetable(frame, lineidx; macro_caller=true)
+    return Aborted(lineinfo)
 end
 
 """

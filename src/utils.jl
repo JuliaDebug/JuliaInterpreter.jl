@@ -288,7 +288,15 @@ function linetable(arg)
     end
     return (arg::CodeInfo).linetable::Union{Vector{Core.LineInfoNode},Vector{Any}}  # issue #264
 end
-linetable(arg, i::Integer) = linetable(arg)[i]::Union{Expr,LineTypes}
+_linetable(list::Vector, i::Integer) = list[i]::Union{Expr,LineTypes}
+function linetable(arg, i::Integer; macro_caller::Bool=false)::Union{Expr,LineTypes}
+    lt = linetable(arg)
+    lineinfo = _linetable(lt, i)
+    macro_caller && while lineinfo.method === Symbol("macro expansion") && lineinfo.inlined_at != 0
+        lineinfo = _linetable(lt, lineinfo.inlined_at)
+    end
+    return lineinfo
+end
 
 function codelocs(arg)
     if isa(arg, Frame)
@@ -352,19 +360,23 @@ function firstline(ex::Expr)
 end
 
 """
-    loc = whereis(frame, pc::Int=frame.pc)
+    loc = whereis(frame, pc::Int=frame.pc; macro_caller=false)
 
 Return the file and line number for `frame` at `pc`.  If this cannot be
 determined, `loc == nothing`. Otherwise `loc == (filepath, line)`.
+
+By default, any statements expanded from a macro are attributed to the macro
+definition, but with`macro_caller=true` you can obtain the location within the
+method that issued the macro.
 """
-function CodeTracking.whereis(framecode::FrameCode, pc::Int)
+function CodeTracking.whereis(framecode::FrameCode, pc::Int; kwargs...)
     codeloc = codelocation(framecode.src, pc)
     codeloc == 0 && return nothing
-    lineinfo = linetable(framecode, codeloc)
+    lineinfo = linetable(framecode, codeloc; kwargs...)
     m = framecode.scope
     return isa(m, Method) ? whereis(lineinfo, m) : (getfile(lineinfo), getline(lineinfo))
 end
-CodeTracking.whereis(frame::Frame, pc::Int=frame.pc) = whereis(frame.framecode, pc)
+CodeTracking.whereis(frame::Frame, pc::Int=frame.pc; kwargs...) = whereis(frame.framecode, pc; kwargs...)
 
 """
     line = linenumber(framecode, pc)
