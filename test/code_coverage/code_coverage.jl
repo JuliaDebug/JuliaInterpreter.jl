@@ -8,6 +8,8 @@ let
     end
 end
 
+#using DiffUtils
+
 @testset "code coverage" begin
     out = read(`$(Base.julia_cmd()) --startup=no --project=$(dirname(dirname(@__DIR__))) --code-coverage=user
                 $(joinpath(@__DIR__(), "coverage_example.jl"))`, String)
@@ -23,5 +25,8 @@ end
         cov_data = replace(cov_data, "\r\n" => "\n")
         expected = replace(cov_data, "\r\n" => "\n")
     end
+    #if cov_data != expected
+    #    DiffUtils.diff(cov_data, expected)
+    #end
     @test cov_data == expected
 end

@@ -7,9 +7,9 @@
         1             i % 3 == 0 && fizz()
         1             i % 5 == 0 && buzz()
         -         else
-        4             print(i, " ")
+        3             print(i, " ")
         -         end
-        -     end
+        4     end
         1     return n
         - end
         - 
