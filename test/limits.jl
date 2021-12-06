@@ -42,11 +42,7 @@ end
     @test Aborted(frame, i).at.line == 9
     # Check macro
     frame = Frame(modexs[5]...)
-    if VERSION < v"1.4.0-DEV.475"
-        @test Aborted(frame, 1).at.file == Symbol("util.jl")
-    else
-        @test Aborted(frame, 1).at.file == Symbol("fake.jl")
-    end
+    @test Aborted(frame, 1).at.file == Symbol("fake.jl")
     @test whereis(frame, 1; macro_caller=true) == ("fake.jl", 11)
 end
 
