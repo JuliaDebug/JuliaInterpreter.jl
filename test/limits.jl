@@ -98,7 +98,7 @@ module EvalLimited end
     end
     @test 8 < EvalLimited.s < 50  # with Compiled(), 9 statements per iteration
     @test length(aborts) == 1
-    @test aborts[1].at.line ∈ (2, 3, 4)  # 2 corresponds to lowering of the for loop
+    @test aborts[1].at.line ∈ (2, 3, 4, 5)  # 2 corresponds to lowering of the for loop
 
     # Now try again with recursive stack
     empty!(aborts)
@@ -117,8 +117,8 @@ module EvalLimited end
     @test length(aborts) == 1
     lin = aborts[1].at
     if lin.file == Symbol("fake.jl")
-        @test lin.line ∈ (2, 3, 4)
+        @test lin.line ∈ (2, 3, 4, 5)
     else
-        @test lin.file == Symbol("range.jl")  # if it aborts in `iterate`
+        @test lin.method === :iterate || lin.method === :getproperty
     end
 end
