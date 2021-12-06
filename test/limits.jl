@@ -1,3 +1,7 @@
+using JuliaInterpreter
+using CodeTracking
+using Test
+
 # This is a test-for-tests, verifying the code in utils.jl.
 if !isdefined(@__MODULE__, :read_and_parse)
     include("utils.jl")
@@ -43,6 +47,7 @@ end
     else
         @test Aborted(frame, 1).at.file == Symbol("fake.jl")
     end
+    @test whereis(frame, 1; macro_caller=true) == ("fake.jl", 11)
 end
 
 module EvalLimited end
@@ -79,7 +84,7 @@ module EvalLimited end
     end
     """; filename="fake.jl")
     if length(ex.args) == 2
-        # Sadly, parse_input_line doesn't insert line info at toplevel, so do it manually
+        # Sadly, on some Julia versions parse_input_line doesn't insert line info at toplevel, so do it manually
         insert!(ex.args, 2, LineNumberNode(2, Symbol("fake.jl")))
         insert!(ex.args, 1, LineNumberNode(1, Symbol("fake.jl")))
     end
