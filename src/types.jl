@@ -255,7 +255,7 @@ end
 Construct a `Frame` to evaluate `src` in module `mod`.
 """
 function Frame(mod::Module, src::CodeInfo; generator=false, optimize=true)
-    framecode = FrameCode(mod, src, generator=generator, optimize=optimize)
+    framecode = FrameCode(mod, src; generator, optimize)
     return Frame(framecode, prepare_framedata(framecode, []))
 end
 """
