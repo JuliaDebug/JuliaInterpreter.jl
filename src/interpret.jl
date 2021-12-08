@@ -173,12 +173,7 @@ function bypass_builtins(frame, call_expr, pc)
         if isa(tme, Compiled)
             fargs = collect_args(frame, call_expr)
             f = to_function(fargs[1])
-            fmod = parentmodule(f)::Module
-            if fmod === JuliaInterpreter.CompiledCalls || fmod === Core.Compiler
-                return Some{Any}(Base.invokelatest(f, fargs[2:end]...))
-            else
-                return Some{Any}(f(fargs[2:end]...))
-            end
+            return Some{Any}(f(fargs[2:end]...))
         end
     end
     return nothing
@@ -187,7 +182,7 @@ end
 function evaluate_call_compiled!(::Compiled, frame::Frame, call_expr::Expr; enter_generated::Bool=false)
     # @assert !enter_generated
     pc = frame.pc
-    ret = bypass_builtins(frame, call_expr, pc)
+    ret = Base.@invokelatest bypass_builtins(frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
     ret = maybe_evaluate_builtin(frame, call_expr, false)
     isa(ret, Some{Any}) && return ret.value
@@ -199,7 +194,7 @@ end
 
 function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr::Expr; enter_generated::Bool=false)
     pc = frame.pc
-    ret = bypass_builtins(frame, call_expr, pc)
+    ret = Base.@invokelatest bypass_builtins(frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
     ret = maybe_evaluate_builtin(frame, call_expr, true)
     isa(ret, Some{Any}) && return ret.value
