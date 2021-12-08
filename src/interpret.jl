@@ -182,7 +182,7 @@ end
 function evaluate_call_compiled!(::Compiled, frame::Frame, call_expr::Expr; enter_generated::Bool=false)
     # @assert !enter_generated
     pc = frame.pc
-    ret = Base.@invokelatest bypass_builtins(frame, call_expr, pc)
+    ret = Base.invokelatest(bypass_builtins, frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
     ret = maybe_evaluate_builtin(frame, call_expr, false)
     isa(ret, Some{Any}) && return ret.value
@@ -194,7 +194,7 @@ end
 
 function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr::Expr; enter_generated::Bool=false)
     pc = frame.pc
-    ret = Base.@invokelatest bypass_builtins(frame, call_expr, pc)
+    ret = Base.invokelatest(bypass_builtins, frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
     ret = maybe_evaluate_builtin(frame, call_expr, true)
     isa(ret, Some{Any}) && return ret.value
