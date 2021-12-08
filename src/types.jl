@@ -250,12 +250,12 @@ function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing)
     end
 end
 """
-    frame = Frame(mod::Module, src::CodeInfo)
+    frame = Frame(mod::Module, src::CodeInfo; generator::Bool, optimize::Bool)
 
 Construct a `Frame` to evaluate `src` in module `mod`.
 """
-function Frame(mod::Module, src::CodeInfo)
-    framecode = FrameCode(mod, src)
+function Frame(mod::Module, src::CodeInfo; generator=false, optimize=true)
+    framecode = FrameCode(mod, src, generator=generator, optimize=optimize)
     return Frame(framecode, prepare_framedata(framecode, []))
 end
 """
