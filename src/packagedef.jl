@@ -1,5 +1,5 @@
 using Base.Meta
-import Base: +, -, convert, isless
+import Base: +, -, convert, isless, get_world_counter
 using Core: CodeInfo, SimpleVector, LineInfoNode, GotoNode, Slot,
             GeneratedFunctionStub, MethodInstance, NewvarNode, TypeName
 
@@ -18,18 +18,9 @@ module CompiledCalls
 # This module is for handling intrinsics that must be compiled (llvmcall) as well as ccalls
 end
 
-# "Backport" of https://github.com/JuliaLang/julia/pull/31536
-if VERSION < v"1.2.0-DEV.572"
-    Base.convert(::Type{Some{T}}, x::Some{T}) where {T} = x
-end
+const SlotNamesType = Vector{Symbol}
 
-const SlotNamesType = VERSION < v"1.2.0-DEV.606" ? Vector{Any} : Vector{Symbol}
-
-@static if VERSION < v"1.3.0-DEV.179"
-    const append_any = Base.append_any
-else
-    append_any(@nospecialize x...) = append!([], Core.svec((x...)...))
-end
+append_any(@nospecialize x...) = append!([], Core.svec((x...)...))
 
 if isdefined(Base, :mapany)
     const mapany = Base.mapany
