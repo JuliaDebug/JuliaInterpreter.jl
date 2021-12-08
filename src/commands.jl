@@ -218,8 +218,7 @@ function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
     length(stmts) < 2 && return frame
     last = stmts[end-1]
     isexpr(last, :(=)) && (last = last.args[2])
-    comp = VERSION < v"1.4.0-DEV.215" ? startswith : endswith
-    is_kw = isa(scope, Method) && comp(String(Base.unwrap_unionall(Base.unwrap_unionall(scope.sig).parameters[1]).name.name), "#kw")
+    is_kw = isa(scope, Method) && endswith(String(Base.unwrap_unionall(Base.unwrap_unionall(scope.sig).parameters[1]).name.name), "#kw")
     has_selfarg = isexpr(last, :call) && any(isequal(SlotNumber(1)), last.args)
     issplatcall, _callee = unpack_splatcall(last)
     if is_kw || has_selfarg || (issplatcall && is_bodyfunc(_callee))

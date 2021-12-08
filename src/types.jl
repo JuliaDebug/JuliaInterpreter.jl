@@ -112,9 +112,9 @@ function is_breakpoint_expr(ex::Expr)
 end
 function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
     if optimize
-        src, methodtables = optimize!(copy_codeinfo(src), scope)
+        src, methodtables = optimize!(copy(src), scope)
     else
-        src = replace_coretypes!(copy_codeinfo(src))
+        src = replace_coretypes!(copy(src))
         methodtables = Vector{Union{Compiled,DispatchableMethod}}(undef, length(src.code))
     end
     breakpoints = Vector{BreakpointState}(undef, length(src.code))

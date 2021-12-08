@@ -97,9 +97,7 @@ module Toplevel end
     @test Toplevel.f2(view([1,2], 1:1)) == 2
     @test Toplevel.f2([1,2]) == 3
     @test Toplevel.f2(reshape(view([1,2], 1:2), 2, 1)) == 4
-    if VERSION >= v"1.1.0"
-        @test Toplevel.f3(1, 1) == 1
-    end
+    @test Toplevel.f3(1, 1) == 1
     @test Toplevel.f3(1, :hi) == 2
     @test Toplevel.f3(UInt16(1), :hi) == Symbol
     @test Toplevel.f3(rand(2, 2), :hi, :there) == 2
@@ -121,11 +119,7 @@ module Toplevel end
     @test s("hello") == [2.0]
     @test Toplevel.Struct{Float32}(Dict(1=>"two")) == 4
     @test Toplevel.first_two_funcs == (Toplevel.f1, Toplevel.f2)
-    if VERSION >= v"1.2.0-DEV.239"
-        @test isconst(Toplevel, :first_two_funcs)
-    else
-        @test_broken isconst(Toplevel, :first_two_funcs)
-    end
+    @test isconst(Toplevel, :first_two_funcs)
     @test Toplevel.myint isa Toplevel.MyInt8
     @test_throws UndefVarError Toplevel.ffalse(1)
     @test Toplevel.ftrue(1) == 3
@@ -165,9 +159,7 @@ module Toplevel end
     @test @interpret(Toplevel.f2(view([1,2], 1:1))) == 2
     @test @interpret(Toplevel.f2([1,2])) == 3
     @test @interpret(Toplevel.f2(reshape(view([1,2], 1:2), 2, 1))) == 4
-    if VERSION >= v"1.1.0"
-        @test @interpret(Toplevel.f3(1, 1)) == 1
-    end
+    @test @interpret(Toplevel.f3(1, 1)) == 1
     @test @interpret(Toplevel.f3(1, :hi)) == 2
     @test @interpret(Toplevel.f3(UInt16(1), :hi)) == Symbol
     @test @interpret(Toplevel.f3(rand(2, 2), :hi, :there)) == 2
@@ -244,12 +236,7 @@ module Namespace end
         JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
     end
     @test Namespace.sin(0) == 10
-    if Base.VERSION >= v"1.1"
-        @test Base.sin(0) == 0
-    else
-        @test_broken Base.sin(0) == 0
-        Core.eval(Base, :(sin(x::Int) = sin(float(x))))    # fix the definition of `sin`
-    end
+    @test Base.sin(0) == 0
 end
 # When retrospectively parsing through modules to analyze code, Julia's stdlibs pose a bit
 # of a namespace challenge too: we never want to redefine new modules with the same name.
