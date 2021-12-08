@@ -16,7 +16,7 @@ Core.eval(JuliaInterpreter, :(debug_recycle() = true))
     include("limits.jl")
     include("eval_code.jl")
     include("breakpoints.jl")
-    VERSION >= v"1.8.0-DEV.370" && include("code_coverage/code_coverage.jl")
+    @static VERSION >= v"1.8.0-DEV.370" && include("code_coverage/code_coverage.jl")
     remove()
     include("debug.jl")
 end
