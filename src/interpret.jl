@@ -159,7 +159,8 @@ function evaluate_foreigncall(frame::Frame, call_expr::Expr)
     if !isempty(data.sparams) && scope isa Method
         sig = scope.sig
         args[2] = instantiate_type_in_env(args[2], sig, data.sparams)
-        args[3] = Core.svec(map(args[3]) do arg
+        args[3] = instantiate_type_in_env(args[3], sig, data.sparams)
+        args[4] = Core.svec(map(args[4]) do arg
             instantiate_type_in_env(arg, sig, data.sparams)
         end...)
     end
