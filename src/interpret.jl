@@ -324,7 +324,6 @@ function evaluate_structtype(@nospecialize(recurse), frame, node)
         end
     end
     Core.eval(mod, newstructexpr)
-    VERSION < v"1.2.0-DEV.239" && set_structtype_const(mod, name)
 end
 
 function evaluate_abstracttype(@nospecialize(recurse), frame, node)
@@ -332,7 +331,6 @@ function evaluate_abstracttype(@nospecialize(recurse), frame, node)
     params = lookup_or_eval(recurse, frame, node.args[2])::SimpleVector
     supertype = lookup_or_eval(recurse, frame, node.args[3])::Type
     Core.eval(mod, Expr(:abstract_type, name, params, supertype))
-    VERSION < v"1.2.0-DEV.239" && set_structtype_const(mod, name)
 end
 
 function evaluate_primitivetype(@nospecialize(recurse), frame, node)
@@ -341,7 +339,6 @@ function evaluate_primitivetype(@nospecialize(recurse), frame, node)
     nbits = node.args[3]::Int
     supertype = lookup_or_eval(recurse, frame, node.args[4])::Type
     Core.eval(mod, Expr(:primitive_type, name, params, nbits, supertype))
-    VERSION < v"1.2.0-DEV.239" && set_structtype_const(mod, name)
 end
 
 function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
@@ -402,7 +399,7 @@ function eval_rhs(@nospecialize(recurse), frame, node::Expr)
         return length(frame.framedata.exception_frames)
     elseif head === :boundscheck
         return true
-    elseif head === :meta || head === :inbounds || head == (@static VERSION >= v"1.2.0-DEV.462" ? :loopinfo : :simdloop) ||
+    elseif head === :meta || head === :inbounds || head == :loopinfo ||
            head === :gc_preserve_begin || head === :gc_preserve_end
         return nothing
     elseif head === :method && length(node.args) == 1
@@ -512,9 +509,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                     else
                         mod, name = moduleof(frame), g::Symbol
                     end
-                    if VERSION >= v"1.2.0-DEV.239"  # depends on https://github.com/JuliaLang/julia/pull/30893
-                        Core.eval(mod, Expr(:const, name))
-                    end
+                    Core.eval(mod, Expr(:const, name))
                 elseif node.head === :thunk
                     newframe = Frame(moduleof(frame), node.args[1])
                     if isa(recurse, Compiled)

@@ -25,12 +25,6 @@ function to_function(@nospecialize(x))
     isa(x, GlobalRef) ? getfield(x.mod, x.name) : x
 end
 
-@static if isdefined(Base, :get_world_counter)
-    import Base: get_world_counter
-else
-    get_world_counter() = ccall(:jl_get_world_counter, UInt, ())
-end
-
 """
     method = whichtt(tt)
 
@@ -199,20 +193,11 @@ is_call_or_return(@nospecialize(node)) = is_call(node) || is_return(node)
 
 is_dummy(bpref::BreakpointRef) = bpref.stmtidx == 0 && bpref.err === nothing
 
-if VERSION >= v"1.4.0-DEV.304"
-    function unpack_splatcall(stmt)
-        if isexpr(stmt, :call) && length(stmt.args) >= 3 && is_quotenode_egal(stmt.args[1], Core._apply_iterate)
-            return true, stmt.args[3]
-        end
-        return false, nothing
+function unpack_splatcall(stmt)
+    if isexpr(stmt, :call) && length(stmt.args) >= 3 && is_quotenode_egal(stmt.args[1], Core._apply_iterate)
+        return true, stmt.args[3]
     end
-else
-    function unpack_splatcall(stmt)
-        if isexpr(stmt, :call) && length(stmt.args) >= 2 && is_quotenode_egal(stmt.args[1], Core._apply)
-            return true, stmt.args[2]
-        end
-        return false, nothing
-    end
+    return false, nothing
 end
 
 function is_bodyfunc(@nospecialize(arg))
@@ -324,28 +309,10 @@ function getline(ln::Union{LineTypes,Expr})
     _getline(ln::Expr)      = ln.args[1] # assuming ln.head === :line
     return Int(_getline(ln))::Int
 end
-# work around compiler error on 1.2
-@static if v"1.2.0" <= VERSION < v"1.3"
-    getfile(ln) = begin
-        path = if isexpr(ln, :line)
-            String(ln.args[2])
-        else
-            try
-                file = String(ln.file)
-                isfile(file)
-                file
-            catch err
-                ""
-            end
-        end
-        CodeTracking.maybe_fixup_stdlib_path(path)
-    end
-else
-    function getfile(ln::Union{LineTypes,Expr})
-        _getfile(ln::LineTypes) = ln.file::Symbol
-        _getfile(ln::Expr)      = ln.args[2]::Symbol # assuming ln.head === :line
-        return CodeTracking.maybe_fixup_stdlib_path(String(_getfile(ln)))
-    end
+function getfile(ln::Union{LineTypes,Expr})
+    _getfile(ln::LineTypes) = ln.file::Symbol
+    _getfile(ln::Expr)      = ln.args[2]::Symbol # assuming ln.head === :line
+    return CodeTracking.maybe_fixup_stdlib_path(String(_getfile(ln)))
 end
 
 function firstline(ex::Expr)
@@ -460,7 +427,7 @@ function framecode_lines(src::CodeInfo)
     buf = IOBuffer()
     if isdefined(Base.IRShow, :show_ir_stmt)
         lines = String[]
-        src = replace_coretypes!(copy_codeinfo(src); rev=true)
+        src = replace_coretypes!(copy(src); rev=true)
         reverse_lookup_globalref!(src.code)
         io = IOContext(buf, :displaysize => displaysize(stdout),
                        :SOURCE_SLOTNAMES => Base.sourceinfo_slotnames(src))
@@ -497,7 +464,7 @@ function print_framecode(io::IO, framecode::FrameCode; pc=0, range=1:nstatements
     offset = lineoffset(framecode)
     ndline = isempty(lt) ? 0 : ndigits(getline(lt[end]) + offset)
     nullline = " "^ndline
-    src = copy_codeinfo(framecode.src)
+    src = copy(framecode.src)
     replace_coretypes!(src; rev=true)
     code = framecode_lines(src)
     isfirst = true
@@ -527,7 +494,7 @@ function locals(frame::Frame)
     vars, var_counter = Variable[], Int[]
     varlookup = Dict{Symbol,Int}()
     data, code = frame.framedata, frame.framecode
-    slotnames = code.src.slotnames::SlotNamesType
+    slotnames = code.src.slotnames
     for (sym, counter, val) in zip(slotnames, data.last_reference, data.locals)
         counter == 0 && continue
         val = something(val)
@@ -714,7 +681,7 @@ function Base.StackTraces.StackFrame(frame::Frame)
         atypes = Tuple{mapany(_Typeof, method_args)...}
         sig = method.sig
         sparams = Core.svec(frame.framedata.sparams...)
-        mi = specialize_method(method, atypes, sparams)
+        mi = Core.Compiler.specialize_method(method, atypes, sparams)
         fname = frame.framecode.scope.name
     else
         mi = frame.framecode.src

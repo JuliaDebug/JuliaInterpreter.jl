@@ -648,8 +648,7 @@ end
 let
     # NOTE we need to make sure this code block is compiled, since vecadd is generated function,
     # but currently `@interpret` doesn't handle a call to generated functions very well
-    @static if isdefined(Base, :Experimental) &&
-               isdefined(Base.Experimental, Symbol("@force_compile"))
+    @static if isdefined(Base.Experimental, Symbol("@force_compile"))
         Base.Experimental.@force_compile
     end
     a = (VecElement{Float64}(1.0), VecElement{Float64}(2.0))
@@ -674,17 +673,6 @@ g(x) = f(x)
 @test (@interpret g(5)) == g(5)
 f(x) = x*x
 @test (@interpret g(5)) == g(5)
-
-# Regression test https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/300
-module CSVTest
-    using Test
-    using JuliaInterpreter
-    @static if sizeof(Int) == 8 && VERSION.minor < 3  # TableReader seems to not work on 32 bit or 1.4, 1.3
-        using TableReader
-        const myfile = "smallcsv.csv"
-        @test (@interpret readcsv(myfile)) == readcsv(myfile)
-    end
-end
 
 # Regression test https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/328
 module DataFramesTest
@@ -746,7 +734,7 @@ end
     @test length(JuliaInterpreter.locals(frame)) > 0
 end
 
-@static if VERSION >= v"1.5" && Sys.islinux()
+@static if Sys.islinux()
     @testset "@ccall" begin
         f(s) = @ccall strlen(s::Cstring)::Csize_t
         @test @interpret(f("asd")) == 3
