@@ -85,21 +85,22 @@ function evaluate_limited!(@nospecialize(recurse), frame::Frame, nstmts::Int, is
                 nstmts = refnstmts[]
             elseif istoplevel && stmt.head == :thunk
                 code = stmt.args[1]
-                if length(code.code) == 1 && JuliaInterpreter.is_return(code.code[end]) && isexpr(code.code[end].args[1], :method)
+                if length(code.code) == 1 && JuliaInterpreter.is_return(code.code[end]) && isexpr(code.code[end].val, :method)
                     # Julia 1.2+ puts a :thunk before the start of each method
                     new_pc = pc + 1
                 else
                     refnstmts[] = nstmts
-                    newframe = Frame(moduleof(frame), stmt)
                     if isa(recurse, Compiled)
-                        finish!(recurse, newframe, true)
+                        newframe = Frame(moduleof(frame), stmt)
+                        JuliaInterpreter.finish!(recurse, newframe, true)
                     else
+                        newframe = Frame(moduleof(frame), code)
                         newframe.caller = frame
                         frame.callee = newframe
                         ret = limited_exec!(recurse, newframe, refnstmts, istoplevel)
                         isa(ret, Aborted) && return ret, refnstmts[]
                         frame.callee = nothing
-                    end
+                    end 
                     JuliaInterpreter.recycle(newframe)
                     # Because thunks may define new methods, return to toplevel
                     frame.pc = pc + 1
@@ -184,9 +185,9 @@ function run_test_by_eval(test, fullpath, nstmts)
         modexs = collect(ExprSplitter(JuliaTests, ex))
         for (i, modex) in enumerate(modexs)  # having the index can be useful for debugging
             nstmtsleft = $nstmts
-            # mod, ex = modex
+            mod, ex = modex
             # @show mod ex
-            frame = Frame(modex)
+            frame = Frame(mod, ex)
             yield()  # allow communication between processes
             ret, nstmtsleft = evaluate_limited!(frame, nstmtsleft, true)
             if isa(ret, Aborted)

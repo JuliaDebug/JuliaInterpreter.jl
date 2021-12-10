@@ -7,8 +7,8 @@ if !isdefined(Main, :read_and_parse)
     include("utils.jl")
 end
 
-const juliadir = dirname(dirname(Sys.BINDIR))
-const testdir = joinpath(juliadir, "test")
+const juliadir = dirname(Sys.BINDIR)
+const testdir = joinpath(juliadir, "share/julia/test")
 if isdir(testdir)
     include(joinpath(testdir, "choosetests.jl"))
 else
@@ -49,7 +49,7 @@ tests, _, exit_on_error, seed = choosetests(ARGS)
 
 function spin_up_worker()
     p = addprocs(1)[1]
-    remotecall_wait(include, p, "utils.jl")
+    remotecall_wait(include, p, "test/utils.jl")
     remotecall_wait(configure_test, p)
     return p
 end
@@ -58,7 +58,7 @@ function spin_up_workers(n)
     procs = addprocs(n)
     @sync begin
         @async for p in procs
-            remotecall_wait(include, p, "utils.jl")
+            remotecall_wait(include, p, "test/utils.jl")
             remotecall_wait(configure_test, p)
         end
     end
@@ -80,7 +80,7 @@ move_to_node1("stress")
 move_to_node1("Distributed")
 
 @testset "Julia tests" begin
-    nworkers = min(Sys.CPU_THREADS, length(tests))
+    nworkers = Threads.nthreads()-1
     println("Using $nworkers workers")
     results = Dict{String,Any}()
     tests0 = copy(tests)
