@@ -9,7 +9,7 @@ Platform Info:
 Environment:
   JULIA_EDITOR = code
   JULIA_NUM_THREADS = 5
-Test run at: 2021-12-10T11:06:04.727
+Test run at: 2021-12-10T11:54:53.288
 
 Maximum number of statements per lowered expression: 10000
 
@@ -128,7 +128,7 @@ Maximum number of statements per lowered expression: 10000
 | filesystem | 0 | 0 | 0 | 0 | 0 |
 | download | X | X | X | X | X |
 | SparseArrays/higherorderfns | 11 | 2 | 0 | 0 | 15 |
-| SparseArrays/sparse | 502 | 0 | 0 | 0 | 123 |
+| SparseArrays/sparse | 502 | 0 | 0 | 0 | 122 |
 | SparseArrays/sparsevector | 112 | 0 | 1 | 0 | 33 |
 | LinearAlgebra/triangular | X | X | X | X | X |
 | LinearAlgebra/qr | 489 | 0 | 0 | 0 | 20 |

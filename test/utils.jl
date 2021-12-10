@@ -90,11 +90,10 @@ function evaluate_limited!(@nospecialize(recurse), frame::Frame, nstmts::Int, is
                     new_pc = pc + 1
                 else
                     refnstmts[] = nstmts
+                    newframe = Frame(moduleof(frame), code)
                     if isa(recurse, Compiled)
-                        newframe = Frame(moduleof(frame), stmt)
                         JuliaInterpreter.finish!(recurse, newframe, true)
                     else
-                        newframe = Frame(moduleof(frame), code)
                         newframe.caller = frame
                         frame.callee = newframe
                         ret = limited_exec!(recurse, newframe, refnstmts, istoplevel)
