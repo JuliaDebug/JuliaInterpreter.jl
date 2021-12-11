@@ -848,7 +848,7 @@ end
         src = lwr.args[1]::Core.CodeInfo
         frame = Frame(M, src; optimize=false)
         @test length(frame.framecode.src.code) == length(src.code)
-        # @test JuliaInterpreter.finish_and_return!(frame, true) 
+        @test JuliaInterpreter.finish_and_return!(frame, true) 
 
         M = Module()
         lwr = Meta.@lower M begin
@@ -868,6 +868,6 @@ end
         src = lwr.args[1]::Core.CodeInfo
         frame = Frame(M, src; optimize=false)
         @test length(frame.framecode.src.code) == length(src.code)
-        # @test JuliaInterpreter.finish_and_return!(frame, true) 
+        @test JuliaInterpreter.finish_and_return!(frame, true) 
     end
 end
