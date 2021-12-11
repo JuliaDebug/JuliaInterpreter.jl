@@ -250,7 +250,7 @@ function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing)
     end
 end
 """
-    frame = Frame(mod::Module, src::CodeInfo; generator::Bool, optimize::Bool)
+    frame = Frame(mod::Module, src::CodeInfo; kwargs...)
 
 Construct a `Frame` to evaluate `src` in module `mod`.
 """
