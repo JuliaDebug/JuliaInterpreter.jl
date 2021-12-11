@@ -141,7 +141,7 @@ function collect_args(frame::Frame, call_expr::Expr; isfc::Bool=false)
         if isexpr(call_expr.args[i], :call)
             args[i] = lookup_or_eval(finish_and_return!, frame, call_expr.args[i])
         else
-        	args[i] = @lookup(mod, frame, call_expr.args[i])
+            args[i] = @lookup(mod, frame, call_expr.args[i])
         end
     end
     return args
