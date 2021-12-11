@@ -173,6 +173,16 @@ function bypass_builtins(frame, call_expr, pc)
         if isa(tme, Compiled)
             fargs = collect_args(frame, call_expr)
             f = to_function(fargs[1])
+            # For some reason the following does not work anymore, see 
+            # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/432
+            # After some experimentation a solution for the issue seems to be to 
+            # @invokelatest bypass_builtins itself.
+            #= fmod = parentmodule(f)::Module
+            if fmod === JuliaInterpreter.CompiledCalls || fmod === Core.Compiler
+                return Some{Any}(Base.invokelatest(f, fargs[2:end]...))
+            else
+                return Some{Any}(f(fargs[2:end]...))
+            end =#
             return Some{Any}(f(fargs[2:end]...))
         end
     end
@@ -182,6 +192,7 @@ end
 function evaluate_call_compiled!(::Compiled, frame::Frame, call_expr::Expr; enter_generated::Bool=false)
     # @assert !enter_generated
     pc = frame.pc
+    # @invokelatest due to https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/432
     ret = Base.invokelatest(bypass_builtins, frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
     ret = maybe_evaluate_builtin(frame, call_expr, false)
@@ -194,6 +205,7 @@ end
 
 function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr::Expr; enter_generated::Bool=false)
     pc = frame.pc
+    # @invokelatest due to https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/432
     ret = Base.invokelatest(bypass_builtins, frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
     ret = maybe_evaluate_builtin(frame, call_expr, true)
