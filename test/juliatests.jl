@@ -28,7 +28,7 @@ function test_path(test)
     end
 end
 
-nstmts = 10^4  # very quick, aborts a lot
+nstmts = 10^5  # very quick, aborts a lot
 outputfile = "results.md"
 i = 1
 while i <= length(ARGS)
@@ -50,6 +50,7 @@ tests, _, exit_on_error, seed = choosetests(ARGS)
 function spin_up_worker()
     p = addprocs(1)[1]
     remotecall_wait(include, p, "test/utils.jl")
+    remotecall_wait(JuliaInterpreter.clear_caches, p)
     remotecall_wait(configure_test, p)
     return p
 end
@@ -59,28 +60,15 @@ function spin_up_workers(n)
     @sync begin
         @async for p in procs
             remotecall_wait(include, p, "test/utils.jl")
+            remotecall_wait(JuliaInterpreter.clear_caches, p)
             remotecall_wait(configure_test, p)
         end
     end
     return procs
 end
 
-# Really, we're just going to skip all the tests that run on node1
-const node1_tests = String[]
-function move_to_node1(t)
-    if t in tests
-        splice!(tests, findfirst(isequal(t), tests))
-        push!(node1_tests, t)
-    end
-    nothing
-end
-move_to_node1("precompile")
-move_to_node1("SharedArrays")
-move_to_node1("stress")
-move_to_node1("Distributed")
-
 @testset "Julia tests" begin
-    nworkers = Threads.nthreads()-1
+    nworkers = Threads.nthreads()
     println("Using $nworkers workers")
     results = Dict{String,Any}()
     tests0 = copy(tests)
@@ -137,7 +125,7 @@ move_to_node1("Distributed")
             catch
             end
         end
-        foreach(wait, all_tasks)
+        foreach(wait, [task for task in all_tasks if isa(task, Task)])
     end
 
     open(outputfile, "w") do io
@@ -163,4 +151,5 @@ move_to_node1("Distributed")
             end
         end
     end
+    return nothing
 end

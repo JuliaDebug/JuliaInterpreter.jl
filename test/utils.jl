@@ -183,18 +183,26 @@ function run_test_by_eval(test, fullpath, nstmts)
         current_task().storage[:SOURCE_PATH] = $fullpath
         modexs = collect(ExprSplitter(JuliaTests, ex))
         for (i, modex) in enumerate(modexs)  # having the index can be useful for debugging
-            nstmtsleft = $nstmts
+            nstmtsframe = $nstmts
             mod, ex = modex
             # @show mod ex
             frame = Frame(mod, ex)
-            yield()  # allow communication between processes
-            ret, nstmtsleft = evaluate_limited!(frame, nstmtsleft, true)
-            if isa(ret, Aborted)
-                push!(aborts, ret)
-                JuliaInterpreter.finish_stack!(Compiled(), frame, true)
+            while nstmtsframe > 0
+            	yield()  # allow communication between processes
+                ret, nstmtsleft = evaluate_limited!(frame, nstmtsframe, true)
+                @assert !isa(ret, Nothing) || nstmtsleft < nstmtsframe
+                nstmtsframe = nstmtsleft
+                if isa(ret, Some)
+                    break
+                elseif isa(ret, Aborted)
+                    push!(aborts, ret)
+                    JuliaInterpreter.finish_stack!(Compiled(), frame, true)
+                    break
+                end
             end
         end
         println("Finished ", $test)
         return ts, aborts
     end))
 end
+
