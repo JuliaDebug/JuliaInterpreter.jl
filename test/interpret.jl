@@ -817,6 +817,11 @@ module ForInclude end
     @test JuliaInterpreter.finish_and_return!(Frame(ForInclude, ex), true) == 55
 end
 
+@testset "issue #385" begin
+    using FunctionWrappers:FunctionWrapper
+    @interpret FunctionWrapper{Int,Tuple{}}(()->42)
+end
+
 @testset "TypedSlots" begin
     function foo(x, y)
         z = x + y
