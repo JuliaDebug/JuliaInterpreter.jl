@@ -149,6 +149,8 @@ end
 function configure_test()
     # To run tests efficiently, certain methods must be run in Compiled mode,
     # in particular those that are used by the Test infrastructure
+    cc = JuliaInterpreter.compiled_calls
+    empty!(cc)
     cm = JuliaInterpreter.compiled_methods
     empty!(cm)
     JuliaInterpreter.set_compiled_methods()
@@ -184,7 +186,7 @@ function run_test_by_eval(test, fullpath, nstmts)
         modexs = collect(ExprSplitter(JuliaTests, ex))
         for (i, modex) in enumerate(modexs)  # having the index can be useful for debugging
             nstmtsframe = $nstmts
-            mod, ex = modex
+            local mod, ex = modex
             # @show mod ex
             frame = Frame(mod, ex)
             while nstmtsframe > 0

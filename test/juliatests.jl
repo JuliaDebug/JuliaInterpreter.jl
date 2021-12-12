@@ -28,7 +28,7 @@ function test_path(test)
     end
 end
 
-nstmts = 10^5  # very quick, aborts a lot
+nstmts = 10^7  # very quick, aborts a lot
 outputfile = "results.md"
 i = 1
 while i <= length(ARGS)
@@ -151,5 +151,4 @@ end
             end
         end
     end
-    return nothing
 end
