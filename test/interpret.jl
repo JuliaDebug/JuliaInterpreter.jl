@@ -870,4 +870,7 @@ end
         @test length(frame.framecode.src.code) == length(src.code)
         @test JuliaInterpreter.finish_and_return!(frame, true) 
     end
+
+    iscallexpr(ex::Expr) = ex.head === :call
+    @test (@interpret iscallexpr(:(sin(3.14))))
 end
