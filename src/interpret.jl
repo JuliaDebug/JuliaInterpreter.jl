@@ -77,6 +77,8 @@ function lookup_or_eval(@nospecialize(recurse), frame, @nospecialize(node))
         return lookup_var(frame, node)
     elseif isa(node, SlotNumber)
         return lookup_var(frame, node)
+    elseif isa(node, GlobalRef)
+        return lookup_var(frame, node)
     elseif isa(node, Symbol)
         return getfield(moduleof(frame), node)
     elseif isa(node, QuoteNode)
@@ -130,25 +132,29 @@ function resolvefc(frame, @nospecialize(expr))
     error("unexpected ccall to ", expr)
 end
 
-function collect_args(frame::Frame, call_expr::Expr; isfc::Bool=false)
+function collect_args(@nospecialize(recurse), frame::Frame, call_expr::Expr; isfc::Bool=false)
     args = frame.framedata.callargs
     resize!(args, length(call_expr.args))
     mod = moduleof(frame)
     args[1] = isfc ? resolvefc(frame, call_expr.args[1]) : @lookup(mod, frame, call_expr.args[1])
     for i = 2:length(args)
-        args[i] = @lookup(mod, frame, call_expr.args[i])
+        if isexpr(call_expr.args[i], :call)
+            args[i] = lookup_or_eval(recurse, frame, call_expr.args[i])
+        else
+            args[i] = @lookup(mod, frame, call_expr.args[i])
+        end
     end
     return args
 end
 
 """
-    ret = evaluate_foreigncall(frame::Frame, call_expr)
+    ret = evaluate_foreigncall(recurse, frame::Frame, call_expr)
 
 Evaluate a `:foreigncall` (from a `ccall`) statement `callexpr` in the context of `frame`.
 """
-function evaluate_foreigncall(frame::Frame, call_expr::Expr)
+function evaluate_foreigncall(@nospecialize(recurse), frame::Frame, call_expr::Expr)
     head = call_expr.head
-    args = collect_args(frame, call_expr; isfc = head==:foreigncall)
+    args = collect_args(recurse, frame, call_expr; isfc = head==:foreigncall)
     for i = 2:length(args)
         arg = args[i]
         args[i] = isa(arg, Symbol) ? QuoteNode(arg) : arg
@@ -167,11 +173,11 @@ function evaluate_foreigncall(frame::Frame, call_expr::Expr)
 end
 
 # We have to intercept ccalls / llvmcalls before we try it as a builtin
-function bypass_builtins(frame, call_expr, pc)
+function bypass_builtins(@nospecialize(recurse), frame, call_expr, pc)
     if isassigned(frame.framecode.methodtables, pc)
         tme = frame.framecode.methodtables[pc]
         if isa(tme, Compiled)
-            fargs = collect_args(frame, call_expr)
+            fargs = collect_args(recurse, frame, call_expr)
             f = to_function(fargs[1])
             fmod = parentmodule(f)::Module
             if fmod === JuliaInterpreter.CompiledCalls || fmod === Core.Compiler
@@ -187,11 +193,11 @@ end
 function evaluate_call_compiled!(::Compiled, frame::Frame, call_expr::Expr; enter_generated::Bool=false)
     # @assert !enter_generated
     pc = frame.pc
-    ret = bypass_builtins(frame, call_expr, pc)
+    ret = bypass_builtins(Compiled(), frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
     ret = maybe_evaluate_builtin(frame, call_expr, false)
     isa(ret, Some{Any}) && return ret.value
-    fargs = collect_args(frame, call_expr)
+    fargs = collect_args(Compiled(), frame, call_expr)
     f = fargs[1]
     popfirst!(fargs)  # now it's really just `args`
     return f(fargs...)
@@ -199,12 +205,12 @@ end
 
 function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr::Expr; enter_generated::Bool=false)
     pc = frame.pc
-    ret = bypass_builtins(frame, call_expr, pc)
+    ret = bypass_builtins(recurse, frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
     ret = maybe_evaluate_builtin(frame, call_expr, true)
     isa(ret, Some{Any}) && return ret.value
     call_expr = ret
-    fargs = collect_args(frame, call_expr)
+    fargs = collect_args(recurse, frame, call_expr)
     if fargs[1] === Core.eval
         return Core.eval(fargs[2], fargs[3])  # not a builtin, but worth treating specially
     elseif fargs[1] === Base.rethrow
@@ -396,7 +402,7 @@ function eval_rhs(@nospecialize(recurse), frame, node::Expr)
         isa(recurse, Compiled) && return evaluate_call_compiled!(recurse, frame, node)
         return evaluate_call_recurse!(recurse, frame, node)
     elseif head === :foreigncall || head === :cfunction
-        return evaluate_foreigncall(frame, node)
+        return evaluate_foreigncall(recurse, frame, node)
     elseif head === :copyast
         val = (node.args[1]::QuoteNode).value
         return isa(val, Expr) ? copy(val) : val

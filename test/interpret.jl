@@ -836,3 +836,41 @@ end
     frame = JuliaInterpreter.prepare_frame(framecode, frameargs, mi.sparam_vals)
     @test JuliaInterpreter.finish_and_return!(frame) === 8
 end
+
+@testset "interpretation of unoptimized frame" begin
+    let # should be able to interprete nested calls within `:foreigncall` expressions
+        # even if `JuliaInterpreter.optimize!` doesn't flatten them
+        M = Module()
+        lwr = Meta.@lower M begin
+            global foo = @ccall strlen("foo"::Cstring)::Csize_t
+            foo == 3
+        end
+        src = lwr.args[1]::Core.CodeInfo
+        frame = Frame(M, src; optimize=false)
+        @test length(frame.framecode.src.code) == length(src.code)
+        @test JuliaInterpreter.finish_and_return!(frame, true) 
+
+        M = Module()
+        lwr = Meta.@lower M begin
+            strp = Ref{Ptr{Cchar}}(0)
+            fmt = "hi+%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%hhd-%.1f-%.1f-%.1f-%.1f-%.1f-%.1f-%.1f-%.1f-%.1f\n"
+            len = @ccall asprintf(
+                strp::Ptr{Ptr{Cchar}},
+                fmt::Cstring,
+                ; # begin varargs
+                0x1::UInt8, 0x2::UInt8, 0x3::UInt8, 0x4::UInt8, 0x5::UInt8, 0x6::UInt8, 0x7::UInt8, 0x8::UInt8, 0x9::UInt8, 0xa::UInt8, 0xb::UInt8, 0xc::UInt8, 0xd::UInt8, 0xe::UInt8, 0xf::UInt8,
+                1.1::Cfloat, 2.2::Cfloat, 3.3::Cfloat, 4.4::Cfloat, 5.5::Cfloat, 6.6::Cfloat, 7.7::Cfloat, 8.8::Cfloat, 9.9::Cfloat,
+            )::Cint
+            str = unsafe_string(strp[], len)
+            @ccall free(strp[]::Cstring)::Cvoid
+            str == "hi+1-2-3-4-5-6-7-8-9-10-11-12-13-14-15-1.1-2.2-3.3-4.4-5.5-6.6-7.7-8.8-9.9\n"
+        end
+        src = lwr.args[1]::Core.CodeInfo
+        frame = Frame(M, src; optimize=false)
+        @test length(frame.framecode.src.code) == length(src.code)
+        @test JuliaInterpreter.finish_and_return!(frame, true) 
+    end
+
+    iscallexpr(ex::Expr) = ex.head === :call
+    @test (@interpret iscallexpr(:(sin(3.14))))
+end
