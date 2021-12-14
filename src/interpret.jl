@@ -179,17 +179,20 @@ function bypass_builtins(@nospecialize(recurse), frame, call_expr, pc)
         if isa(tme, Compiled)
             fargs = collect_args(recurse, frame, call_expr)
             f = to_function(fargs[1])
-            # For some reason the following does not work anymore, see
-            # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/432
-            # After some experimentation a solution for the issue seems to be to
-            # @invokelatest bypass_builtins itself.
-            #= fmod = parentmodule(f)::Module
+            fmod = parentmodule(f)::Module
             if fmod === JuliaInterpreter.CompiledCalls || fmod === Core.Compiler
-                return Some{Any}(Base.invokelatest(f, fargs[2:end]...))
+                # invokelatest somehow doesn't seem to check if the method lives is in the actual world already
+                # see https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/432.
+                # This change does not work on Julia 1.6.4
+                try
+                    return Some{Any}(f(fargs[2:end]...))                    
+                catch err
+                    isa(err, MethodError) && return Some{Any}(Base.invokelatest(f, fargs[2:end]...))
+                    rethrow(err)
+                end
             else
                 return Some{Any}(f(fargs[2:end]...))
-            end =#
-            return Some{Any}(f(fargs[2:end]...))
+            end 
         end
     end
     return nothing
