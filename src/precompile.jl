@@ -10,7 +10,7 @@ function _precompile_()
               evaluate_primitivetype)
         @assert precompile(Tuple{typeof(f), Any, Frame, Expr})
     end
-    @assert precompile(Tuple{typeof(evaluate_foreigncall), Frame, Expr})
+    @assert precompile(Tuple{typeof(evaluate_foreigncall), Any, Frame, Expr})
     @assert precompile(Tuple{typeof(evaluate_methoddef), Frame, Expr})
     @assert precompile(Tuple{typeof(lookup_global_refs!), Expr})
     @assert precompile(Tuple{typeof(lookup_or_eval), Any, Frame, Any})
