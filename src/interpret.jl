@@ -163,7 +163,7 @@ function evaluate_foreigncall(@nospecialize(recurse), frame::Frame, call_expr::E
     scope = frame.framecode.scope
     data = frame.framedata
     if !isempty(data.sparams) && scope isa Method
-        sig = scope.sig    
+        sig = scope.sig
         args[2] = instantiate_type_in_env(args[2], sig, data.sparams)
         @static if VERSION < v"1.7.0"
             arg3 = args[3]
