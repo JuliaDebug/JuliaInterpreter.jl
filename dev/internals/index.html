@@ -71,32 +71,40 @@ JuliaInterpreter.finish_and_return!(frame)
 
 # output
 
-Test Passed</code></pre><h2 id="Toplevel-code-and-world-age"><a class="docs-heading-anchor" href="#Toplevel-code-and-world-age">Toplevel code and world age</a><a id="Toplevel-code-and-world-age-1"></a><a class="docs-heading-anchor-permalink" href="#Toplevel-code-and-world-age" title="Permalink"></a></h2><p>Code that defines new <code>struct</code>s, new methods, or new modules is a bit more complicated and requires special handling. In such cases, calling <code>finish_and_return!</code> on a frame that defines these new objects and then calls them can trigger a <a href="https://docs.julialang.org/en/v1/manual/methods/#Redefining-Methods-1">world age error</a>, in which the method is considered to be too new to be run by the currently compiled code. While one can resolve this by using <code>Base.invokelatest</code>, we&#39;d have to use that strategy throughout the entire package.  This would cause a major reduction in performance. To resolve this issue without leading to performance problems, care is required to return to &quot;top level&quot; after defining such objects. This leads to altered syntax for executing such expressions.</p><p>Here&#39;s a demonstration of the problem:</p><pre><code class="language-julia">ex = :(map(x-&gt;x^2, [1, 2, 3]))
+Test Passed
+  Expression: x + y == 3
+   Evaluated: 3 == 3</code></pre><h2 id="Toplevel-code-and-world-age"><a class="docs-heading-anchor" href="#Toplevel-code-and-world-age">Toplevel code and world age</a><a id="Toplevel-code-and-world-age-1"></a><a class="docs-heading-anchor-permalink" href="#Toplevel-code-and-world-age" title="Permalink"></a></h2><p>Code that defines new <code>struct</code>s, new methods, or new modules is a bit more complicated and requires special handling. In such cases, calling <code>finish_and_return!</code> on a frame that defines these new objects and then calls them can trigger a <a href="https://docs.julialang.org/en/v1/manual/methods/#Redefining-Methods-1">world age error</a>, in which the method is considered to be too new to be run by the currently compiled code. While one can resolve this by using <code>Base.invokelatest</code>, we&#39;d have to use that strategy throughout the entire package.  This would cause a major reduction in performance. To resolve this issue without leading to performance problems, care is required to return to &quot;top level&quot; after defining such objects. This leads to altered syntax for executing such expressions.</p><p>Here&#39;s a demonstration of the problem:</p><pre><code class="language-julia">ex = :(map(x-&gt;x^2, [1, 2, 3]))
 frame = Frame(Main, ex)
 julia&gt; JuliaInterpreter.finish_and_return!(frame)
 ERROR: this frame needs to be run a top level</code></pre><p>The reason for this error becomes clearer if we examine <code>frame</code> or look directly at the lowered code:</p><pre><code class="language-julia">julia&gt; Meta.lower(Main, ex)
 :($(Expr(:thunk, CodeInfo(
+    @ none within `top-level scope`
 1 ─      $(Expr(:thunk, CodeInfo(
-1 ─     global ##17#18
-│       const ##17#18
-│       $(Expr(:struct_type, Symbol(&quot;##17#18&quot;), :((Core.svec)()), :((Core.svec)()), :(Core.Function), :((Core.svec)()), false, 0))
-└──     return
+    @ none within `top-level scope`
+1 ─      global var&quot;#3#4&quot;
+│        const var&quot;#3#4&quot;
+│   %3 = Core._structtype(Main, Symbol(&quot;#3#4&quot;), Core.svec(), Core.svec(), Core.svec(), false, 0)
+│        var&quot;#3#4&quot; = %3
+│        Core._setsuper!(var&quot;#3#4&quot;, Core.Function)
+│        Core._typebody!(var&quot;#3#4&quot;, Core.svec())
+└──      return nothing
 )))
-│   %2 = (Core.svec)(##17#18, Core.Any)
-│   %3 = (Core.svec)()
-│   %4 = (Core.svec)(%2, %3)
-│        $(Expr(:method, false, :(%4), CodeInfo(quote
-    (Core.apply_type)(Base.Val, 2)
-    (%1)()
-    (Base.literal_pow)(^, x, %2)
-    return %3
-end)))
-│        #17 = %new(##17#18)
-│   %7 = #17
-│   %8 = (Base.vect)(1, 2, 3)
+│   %2 = Core.svec(var&quot;#3#4&quot;, Core.Any)
+│   %3 = Core.svec()
+│   %4 = Core.svec(%2, %3, $(QuoteNode(:(#= REPL[18]:1 =#))))
+│        $(Expr(:method, false, :(%4), CodeInfo(
+    @ REPL[18]:1 within `none`
+1 ─ %1 = Core.apply_type(Base.Val, 2)
+│   %2 = (%1)()
+│   %3 = Base.literal_pow(^, x, %2)
+└──      return %3
+)))
+│        #3 = %new(var&quot;#3#4&quot;)
+│   %7 = #3
+│   %8 = Base.vect(1, 2, 3)
 │   %9 = map(%7, %8)
 └──      return %9
-))))</code></pre><p>All of the code before the <code>%7</code> line is devoted to defining the anonymous function <code>x-&gt;x^2</code>: it creates a new &quot;anonymous type&quot; (here written as <code>##17#18</code>), and then defines a &quot;call function&quot; for this type, equivalent to <code>(##17#18)(x) = x^2</code>.</p><p>In some cases one can fix this simply by indicating that we want to run this frame at top level:</p><pre><code class="language-julia">julia&gt; JuliaInterpreter.finish_and_return!(frame, true)
+))))</code></pre><p>All of the code before the <code>%7</code> line is devoted to defining the anonymous function <code>x-&gt;x^2</code>: it creates a new &quot;anonymous type&quot; (here written as <code>var&quot;#3#4&quot;</code>), and then defines a &quot;call function&quot; for this type, equivalent to <code>(var&quot;#3#4&quot;)(x) = x^2</code>.</p><p>In some cases one can fix this simply by indicating that we want to run this frame at top level:</p><pre><code class="language-julia">julia&gt; JuliaInterpreter.finish_and_return!(frame, true)
 3-element Array{Int64,1}:
  1
  4
@@ -106,4 +114,4 @@ end)))
         JuliaInterpreter.through_methoddef_or_done!(frame) === nothing &amp;&amp; break
     end
     JuliaInterpreter.get_return(frame)
-end</code></pre><p>This splits the expression into a sequence of frames (here just one, but more complex blocks may be split up into many). Then, each frame is executed until it finishes defining a new method, then returns to top level. The return to top level causes an update in the world age. If the frame hasn&#39;t been finished yet (if the return value wasn&#39;t <code>nothing</code>), this continues executing where it left off.</p><p>(Incidentally, <code>JuliaInterpreter.enter_call(map, x-&gt;x^2, [1, 2, 3])</code> works fine on its own, because the anonymous function is defined by the caller–-you&#39;ll see that the created frame is very simple.)</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../ast/">« Lowered representation</a><a class="docs-footer-nextpage" href="../dev_reference/">Function reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> on <span class="colophon-date" title="Wednesday 8 December 2021 14:16">Wednesday 8 December 2021</span>. Using Julia version 1.6.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+end</code></pre><p>This splits the expression into a sequence of frames (here just one, but more complex blocks may be split up into many). Then, each frame is executed until it finishes defining a new method, then returns to top level. The return to top level causes an update in the world age. If the frame hasn&#39;t been finished yet (if the return value wasn&#39;t <code>nothing</code>), this continues executing where it left off.</p><p>(Incidentally, <code>JuliaInterpreter.enter_call(map, x-&gt;x^2, [1, 2, 3])</code> works fine on its own, because the anonymous function is defined by the caller–-you&#39;ll see that the created frame is very simple.)</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../ast/">« Lowered representation</a><a class="docs-footer-nextpage" href="../dev_reference/">Function reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> on <span class="colophon-date" title="Thursday 16 December 2021 16:33">Thursday 16 December 2021</span>. Using Julia version 1.7.0.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
