@@ -160,6 +160,8 @@ JuliaInterpreter.finish_and_return!(frame)
 # output
 
 Test Passed
+  Expression: x + y == 3
+   Evaluated: 3 == 3
 ```
 
 ## Toplevel code and world age
@@ -189,32 +191,38 @@ The reason for this error becomes clearer if we examine `frame` or look directly
 ```julia
 julia> Meta.lower(Main, ex)
 :($(Expr(:thunk, CodeInfo(
+    @ none within `top-level scope`
 1 ─      $(Expr(:thunk, CodeInfo(
-1 ─     global ##17#18
-│       const ##17#18
-│       $(Expr(:struct_type, Symbol("##17#18"), :((Core.svec)()), :((Core.svec)()), :(Core.Function), :((Core.svec)()), false, 0))
-└──     return
+    @ none within `top-level scope`
+1 ─      global var"#3#4"
+│        const var"#3#4"
+│   %3 = Core._structtype(Main, Symbol("#3#4"), Core.svec(), Core.svec(), Core.svec(), false, 0)
+│        var"#3#4" = %3
+│        Core._setsuper!(var"#3#4", Core.Function)
+│        Core._typebody!(var"#3#4", Core.svec())
+└──      return nothing
 )))
-│   %2 = (Core.svec)(##17#18, Core.Any)
-│   %3 = (Core.svec)()
-│   %4 = (Core.svec)(%2, %3)
-│        $(Expr(:method, false, :(%4), CodeInfo(quote
-    (Core.apply_type)(Base.Val, 2)
-    (%1)()
-    (Base.literal_pow)(^, x, %2)
-    return %3
-end)))
-│        #17 = %new(##17#18)
-│   %7 = #17
-│   %8 = (Base.vect)(1, 2, 3)
+│   %2 = Core.svec(var"#3#4", Core.Any)
+│   %3 = Core.svec()
+│   %4 = Core.svec(%2, %3, $(QuoteNode(:(#= REPL[18]:1 =#))))
+│        $(Expr(:method, false, :(%4), CodeInfo(
+    @ REPL[18]:1 within `none`
+1 ─ %1 = Core.apply_type(Base.Val, 2)
+│   %2 = (%1)()
+│   %3 = Base.literal_pow(^, x, %2)
+└──      return %3
+)))
+│        #3 = %new(var"#3#4")
+│   %7 = #3
+│   %8 = Base.vect(1, 2, 3)
 │   %9 = map(%7, %8)
 └──      return %9
 ))))
 ```
 
 All of the code before the `%7` line is devoted to defining the anonymous function `x->x^2`:
-it creates a new "anonymous type" (here written as `##17#18`), and then defines a "call
-function" for this type, equivalent to `(##17#18)(x) = x^2`.
+it creates a new "anonymous type" (here written as `var"#3#4"`), and then defines a "call
+function" for this type, equivalent to `(var"#3#4")(x) = x^2`.
 
 In some cases one can fix this simply by indicating that we want to run this frame at top level:
 
