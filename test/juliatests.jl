@@ -87,7 +87,8 @@ end
                         try
                             resp = disable_sigint() do
                                 p = spin_up_worker()
-                                result = remotecall_fetch(run_test_by_eval, p, test, fullpath, nstmts)
+                                # result = remotecall_fetch(run_test_by_limited_eval, p, test, fullpath, nstmts)
+                                result = remotecall_fetch(run_test_by_eval, p, test, fullpath)
                                 rmprocs(p; waitfor=5)
                                 result
                             end
