@@ -335,38 +335,6 @@ function inplace_lookup!(ex, i, frame)
     return ex
 end
 
-function evaluate_structtype(@nospecialize(recurse), frame, node)
-    grsvec!(ex::Expr) = (ex.args[1] = GlobalRef(Core, :svec); return ex)
-
-    name, mod = structname(frame, node)
-    supertype = lookup_or_eval(recurse, frame, node.args[4])::Type
-    ismutable = node.args[6]::Bool
-    ninit = node.args[7]::Int
-    newstructexpr = Expr(:struct_type, name, nothing, nothing, supertype, nothing, ismutable, ninit)
-    for idx in (2, 3, 5)
-        ex = newstructexpr.args[idx] = grsvec!(copy(node.args[idx]::Expr))
-        for i = 2:length(ex.args)
-            inplace_lookup!(ex, i, frame)
-        end
-    end
-    Core.eval(mod, newstructexpr)
-end
-
-function evaluate_abstracttype(@nospecialize(recurse), frame, node)
-    name, mod = structname(frame, node)
-    params = lookup_or_eval(recurse, frame, node.args[2])::SimpleVector
-    supertype = lookup_or_eval(recurse, frame, node.args[3])::Type
-    Core.eval(mod, Expr(:abstract_type, name, params, supertype))
-end
-
-function evaluate_primitivetype(@nospecialize(recurse), frame, node)
-    name, mod = structname(frame, node)
-    params = lookup_or_eval(recurse, frame, node.args[2])::SimpleVector
-    nbits = node.args[3]::Int
-    supertype = lookup_or_eval(recurse, frame, node.args[4])::Type
-    Core.eval(mod, Expr(:primitive_type, name, params, nbits, supertype))
-end
-
 function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
     code, data = frame.framecode, frame.framedata
     if isa(lhs, SSAValue)
@@ -518,12 +486,6 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
             elseif istoplevel
                 if node.head === :method && length(node.args) > 1
                     evaluate_methoddef(frame, node)
-                elseif node.head === :struct_type
-                    evaluate_structtype(recurse, frame, node)
-                elseif node.head === :abstract_type
-                    evaluate_abstracttype(recurse, frame, node)
-                elseif node.head === :primitive_type
-                    evaluate_primitivetype(recurse, frame, node)
                 elseif node.head === :module
                     error("this should have been handled by split_expressions")
                 elseif node.head === :using || node.head === :import || node.head === :export

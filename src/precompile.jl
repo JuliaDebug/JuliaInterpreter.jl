@@ -5,11 +5,6 @@ function _precompile_()
     @assert precompile(Tuple{typeof(get_call_framecode), Vector{Any}, FrameCode, Int})
     @assert precompile(evaluate_call_recurse!, (Function, Frame, Expr))
     @assert precompile(evaluate_call_compiled!, (Compiled, Frame, Expr))
-    for f in (evaluate_structtype,
-              evaluate_abstracttype,
-              evaluate_primitivetype)
-        @assert precompile(Tuple{typeof(f), Any, Frame, Expr})
-    end
     @assert precompile(Tuple{typeof(evaluate_foreigncall), Any, Frame, Expr})
     @assert precompile(Tuple{typeof(evaluate_methoddef), Frame, Expr})
     @assert precompile(Tuple{typeof(lookup_global_refs!), Expr})
