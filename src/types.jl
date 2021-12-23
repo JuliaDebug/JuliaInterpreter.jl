@@ -194,6 +194,7 @@ Important fields:
 struct FrameData
     locals::Vector{Union{Nothing,Some{Any}}}
     ssavalues::Vector{Any}
+    times::Vector{UInt64}
     sparams::Vector{Any}
     exception_frames::Vector{Int}
     last_exception::Base.RefValue{Any}

@@ -157,24 +157,30 @@ function evaluate!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
     pc = frame.pc
     while true
         shouldbreak(frame, pc) && return BreakpointRef(frame.framecode, pc)
-        stmt = pc_expr(frame, pc)
+        stmt = pc_expr(frame, pc) 
+        if isassigned(frame.framedata.times, pc) && frame.framedata.times[pc] > 0
+            recurse_pc = Compiled()
+        else
+            recurse_pc = recurse
+        end
+        time = time_ns()
         if isa(stmt, Expr)
-            if stmt.head == :call && !isa(recurse, Compiled)
+            if stmt.head == :call && !isa(recurse_pc, Compiled)
                 try
                     rhs = evaluate_call!(exec!, frame, stmt)
                     lhs = SSAValue(pc)
                     do_assignment!(frame, lhs, rhs)
                     new_pc = pc + 1
                 catch err
-                    new_pc = handle_err(recurse, frame, err)
+                    new_pc = handle_err(recurse_pc, frame, err)
                 end
-            elseif stmt.head == :(=) && isexpr(stmt.args[2], :call) && !isa(recurse, Compiled)
+            elseif stmt.head == :(=) && isexpr(stmt.args[2], :call) && !isa(recurse_pc, Compiled)
                 try
                     rhs = evaluate_call!(exec!, frame, stmt.args[2])
                     do_assignment!(frame, stmt.args[1], rhs)
                     new_pc = pc + 1
                 catch err
-                    new_pc = handle_err(recurse, frame, err)
+                    new_pc = handle_err(recurse_pc, frame, err)
                 end
             elseif istoplevel && stmt.head == :thunk
                 code = stmt.args[1]
@@ -183,12 +189,12 @@ function evaluate!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
                     new_pc = pc + 1
                 else
                     newframe = Frame(moduleof(frame), code)
-                    if isa(recurse, Compiled)
-                        JuliaInterpreter.finish!(recurse, newframe, true)
+                    if isa(recurse_pc, Compiled) 
+                        JuliaInterpreter.finish!(recurse_pc, newframe, true)
                     else
                         newframe.caller = frame
                         frame.callee = newframe
-                        exec!(recurse, newframe, istoplevel)
+                        exec!(recurse_pc, newframe, istoplevel)
                         frame.callee = nothing
                     end
                     JuliaInterpreter.recycle(newframe)
@@ -197,16 +203,21 @@ function evaluate!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
                     return nothing
                 end
             elseif istoplevel && stmt.head == :method && length(stmt.args) == 3
-                step_expr!(recurse, frame, stmt, istoplevel)
+                step_expr!(recurse_pc, frame, stmt, istoplevel)
                 frame.pc = pc + 1
                 return nothing
             else
-                new_pc = step_expr!(recurse, frame, stmt, istoplevel)
+                new_pc = step_expr!(recurse_pc, frame, stmt, istoplevel)
             end
         else
-            new_pc = step_expr!(recurse, frame, stmt, istoplevel)
+            new_pc = step_expr!(recurse_pc, frame, stmt, istoplevel)
         end
         (new_pc === nothing || isa(new_pc, BreakpointRef)) && break
+        if !isassigned(frame.framedata.times, pc)
+            frame.framedata.times[pc] = time_ns() - time
+        else
+            frame.framedata.times[pc] += time_ns() - time
+        end 
         pc = frame.pc = new_pc
     end
     # Handle the return
@@ -305,7 +316,7 @@ function run_test_by_eval(test, fullpath)
         modexs = collect(ExprSplitter(JuliaTests, ex))
         for (i, modex) in enumerate(modexs)  # having the index can be useful for debugging
             local mod, ex = modex
-            @show mod ex
+            # @show mod ex
             frame = Frame(mod, ex)
             while true
           	    yield()  # allow communication between processes

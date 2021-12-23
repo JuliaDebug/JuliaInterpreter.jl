@@ -45,7 +45,7 @@ while i <= length(ARGS)
     end
 end
 
-tests, _, exit_on_error, seed = choosetests(ARGS)
+tests, _, exit_on_error, seed = choosetests(["--skip", "llvmcall", "compiler", "stdlib", ARGS...])
 
 function spin_up_worker()
     p = addprocs(1)[1]
