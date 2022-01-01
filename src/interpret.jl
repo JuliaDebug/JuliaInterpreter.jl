@@ -185,7 +185,7 @@ function bypass_builtins(@nospecialize(recurse), frame, call_expr, pc)
                 @static if VERSION >= v"1.7.0"
                     return Some{Any}(Base.invoke_in_world(get_world_counter(), f, fargs[2:end]...))
                 else
-                    return Some{Any}(Base.invoke_latest(f, fargs[2:end]...))
+                    return Some{Any}(Base.invokelatest(f, fargs[2:end]...))
                 end
             else
                 return Some{Any}(f(fargs[2:end]...))
