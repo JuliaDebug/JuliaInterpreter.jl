@@ -189,7 +189,7 @@ function bypass_builtins(@nospecialize(recurse), frame, call_expr, pc)
                 end
             else
                 return Some{Any}(f(fargs[2:end]...))
-            end 
+            end
         end
     end
     return nothing
