@@ -540,3 +540,15 @@ end
     modexs = collect(ExprSplitter(@__MODULE__, ex))
     @test length(modexs) == 3
 end
+
+@testset "toplevel global" begin
+    ex = :(begin
+        global foo_g = 10
+        sin(foo_g)
+    end)
+    modexs = collect(ExprSplitter(@__MODULE__, ex))
+    for (mod, ex) in modexs
+        @test JuliaInterpreter.finish!(Frame(mod, ex), true) === nothing
+    end
+    @test length(modexs) == 2
+end

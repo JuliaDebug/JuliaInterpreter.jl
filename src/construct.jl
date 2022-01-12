@@ -436,7 +436,7 @@ function push_modex!(iter::ExprSplitter, mod::Module, ex::Expr)
         # Issue #427
         modifies_scope = false
         for a in ex.args
-            if isa(a, Expr) && a.head ∈ (:local, :global)
+            if Meta.isexpr(a, :local)
                 modifies_scope = true
                 break
             end
