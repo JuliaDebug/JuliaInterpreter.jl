@@ -550,5 +550,5 @@ end
     for (mod, ex) in modexs
         @test JuliaInterpreter.finish!(Frame(mod, ex), true) === nothing
     end
-    @test length(modexs) == 2
+    @test length(modexs) == 1
 end
