@@ -540,3 +540,25 @@ end
     modexs = collect(ExprSplitter(@__MODULE__, ex))
     @test length(modexs) == 3
 end
+
+@testset "toplevel scope annotation" begin
+    ex = Base.parse_input_line("""
+    global foo_g = 10
+    sin(foo_g)
+    """)
+    modexs = collect(ExprSplitter(@__MODULE__, ex))
+    for (mod, ex) in modexs
+        @test JuliaInterpreter.finish!(Frame(mod, ex), true) === nothing
+    end
+    @test length(modexs) == 2
+
+    ex = Base.parse_input_line("""
+    local foo = 10
+    sin(42)
+    """)
+    modexs = collect(ExprSplitter(@__MODULE__, ex))
+    for (mod, ex) in modexs
+        @test JuliaInterpreter.finish!(Frame(mod, ex), true) === nothing
+    end
+    @test length(modexs) == 2
+end

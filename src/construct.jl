@@ -435,10 +435,12 @@ function push_modex!(iter::ExprSplitter, mod::Module, ex::Expr)
     if ex.head === :toplevel || ex.head === :block
         # Issue #427
         modifies_scope = false
-        for a in ex.args
-            if isa(a, Expr) && a.head ∈ (:local, :global)
-                modifies_scope = true
-                break
+        if ex.head === :block
+            for a in ex.args
+                if isa(a, Expr) && a.head ∈ (:local, :global)
+                    modifies_scope = true
+                    break
+                end
             end
         end
         push!(iter.index, modifies_scope ? 0 : 1)
