@@ -272,7 +272,8 @@ function build_compiled_call!(stmt::Expr, fcall, code, idx, nargs::Int, sparams:
         # f(x, y) =  ccall(:jl_value_ptr, Ptr{Cvoid}, (Float32,Any), x, y)
         # @code_lowered f(2, 3)
         args = []
-        for (atype, arg) in zip(ArgType, stmt.args[6:6+nargs-1])
+        argstart = isdefined(Base, Symbol("@assume_effects")) ? 7 : 6
+        for (atype, arg) in zip(ArgType, stmt.args[argstart:argstart+nargs-1])
             if atype === Any
                 push!(args, arg)
             else
