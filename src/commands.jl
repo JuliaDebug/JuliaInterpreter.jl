@@ -222,10 +222,11 @@ function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
     is_kw = false
     if isa(scope, Method)
         unwrap1 = Base.unwrap_unionall(scope.sig)
-        if isa(unwrap1, DataType)
+        if unwrap1 isa DataType
             param1 = Base.unwrap_unionall(unwrap1.parameters[1])
-            if isa(param1, DataType)
-            is_kw = endswith(String(param1.name.name), "#kw")
+            if param1 isa DataType
+                is_kw = endswith(String(param1.name.name), "#kw")
+            end
         end
     end
 
