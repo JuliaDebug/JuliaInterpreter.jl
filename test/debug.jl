@@ -516,6 +516,7 @@ end
         foo() = UInt8('\t')
         frame = JuliaInterpreter.enter_call(foo)
         frame, pc = debug_command(frame, :s)
+        @test pc isa BreakpointRef
     end
 # end
 
