@@ -457,14 +457,14 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                     return (frame.pc = node.args[2]::Int)
                 end
             elseif node.head === :enter
-                rhs = node.args[1]
+                rhs = node.args[1]::Int
                 push!(data.exception_frames, rhs)
             elseif node.head === :leave
                 for _ = 1:node.args[1]::Int
                     pop!(data.exception_frames)
                 end
             elseif node.head === :pop_exception
-                n = lookup_var(frame, node.args[1])
+                n = lookup_var(frame, node.args[1]::SSAValue)::Int
                 deleteat!(data.exception_frames, n+1:length(data.exception_frames))
             elseif node.head === :return
                 return nothing
@@ -484,7 +484,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                     end
                     Core.eval(mod, Expr(:const, name))
                 elseif node.head === :thunk
-                    newframe = Frame(moduleof(frame), node.args[1])
+                    newframe = Frame(moduleof(frame), node.args[1]::CodeInfo)
                     if isa(recurse, Compiled)
                         finish!(recurse, newframe, true)
                     else
