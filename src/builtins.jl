@@ -22,8 +22,6 @@ Otherwise, return `call_expr`.
 If `expand` is true, `Core._apply` calls will be resolved as a call to the applied function.
 """
 function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
-    # By having each call appearing statically in the "switch" block below,
-    # each gets call-site optimized.
     args = call_expr.args
     nargs = length(args) - 1
     fex = args[1]
@@ -32,14 +30,11 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     else
         f = @lookup(frame, fex)
     end
-    # Builtins and intrinsics have empty method tables. We can circumvent
-    # a long "switch" check by looking for this.
-    mt = typeof(f).name.mt
-    # For some reason Core._apply_iterate does not have an empty MT
-    if isa(mt, Core.MethodTable) && f !== Core._apply_iterate
-        isempty(mt) || return call_expr
+    if !(isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction))
+        return call_expr
     end
-    # Builtins
+    # By having each call appearing statically in the "switch" block below,
+    # each gets call-site optimized.
     if f === <:
         if nargs == 2
             return Some{Any}(<:(@lookup(frame, args[2]), @lookup(frame, args[3])))
