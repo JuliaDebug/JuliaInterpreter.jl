@@ -35,7 +35,8 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     # Builtins and intrinsics have empty method tables. We can circumvent
     # a long "switch" check by looking for this.
     mt = typeof(f).name.mt
-    if isa(mt, Core.MethodTable)
+    # For some reason Core._apply_iterate does not have an empty MT
+    if isa(mt, Core.MethodTable) && f !== Core._apply_iterate
         isempty(mt) || return call_expr
     end
     # Builtins
