@@ -1,4 +1,4 @@
-module __JIInternal__
+module var"#Internal"
 public(x::String) = false
 end
 
@@ -12,7 +12,7 @@ function _precompile_()
         end
         const threshold = 0.1
     end
-    for (mod, ex) in ExprSplitter(__JIInternal__, expr)
+    for (mod, ex) in ExprSplitter(var"#Internal", expr)
         frame = Frame(mod, ex)
         debug_command(frame, :c, true)
     end
