@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Internals · JuliaInterpreter.jl</title><link href="https://fonts.googleapis.com/css?family=Lato|Roboto+Mono" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.0/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.0/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.0/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.11.1/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit">JuliaInterpreter.jl</span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><a class="tocitem" href="../ast/">Lowered representation</a></li><li class="is-active"><a class="tocitem" href>Internals</a><ul class="internal"><li><a class="tocitem" href="#Basic-usage"><span>Basic usage</span></a></li><li><a class="tocitem" href="#More-complex-expressions"><span>More complex expressions</span></a></li><li><a class="tocitem" href="#Toplevel-code-and-world-age"><span>Toplevel code and world age</span></a></li></ul></li><li><a class="tocitem" href="../dev_reference/">Function reference</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Internals</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Internals</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/JuliaDebug/JuliaInterpreter.jl/blob/master/docs/src/internals.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="Internals"><a class="docs-heading-anchor" href="#Internals">Internals</a><a id="Internals-1"></a><a class="docs-heading-anchor-permalink" href="#Internals" title="Permalink"></a></h1><h2 id="Basic-usage"><a class="docs-heading-anchor" href="#Basic-usage">Basic usage</a><a id="Basic-usage-1"></a><a class="docs-heading-anchor-permalink" href="#Basic-usage" title="Permalink"></a></h2><p>The process of executing code in the interpreter is to prepare a <code>frame</code> and then evaluate these statements one-by-one, branching via the <code>goto</code> statements as appropriate. Using the <code>summer</code> example described in <a href="../ast/#Lowered-representation">Lowered representation</a>, let&#39;s build a frame:</p><pre><code class="language-julia">julia&gt; frame = JuliaInterpreter.enter_call(summer, A)
+Frame for summer(A::AbstractArray{T,N} where N) where T in Main at REPL[2]:2
+   1* 2  1 ─       s = (zero)($(Expr(:static_parameter, 1)))
+   2  3  │   %2  = A
+   3  3  │         #temp# = (iterate)(%2)
+⋮
+A = [1, 2, 5]
+T = Int64</code></pre><p>This is a <a href="../dev_reference/#JuliaInterpreter.Frame"><code>Frame</code></a>. Only a portion of the <code>CodeInfo</code> is shown, a small region surrounding the current statement (marked with <code>*</code> or in yellow text). The full <code>CodeInfo</code> can be extracted as <code>code = frame.framecode.src</code>. (It&#39;s a slightly modified form of one returned by <code>@code_lowered</code>, in that it has been processed by <a href="../dev_reference/#JuliaInterpreter.optimize!"><code>JuliaInterpreter.optimize!</code></a> to speed up run-time execution.)</p><p><code>frame</code> has another field, <code>framedata</code>, that holds values needed for or generated by execution. The input arguments and local variables are in <code>locals</code>:</p><pre><code class="language-julia">julia&gt; frame.framedata.locals
+5-element Array{Union{Nothing, Some{Any}},1}:
+ Some(summer)
+ Some([1, 2, 5])
+ nothing
+ nothing
+ nothing</code></pre><p>These correspond to the <code>code.slotnames</code>; the first is the <code>#self#</code> argument and the second is the input array. The remaining local variables (e.g., <code>s</code> and <code>a</code>), have not yet been assigned–-we&#39;ve only built the frame, but we haven&#39;t yet begun to execute it. The static parameter, <code>T</code>, is stored in <code>frame.framedata.sparams</code>:</p><pre><code class="language-julia">julia&gt; frame.framedata.sparams
+1-element Array{Any,1}:
+ Int64</code></pre><p>The <code>Expr(:static_parameter, 1)</code> statement refers to this value.</p><p>The other main storage is for the generated SSA values:</p><pre><code class="language-julia">julia&gt; frame.framedata.ssavalues
+16-element Array{Any,1}:
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef</code></pre><p>Since we haven&#39;t executed any statements yet, these are all undefined.</p><p>The other main entity is the so-called <a href="https://en.wikipedia.org/wiki/Program_counter">program counter</a>, which just indicates the next statement to be executed:</p><pre><code class="language-julia">julia&gt; frame.pc
+1</code></pre><p>Let&#39;s try executing the first statement:</p><pre><code class="language-julia">julia&gt; JuliaInterpreter.step_expr!(frame)
+2</code></pre><p>This indicates that it ran statement 1 and is prepared to run statement 2. (It&#39;s worth noting that the first line included a <code>call</code> to <code>zero</code>, so behind the scenes JuliaInterpreter created a new frame for <code>zero</code>, executed all the statements, and then popped back to <code>frame</code>.) Since the first statement is an assignment of a local variable, let&#39;s check the locals again:</p><pre><code class="language-julia">julia&gt; frame.framedata.locals
+5-element Array{Union{Nothing, Some{Any}},1}:
+ Some(summer)
+ Some([1, 2, 5])
+ Some(0)
+ nothing
+ nothing</code></pre><p>You can see that the entry corresponding to <code>s</code> has been initialized.</p><p>The next statement just retrieves one of the slots (the input argument <code>A</code>) and stores it in an SSA value:</p><pre><code class="language-julia">julia&gt; JuliaInterpreter.step_expr!(frame)
+3
+
+julia&gt; frame.framedata.ssavalues
+16-element Array{Any,1}:
+ #undef
+    [1, 2, 5]
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef
+ #undef</code></pre><p>One can easily continue this until execution completes, which is indicated when <code>step_expr!</code> returns <code>nothing</code>. Alternatively, use the higher-level <code>JuliaInterpreter.finish!(frame)</code> to step through the entire frame, or <code>JuliaInterpreter.finish_and_return!(frame)</code> to also obtain the return value.</p><h2 id="More-complex-expressions"><a class="docs-heading-anchor" href="#More-complex-expressions">More complex expressions</a><a id="More-complex-expressions-1"></a><a class="docs-heading-anchor-permalink" href="#More-complex-expressions" title="Permalink"></a></h2><p>Sometimes you might have a whole sequence of expressions you want to run. In such cases, your first thought should be to construct the <code>Frame</code> manually. Here&#39;s a demonstration:</p><pre><code class="language-julia">using Test
+
+ex = quote
+    x, y = 1, 2
+    @test x + y == 3
+end
+
+frame = Frame(Main, ex)
+JuliaInterpreter.finish_and_return!(frame)
+
+# output
+
+Test Passed
+  Expression: x + y == 3
+   Evaluated: 3 == 3</code></pre><h2 id="Toplevel-code-and-world-age"><a class="docs-heading-anchor" href="#Toplevel-code-and-world-age">Toplevel code and world age</a><a id="Toplevel-code-and-world-age-1"></a><a class="docs-heading-anchor-permalink" href="#Toplevel-code-and-world-age" title="Permalink"></a></h2><p>Code that defines new <code>struct</code>s, new methods, or new modules is a bit more complicated and requires special handling. In such cases, calling <code>finish_and_return!</code> on a frame that defines these new objects and then calls them can trigger a <a href="https://docs.julialang.org/en/v1/manual/methods/#Redefining-Methods-1">world age error</a>, in which the method is considered to be too new to be run by the currently compiled code. While one can resolve this by using <code>Base.invokelatest</code>, we&#39;d have to use that strategy throughout the entire package.  This would cause a major reduction in performance. To resolve this issue without leading to performance problems, care is required to return to &quot;top level&quot; after defining such objects. This leads to altered syntax for executing such expressions.</p><p>Here&#39;s a demonstration of the problem:</p><pre><code class="language-julia">ex = :(map(x-&gt;x^2, [1, 2, 3]))
+frame = Frame(Main, ex)
+julia&gt; JuliaInterpreter.finish_and_return!(frame)
+ERROR: this frame needs to be run a top level</code></pre><p>The reason for this error becomes clearer if we examine <code>frame</code> or look directly at the lowered code:</p><pre><code class="language-julia">julia&gt; Meta.lower(Main, ex)
+:($(Expr(:thunk, CodeInfo(
+    @ none within `top-level scope`
+1 ─      $(Expr(:thunk, CodeInfo(
+    @ none within `top-level scope`
+1 ─      global var&quot;#3#4&quot;
+│        const var&quot;#3#4&quot;
+│   %3 = Core._structtype(Main, Symbol(&quot;#3#4&quot;), Core.svec(), Core.svec(), Core.svec(), false, 0)
+│        var&quot;#3#4&quot; = %3
+│        Core._setsuper!(var&quot;#3#4&quot;, Core.Function)
+│        Core._typebody!(var&quot;#3#4&quot;, Core.svec())
+└──      return nothing
+)))
+│   %2 = Core.svec(var&quot;#3#4&quot;, Core.Any)
+│   %3 = Core.svec()
+│   %4 = Core.svec(%2, %3, $(QuoteNode(:(#= REPL[18]:1 =#))))
+│        $(Expr(:method, false, :(%4), CodeInfo(
+    @ REPL[18]:1 within `none`
+1 ─ %1 = Core.apply_type(Base.Val, 2)
+│   %2 = (%1)()
+│   %3 = Base.literal_pow(^, x, %2)
+└──      return %3
+)))
+│        #3 = %new(var&quot;#3#4&quot;)
+│   %7 = #3
+│   %8 = Base.vect(1, 2, 3)
+│   %9 = map(%7, %8)
+└──      return %9
+))))</code></pre><p>All of the code before the <code>%7</code> line is devoted to defining the anonymous function <code>x-&gt;x^2</code>: it creates a new &quot;anonymous type&quot; (here written as <code>var&quot;#3#4&quot;</code>), and then defines a &quot;call function&quot; for this type, equivalent to <code>(var&quot;#3#4&quot;)(x) = x^2</code>.</p><p>In some cases one can fix this simply by indicating that we want to run this frame at top level:</p><pre><code class="language-julia">julia&gt; JuliaInterpreter.finish_and_return!(frame, true)
+3-element Array{Int64,1}:
+ 1
+ 4
+ 9</code></pre><p>In other cases, such as nested calls of new methods, you may need to allow the world age to update between evaluations. In such cases you want to use <code>ExprSplitter</code>:</p><pre><code class="language-julia">for (mod, e) in ExprSplitter(Main, ex)
+    frame = Frame(mod, e)
+    while true
+        JuliaInterpreter.through_methoddef_or_done!(frame) === nothing &amp;&amp; break
+    end
+    JuliaInterpreter.get_return(frame)
+end</code></pre><p>This splits the expression into a sequence of frames (here just one, but more complex blocks may be split up into many). Then, each frame is executed until it finishes defining a new method, then returns to top level. The return to top level causes an update in the world age. If the frame hasn&#39;t been finished yet (if the return value wasn&#39;t <code>nothing</code>), this continues executing where it left off.</p><p>(Incidentally, <code>JuliaInterpreter.enter_call(map, x-&gt;x^2, [1, 2, 3])</code> works fine on its own, because the anonymous function is defined by the caller–-you&#39;ll see that the created frame is very simple.)</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../ast/">« Lowered representation</a><a class="docs-footer-nextpage" href="../dev_reference/">Function reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> on <span class="colophon-date" title="Friday 18 February 2022 16:11">Friday 18 February 2022</span>. Using Julia version 1.7.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
