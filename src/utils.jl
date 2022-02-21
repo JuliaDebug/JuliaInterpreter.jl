@@ -589,24 +589,43 @@ respectively) can be evaluated using the syntax `var"%3"` and `var"@_4"` respect
 """
 function eval_code end
 
+function extract_usage!(s::Set{Symbol}, expr)
+    if expr isa Expr
+        for arg in expr.args
+            if arg isa Symbol
+                push!(s, arg)
+            elseif arg isa Expr
+                extract_usage!(s, arg)
+            end
+        end
+    elseif expr isa Symbol
+        push!(s, expr)
+    end
+    return s
+end
+
 eval_code(frame::Frame, command::AbstractString) = eval_code(frame, Base.parse_input_line(command))
-function eval_code(frame::Frame, expr)
+function eval_code(frame::Frame, expr::Expr)
     code = frame.framecode
     data = frame.framedata
     isexpr(expr, :toplevel) && (expr = expr.args[end])
 
     if isexpr(expr, :toplevel)
-      expr = Expr(:block, expr.args...)
+        expr = Expr(:block, expr.args...)
     end
+
+    used_symbols = Set{Symbol}((Symbol("#self#"),))
+    extract_usage!(used_symbols, expr)
     # see https://github.com/JuliaLang/julia/issues/31255 for the Symbol("") check
-    vars = filter(v -> v.name != Symbol(""), locals(frame))
-    defined_ssa = findall(x -> x!=0, [isassigned(data.ssavalues, i) for i in 1:length(data.ssavalues)])
-    defined_locals = findall(x -> x isa Some, data.locals)
+    vars = filter(v -> v.name != Symbol("") && v.name in used_symbols, locals(frame))
+    defined_ssa    = findall(i -> isassigned(data.ssavalues, i) && Symbol("%$i")  in used_symbols, 1:length(data.ssavalues))
+    defined_locals = findall(i-> data.locals[i] isa Some        && Symbol("@_$i") in used_symbols, 1:length(data.locals))
     res = gensym()
     eval_expr = Expr(:let,
                      Expr(:block, map(x->Expr(:(=), x...), [(v.name, QuoteNode(v.value isa Core.Box ? v.value.contents : v.value)) for v in vars])...,
-                     map(x->Expr(:(=), x...), [(Symbol("%$i"), QuoteNode(data.ssavalues[i])) for i in defined_ssa])...,
-                     map(x->Expr(:(=), x...), [(Symbol("@_$i"), QuoteNode(data.locals[i].value)) for i in defined_locals])...),
+                                  map(x->Expr(:(=), x...), [(Symbol("%$i"), QuoteNode(data.ssavalues[i]))                          for i in defined_ssa])...,
+                                  map(x->Expr(:(=), x...), [(Symbol("@_$i"), QuoteNode(data.locals[i].value))                      for i in defined_locals])...,
+                     ),
         Expr(:block,
             Expr(:(=), res, expr),
             Expr(:tuple, res, Expr(:tuple, [v.name for v in vars]...))
