@@ -13,6 +13,16 @@ end
 const kwinvoke_name = isdefined(Core, Symbol("#kw##invoke")) ? Symbol("#kw##invoke") : Symbol("##invoke")
 const kwinvoke_instance = getfield(Core, kwinvoke_name).instance
 
+
+function maybe_recurse_expanded_builtin(frame, new_expr)
+    f = new_expr.args[1]
+    if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
+        return maybe_evaluate_builtin(frame, new_expr, true)
+    else
+        return new_expr
+    end
+end
+
 """
     ret = maybe_evaluate_builtin(frame, call_expr, expand::Bool)
 
@@ -58,7 +68,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         for x in argsflat
             push!(new_expr.args, (isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode)) ? QuoteNode(x) : x)
         end
-        return new_expr
+        return maybe_recurse_expanded_builtin(frame, new_expr)
     elseif @static isdefined(Core, :_call_latest) ? f === Core._call_latest : false
         args = getargs(args, frame)
         if !expand
@@ -69,7 +79,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         for x in args
             push!(new_expr.args, (isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode)) ? QuoteNode(x) : x)
         end
-        return new_expr
+        return maybe_recurse_expanded_builtin(frame, new_expr)
     elseif @static isdefined(Core, :_apply_latest) ? f === Core._apply_latest : false
         args = getargs(args, frame)
         if !expand
@@ -80,7 +90,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         for x in args
             push!(new_expr.args, (isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode)) ? QuoteNode(x) : x)
         end
-        return new_expr
+        return maybe_recurse_expanded_builtin(frame, new_expr)
     elseif @static isdefined(Core, :_apply_iterate) ? f === Core._apply_iterate : false
         argswrapped = getargs(args, frame)
         if !expand
@@ -95,7 +105,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         for x in argsflat
             push!(new_expr.args, (isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode)) ? QuoteNode(x) : x)
         end
-        return new_expr
+        return maybe_recurse_expanded_builtin(frame, new_expr)
     elseif f === Core._apply_pure
         return Some{Any}(Core._apply_pure(getargs(args, frame)...))
     elseif f === Core._expr
