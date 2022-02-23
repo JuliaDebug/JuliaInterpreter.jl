@@ -457,3 +457,14 @@ end
         @test last(JuliaInterpreter.debug_command(f, :c)) isa BreakpointRef
     end
 end
+
+@testset "recursive builtins" begin
+    g(args...) = args
+    args = (iterate, g, (1,3))
+
+    h() = Core._apply_iterate(iterate, Core._apply_iterate, args)
+    breakpoint(g)
+    frame, bp = @interpret h()
+    var = JuliaInterpreter.locals(leaf(frame))
+    @test filter(v->v.name === :args, var)[1].value == (1,3)
+end
