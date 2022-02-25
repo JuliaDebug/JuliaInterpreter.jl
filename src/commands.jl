@@ -400,6 +400,18 @@ function maybe_step_through_nkw_meta!(frame)
 end
 
 
+function more_calls_on_current_line(frame)
+    _, curr_line = whereis(frame)
+    curr_pc = frame.pc + 1
+    while curr_pc <= length(frame.framecode.src.code)
+        _, new_line = whereis(frame, curr_pc)
+        new_line == curr_line || return false
+        is_call(pc_expr(frame, curr_pc)) && return true
+        curr_pc += 1
+    end
+    return false
+end
+
 """
     ret = debug_command(recurse, frame, cmd, rootistoplevel=false; line=nothing)
     ret = debug_command(frame, cmd, rootistoplevel=false; line=nothing)
@@ -409,6 +421,7 @@ Perform one "debugger" command. The keyword arguments are not used for all debug
 
 - `:n`: advance to the next line
 - `:s`: step into the next call
+- `:sl` step into the last call on the current line (e.g. steps into `f` if the line is `f(g(h(x)))`).
 - `:until`: advance the frame to line `line` if given, otherwise advance to the line after the current line
 - `:c`: continue execution until termination or reaching a breakpoint
 - `:finish`: finish the current frame and return to the parent
@@ -444,7 +457,12 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootis
         cmd === :n && return maybe_reset_frame!(recurse, frame, next_line!(recurse, frame, istoplevel), rootistoplevel)
         cmd === :se && return maybe_reset_frame!(recurse, frame, step_expr!(recurse, frame, istoplevel), rootistoplevel)
         cmd === :until && return maybe_reset_frame!(recurse, frame, until_line!(recurse, frame, line, istoplevel), rootistoplevel)
-
+        if cmd === :sl
+            while more_calls_on_current_line(frame)
+                next_call!(recurse, frame, istoplevel)
+            end
+            return debug_command(recurse, frame, :s, rootistoplevel; line)
+        end
         enter_generated = false
         if cmd === :sg
             enter_generated = true
