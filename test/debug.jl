@@ -541,3 +541,20 @@ end
     frame, pc = JuliaInterpreter.debug_command(frame, :n)
     @test pc isa BreakpointRef
 end
+
+@testset "step last call on line" begin
+    g(x) = x
+    f(x) = x
+    h(x) = x
+    function z(x)
+        a = h(f(x) + g(x) - 3)
+        x = 3
+        b = h(g(x))
+    end
+    frame = JuliaInterpreter.enter_call(z, 5)
+    frame, pc = JuliaInterpreter.debug_command(frame, :sl)
+    @test JuliaInterpreter.scopeof(frame).name == :h
+    frame, pc = JuliaInterpreter.debug_command(frame, :finish)
+    frame, pc = JuliaInterpreter.debug_command(frame, :sl)
+    @test JuliaInterpreter.scopeof(frame).name == :h
+end
