@@ -365,7 +365,9 @@ function compute_corrected_linerange(method::Method)
     _, line1 = whereis(method)
     offset = line1 - method.line
     src = JuliaInterpreter.get_source(method)
-    lastline = linetable(src)[end]::LineTypes
+    lt = filter(x -> x.file == method. file, linetable(src))
+    filter(x -> x.file == method.file, lt)
+    lastline = lt[end]::LineTypes
     return line1:getline(lastline) + offset
 end
 
@@ -388,7 +390,9 @@ static line number `line`.
 function statementnumber(framecode::FrameCode, line::Integer)
     sortby(lin) = isa(lin, Int) ? lin : getline(lin)  # for comparison to x=Int(line)
 
+    file = first(lt).file
     lt = linetable(framecode)
+    lt = filter(x -> x.file == file, lt)
     lineidx = searchsortedfirst(lt, Int(line); by=sortby)::Int
     1 <= lineidx <= length(lt) || throw(ArgumentError("line $line not found in $(framecode.scope)"))
     return searchsortedfirst(codelocs(framecode), lineidx)
