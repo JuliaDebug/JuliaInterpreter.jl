@@ -28,20 +28,23 @@ end
 """
     method = whichtt(tt)
 
-Like `which` except it operates on the complete tuple-type `tt`.
+Like `which` except it operates on the complete tuple-type `tt`,
+and doesn't throw when there is no matching method.
 """
 function whichtt(@nospecialize(tt))
     # TODO: provide explicit control over world age? In case we ever need to call "old" methods.
     @static if VERSION ≥ v"1.9.0-DEV.149"
         # branch on https://github.com/JuliaLang/julia/pull/44448
         # for now, actual code execution doesn't ever need to consider overlayed method table
-        m = ccall(:jl_gf_invoke_lookup, Any, (Any, Any, UInt), tt, nothing, get_world_counter())
+        result = Core.Compiler._findsup(tt, nothing, get_world_counter())
+        result === nothing && return nothing
+        return first(result).method
     else
         m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), tt, get_world_counter())
+        m === nothing && return nothing
+        isa(m, Method) && return m
+        return m.func::Method
     end
-    m === nothing && return nothing
-    isa(m, Method) && return m
-    return m.func::Method
 end
 
 instantiate_type_in_env(arg, spsig, spvals) =
