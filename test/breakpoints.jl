@@ -468,3 +468,19 @@ end
     var = JuliaInterpreter.locals(leaf(frame))
     @test filter(v->v.name === :args, var)[1].value == (1,3)
 end
+
+struct Constructor
+    x::Int
+end
+Constructor(x::AbstractString, y::Int) = Constructor(x)
+
+@testset "constructors" begin
+    breakpoint(Constructor, Tuple{String, Int})
+    frame, bp = @interpret Constructor("foo", 3)
+    @test bp isa BreakpointRef
+    @test @interpret Constructor(3) isa Constructor
+
+    breakpoint(Constructor)
+    frame, bp = @interpret Constructor(2)
+    @test bp isa BreakpointRef
+end
