@@ -1,3 +1,5 @@
+using Base: Callable
+
 const _breakpoints = AbstractBreakpoint[]
 
 """
@@ -111,10 +113,10 @@ end
 breakpoint(radius2, Tuple{Int,Int}, :(y > x))
 ```
 """
-function breakpoint(f::Union{Method, Function}, sig=nothing, line::Integer=0, condition::Condition=nothing)
-    if sig !== nothing && f isa Function
+function breakpoint(f::Union{Method, Callable}, sig=nothing, line::Integer=0, condition::Condition=nothing)
+    if sig !== nothing && f isa Callable
         sig = Base.to_tuple_type(sig)
-        sig = Tuple{typeof(f), sig.parameters...}
+        sig = Tuple{_Typeof(f), sig.parameters...}
     end
     bp = BreakpointSignature(f, sig, line, condition, Ref(true), BreakpointRef[])
     add_to_existing_framecodes(bp)
@@ -129,9 +131,9 @@ function breakpoint(f::Union{Method, Function}, sig=nothing, line::Integer=0, co
     firehooks(breakpoint, bp)
     return bp
 end
-breakpoint(f::Union{Method, Function}, sig, condition::Condition) = breakpoint(f, sig, 0, condition)
-breakpoint(f::Union{Method, Function}, line::Integer, condition::Condition=nothing) = breakpoint(f, nothing, line, condition)
-breakpoint(f::Union{Method, Function}, condition::Condition) = breakpoint(f, nothing, 0, condition)
+breakpoint(f::Union{Method, Callable}, sig, condition::Condition) = breakpoint(f, sig, 0, condition)
+breakpoint(f::Union{Method, Callable}, line::Integer, condition::Condition=nothing) = breakpoint(f, nothing, line, condition)
+breakpoint(f::Union{Method, Callable}, condition::Condition) = breakpoint(f, nothing, 0, condition)
 
 
 """

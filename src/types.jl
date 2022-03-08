@@ -416,14 +416,14 @@ A `BreakpointSignature` is a breakpoint that is set on methods or functions.
 
 Fields:
 
-- `f::Union{Method, Function}`: A method or function that the breakpoint should apply to.
+- `f::Union{Method, Function, Type}`: A method or function that the breakpoint should apply to.
 - `sig::Union{Nothing, Type}`: if `f` is a `Method`, always equal to `nothing`. Otherwise, contains the method signature
    as a tuple type for what methods the breakpoint should apply to.
 
 For common fields shared by all breakpoints, see [`AbstractBreakpoint`](@ref).
 """
 struct BreakpointSignature <: AbstractBreakpoint
-    f::Union{Method, Function}
+    f::Union{Method, Base.Callable}
     sig::Union{Nothing, Type}
     line::Int # 0 is a sentinel for first statement
     condition::Condition
