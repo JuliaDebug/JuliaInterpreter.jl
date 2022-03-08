@@ -85,14 +85,14 @@ function evaluate_limited!(@nospecialize(recurse), frame::Frame, nstmts::Int, is
                 nstmts = refnstmts[]
             elseif istoplevel && stmt.head == :thunk
                 code = stmt.args[1]
-                if length(code.code) == 1 && JuliaInterpreter.is_return(code.code[end]) && isexpr(code.code[end].args[1], :method)
+                if length(code.code) == 1 && JuliaInterpreter.is_return(code.code[end]) && isexpr(code.code[end].val, :method)
                     # Julia 1.2+ puts a :thunk before the start of each method
                     new_pc = pc + 1
                 else
                     refnstmts[] = nstmts
-                    newframe = Frame(moduleof(frame), stmt)
+                    newframe = Frame(moduleof(frame), code)
                     if isa(recurse, Compiled)
-                        finish!(recurse, newframe, true)
+                        JuliaInterpreter.finish!(recurse, newframe, true)
                     else
                         newframe.caller = frame
                         frame.callee = newframe
@@ -144,11 +144,108 @@ function limited_exec!(@nospecialize(recurse), newframe, refnstmts, istoplevel)
     return isa(ret, Aborted) ? ret : something(ret)
 end
 
+"""
+    ret = evaluate!(recurse, frame, istoplevel::Bool=true)
+
+Run `frame` until one of:
+- execution terminates normally (`ret = Some{Any}(val)`, where `val` is the returned value of `frame`)
+- if `istoplevel` and a `thunk` or `method` expression is encountered (`ret = nothing`)
+"""
+function evaluate!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
+    # The following is like finish!, except we intercept :call expressions so that we can run them
+    # with limexec! rather than the default finish_and_return!
+    pc = frame.pc
+    while true
+        shouldbreak(frame, pc) && return BreakpointRef(frame.framecode, pc)
+        stmt = pc_expr(frame, pc) 
+        if isassigned(frame.framedata.times, pc) && frame.framedata.times[pc] > 0
+            recurse_pc = Compiled()
+        else
+            recurse_pc = recurse
+        end
+        time = time_ns()
+        if isa(stmt, Expr)
+            if stmt.head == :call && !isa(recurse_pc, Compiled)
+                try
+                    rhs = evaluate_call!(exec!, frame, stmt)
+                    lhs = SSAValue(pc)
+                    do_assignment!(frame, lhs, rhs)
+                    new_pc = pc + 1
+                catch err
+                    new_pc = handle_err(recurse_pc, frame, err)
+                end
+            elseif stmt.head == :(=) && isexpr(stmt.args[2], :call) && !isa(recurse_pc, Compiled)
+                try
+                    rhs = evaluate_call!(exec!, frame, stmt.args[2])
+                    do_assignment!(frame, stmt.args[1], rhs)
+                    new_pc = pc + 1
+                catch err
+                    new_pc = handle_err(recurse_pc, frame, err)
+                end
+            elseif istoplevel && stmt.head == :thunk
+                code = stmt.args[1]
+                if length(code.code) == 1 && JuliaInterpreter.is_return(code.code[end]) && isexpr(code.code[end].val, :method)
+                    # Julia 1.2+ puts a :thunk before the start of each method
+                    new_pc = pc + 1
+                else
+                    newframe = Frame(moduleof(frame), code)
+                    if isa(recurse_pc, Compiled) 
+                        JuliaInterpreter.finish!(recurse_pc, newframe, true)
+                    else
+                        newframe.caller = frame
+                        frame.callee = newframe
+                        exec!(recurse_pc, newframe, istoplevel)
+                        frame.callee = nothing
+                    end
+                    JuliaInterpreter.recycle(newframe)
+                    # Because thunks may define new methods, return to toplevel
+                    frame.pc = pc + 1
+                    return nothing
+                end
+            elseif istoplevel && stmt.head == :method && length(stmt.args) == 3
+                step_expr!(recurse_pc, frame, stmt, istoplevel)
+                frame.pc = pc + 1
+                return nothing
+            else
+                new_pc = step_expr!(recurse_pc, frame, stmt, istoplevel)
+            end
+        else
+            new_pc = step_expr!(recurse_pc, frame, stmt, istoplevel)
+        end
+        (new_pc === nothing || isa(new_pc, BreakpointRef)) && break
+        if !isassigned(frame.framedata.times, pc)
+            frame.framedata.times[pc] = time_ns() - time
+        else
+            frame.framedata.times[pc] += time_ns() - time
+        end 
+        pc = frame.pc = new_pc
+    end
+    # Handle the return
+    stmt = pc_expr(frame, pc)
+    ret = get_return(frame)
+    return Some{Any}(ret)
+end
+
+evaluate!(@nospecialize(recurse), modex::Tuple{Module,Expr,Frame}, istoplevel::Bool=true) =
+    evaluate!(recurse, modex[end], istoplevel)
+evaluate!(@nospecialize(recurse), modex::Tuple{Module,Expr,Expr}, istoplevel::Bool=true) =
+    Some{Any}(Core.eval(modex[1], modex[3]))
+
+evaluate!(frame::Union{Frame, Tuple}, istoplevel::Bool=false) =
+    evaluate!(finish_and_return!, frame, istoplevel)
+
+function exec!(@nospecialize(recurse), newframe, istoplevel)
+    ret = evaluate!(recurse, newframe, istoplevel)
+    return something(ret)
+end
+
 ### Functions needed on workers for running tests
 
 function configure_test()
     # To run tests efficiently, certain methods must be run in Compiled mode,
     # in particular those that are used by the Test infrastructure
+    cc = JuliaInterpreter.compiled_calls
+    empty!(cc)
     cm = JuliaInterpreter.compiled_methods
     empty!(cm)
     JuliaInterpreter.set_compiled_methods()
@@ -171,7 +268,7 @@ function configure_test()
     push!(cm, which(SHA.update!, Tuple{SHA.SHA1_CTX,Vector{UInt8}}))
 end
 
-function run_test_by_eval(test, fullpath, nstmts)
+function run_test_by_limited_eval(test, fullpath, nstmts)
     Core.eval(Main, Expr(:toplevel, :(module JuliaTests using Test, Random end), quote
         # These must be run at top level, so we can't put this in a function
         println("Working on ", $test, "...")
@@ -183,15 +280,50 @@ function run_test_by_eval(test, fullpath, nstmts)
         current_task().storage[:SOURCE_PATH] = $fullpath
         modexs = collect(ExprSplitter(JuliaTests, ex))
         for (i, modex) in enumerate(modexs)  # having the index can be useful for debugging
-            nstmtsleft = $nstmts
-            # mod, ex = modex
+            nstmtsframe = $nstmts
+            local mod, ex = modex
             # @show mod ex
-            frame = Frame(modex)
-            yield()  # allow communication between processes
-            ret, nstmtsleft = evaluate_limited!(frame, nstmtsleft, true)
-            if isa(ret, Aborted)
-                push!(aborts, ret)
-                JuliaInterpreter.finish_stack!(Compiled(), frame, true)
+            frame = Frame(mod, ex)
+            while nstmtsframe > 0
+            	yield()  # allow communication between processes
+                ret, nstmtsleft = evaluate_limited!(frame, nstmtsframe, true)
+                @assert !isa(ret, Nothing) || nstmtsleft < nstmtsframe
+                nstmtsframe = nstmtsleft
+                if isa(ret, Some)
+                    break
+                elseif isa(ret, Aborted)
+                    push!(aborts, ret)
+                    JuliaInterpreter.finish_stack!(Compiled(), frame, true)
+                    break
+                end
+            end
+        end
+        println("Finished ", $test)
+        return ts, aborts
+    end))
+end
+
+function run_test_by_eval(test, fullpath)
+    Core.eval(Main, Expr(:toplevel, :(module JuliaTests using Test, Random end), quote
+        # These must be run at top level, so we can't put this in a function
+        println("Working on ", $test, "...")
+        ex = read_and_parse($fullpath)
+        isexpr(ex, :error) && @error "error parsing $($test): $ex"
+        aborts = Aborted[]
+        ts = Test.DefaultTestSet($test)
+        Test.push_testset(ts)
+        current_task().storage[:SOURCE_PATH] = $fullpath
+        modexs = collect(ExprSplitter(JuliaTests, ex))
+        for (i, modex) in enumerate(modexs)  # having the index can be useful for debugging
+            local mod, ex = modex
+            # @show mod ex
+            frame = Frame(mod, ex)
+            while true
+          	    yield()  # allow communication between processes
+                ret = evaluate!(frame, true)
+                if isa(ret, Some)
+                    break
+                end
             end
         end
         println("Finished ", $test)

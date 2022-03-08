@@ -35,6 +35,7 @@ const compiled_modules = Set{Module}()
 
 const junk_framedata = FrameData[] # to allow re-use of allocated memory (this is otherwise a bottleneck)
 const junk_frames = Frame[]
+disable_recycle() = true
 debug_recycle() = false
 @noinline function _check_frame_not_in_junk(frame)
     @assert frame.framedata ∉ junk_framedata
@@ -43,8 +44,8 @@ end
 
 @inline function recycle(frame)
     debug_recycle() && _check_frame_not_in_junk(frame)
-    push!(junk_framedata, frame.framedata)
-    push!(junk_frames, frame)
+    disable_recycle() || push!(junk_framedata, frame.framedata)
+    disable_recycle() || push!(junk_frames, frame)
 end
 
 function return_from(frame::Frame)
@@ -264,7 +265,7 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
     ng, ns = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any}), length(src.slotflags)
     if length(junk_framedata) > 0
         olddata = pop!(junk_framedata)
-        locals, ssavalues, sparams = olddata.locals, olddata.ssavalues, olddata.sparams
+        locals, ssavalues, times, sparams = olddata.locals, olddata.ssavalues, olddata.times, olddata.sparams
         exception_frames, last_reference = olddata.exception_frames, olddata.last_reference
         last_exception = olddata.last_exception
         callargs = olddata.callargs
@@ -272,6 +273,8 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         fill!(locals, nothing)
         resize!(ssavalues, 0)
         resize!(ssavalues, ng)
+        resize!(times, 0)
+        resize!(times, ng)
         # for check_isdefined to work properly, we need sparams to start out unassigned
         resize!(sparams, 0)
         empty!(exception_frames)
@@ -280,6 +283,7 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
     else
         locals = Vector{Union{Nothing,Some{Any}}}(nothing, ns)
         ssavalues = Vector{Any}(undef, ng)
+        times = Vector{UInt64}(undef, ng)
         sparams = Vector{Any}(undef, 0)
         exception_frames = Int[]
         last_reference = Vector{Int}(undef, ns)
@@ -310,7 +314,7 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         isa(T, TypeVar) && continue  # only fill concrete types
         sparams[i] = T
     end
-    FrameData(locals, ssavalues, sparams, exception_frames, last_exception, caller_will_catch_err, last_reference, callargs)
+    FrameData(locals, ssavalues, times, sparams, exception_frames, last_exception, caller_will_catch_err, last_reference, callargs)
 end
 
 """
