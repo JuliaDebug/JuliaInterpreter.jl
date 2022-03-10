@@ -105,7 +105,6 @@ JuliaInterpreter.is_doc_expr
 JuliaInterpreter.is_global_ref
 CodeTracking.whereis
 JuliaInterpreter.linenumber
-JuliaInterpreter.statementnumber
 JuliaInterpreter.Variable
 JuliaInterpreter.locals
 JuliaInterpreter.whichtt

@@ -97,6 +97,7 @@ struct FrameCode
     used::BitSet
     generator::Bool   # true if this is for the expression-generator of a @generated function
     report_coverage::Bool
+    unique_files::Set{Symbol}
 end
 
 const BREAKPOINT_EXPR = :($(QuoteNode(getproperty))($JuliaInterpreter, :__BREAKPOINT_MARKER__))
@@ -131,7 +132,14 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
     end
     used = find_used(src)
     report_coverage = do_coverage(moduleof(scope))
-    framecode = FrameCode(scope, src, methodtables, breakpoints, slotnamelists, used, generator, report_coverage)
+
+    lt = linetable(src)
+    unique_files = Set{Symbol}()
+    for entry in lt
+        push!(unique_files, entry.file)
+    end
+
+    framecode = FrameCode(scope, src, methodtables, breakpoints, slotnamelists, used, generator, report_coverage, unique_files)
     if scope isa Method
         for bp in _breakpoints
             # Manual union splitting
