@@ -372,18 +372,16 @@ function codelocation(code::CodeInfo, idx::Int)
     return codeloc
 end
 
-function compute_corrected_linerange(framecode)
-    scope = framecode.scope
-    if scope isa Method
-        method = framecode.scope
-        _, line1 = whereis(method)
-        offset = line1 - method.line
-        src = JuliaInterpreter.get_source(method)
-        lastline = linetable(src)[end]::LineTypes
-        return line1:getline(lastline) + offset
-    else
-        getline(linetable(framecode, 1)):getline(last(linetable(framecode)))
-    end
+function compute_corrected_linerange(method::Method)
+    _, line1 = whereis(method)
+    offset = line1 - method.line
+    src = JuliaInterpreter.get_source(method)
+    lastline = linetable(src)[end]::LineTypes
+    return line1:getline(lastline) + offset
+end
+
+function compute_linerange(framecode)
+    getline(linetable(framecode, 1)):getline(last(linetable(framecode)))
 end
 
 function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
@@ -425,7 +423,8 @@ function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
 
     # If the exact line number does not exist in the line table, take the one that is closest after that line
     # restricted to the line range of the current scope.
-    range = compute_corrected_linerange(framecode)
+    scope = framecode.scope 
+    range = scope isa Method ? compute_corrected_linerange(scope) : compute_linerange(framecode)
     if line in range
         closest = nothing
         closest_idx = nothing
