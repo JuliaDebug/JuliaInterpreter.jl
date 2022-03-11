@@ -38,7 +38,9 @@ function whichtt(@nospecialize(tt))
         # for now, actual code execution doesn't ever need to consider overlayed method table
         result = Core.Compiler._findsup(tt, nothing, get_world_counter())
         result === nothing && return nothing
-        return first(result).method
+        fresult = first(result)
+        fresult === nothing && return nothing
+        return fresult.method
     else
         m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), tt, get_world_counter())
         m === nothing && return nothing
