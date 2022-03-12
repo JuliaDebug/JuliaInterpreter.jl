@@ -399,7 +399,7 @@ function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
     lt = linetable(framecode)
 
     # Check if the exact line number exist
-    idxs = findall(entry -> entry.line == line + offset && entry.file == file, lt)
+    idxs = findall(entry -> entry.line + offset == line && entry.file == file, lt)
     locs = codelocs(framecode)
     if !isempty(idxs)
         stmtidxs = Int[]
