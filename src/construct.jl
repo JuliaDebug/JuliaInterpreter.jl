@@ -35,14 +35,14 @@ const compiled_modules = Set{Module}()
 
 const junk_framedata = FrameData[] # to allow re-use of allocated memory (this is otherwise a bottleneck)
 const junk_frames = Frame[]
-debug_recycle() = false
+debug_mode() = false
 @noinline function _check_frame_not_in_junk(frame)
     @assert frame.framedata ∉ junk_framedata
     @assert frame ∉ junk_frames
 end
 
 @inline function recycle(frame)
-    debug_recycle() && _check_frame_not_in_junk(frame)
+    debug_mode() && _check_frame_not_in_junk(frame)
     push!(junk_framedata, frame.framedata)
     push!(junk_frames, frame)
 end

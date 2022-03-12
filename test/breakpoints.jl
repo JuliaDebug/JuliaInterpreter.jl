@@ -484,3 +484,96 @@ Constructor(x::AbstractString, y::Int) = Constructor(x)
     frame, bp = @interpret Constructor(2)
     @test bp isa BreakpointRef
 end
+
+@testset "test breaking on a line with no statement" begin
+    ln = @__LINE__
+    function f_emptylines()
+        sin(2.0)
+    
+    
+    
+        return sin(2.0)
+    end
+
+    bp = breakpoint(@__FILE__, ln + 4)
+    frame, bpref = @interpret f_emptylines()
+    @test bpref isa BreakpointRef
+    @test JuliaInterpreter.whereis(frame) == (@__FILE__, ln + 6)
+    remove(bp)
+
+    # Don't break if the line is outside the function
+    breakpoint(@__FILE__, ln)
+    @test (@interpret f_emptylines()) == sin(2.0)
+end
+
+@testset "macro expansion breakpoint tests" begin
+    function f_macro()
+        sin(2.0)
+        @info "foo"
+        sin(2.0)
+        @info "foo"
+        return 2
+    end
+    frame = JuliaInterpreter.enter_call(f_macro)
+    file_logging = "logging.jl"
+    line_logging = 0
+    for entry in frame.framecode.src.linetable
+        if entry.file == Symbol(file_logging)
+            line_logging = entry.line
+            break
+        end
+    end
+    bp_log = breakpoint(file_logging, line_logging)
+    with_logger(NullLogger()) do
+        frame, bp = @interpret f_macro()
+        @test bp isa BreakpointRef
+        file, ln = JuliaInterpreter.whereis(frame)
+        @test ln == line_logging
+        @test basename(file) == file_logging
+        bp = JuliaInterpreter.finish_stack!(frame)
+        @test bp isa BreakpointRef
+        frame = leaf(frame)
+        ret = JuliaInterpreter.finish_stack!(frame)
+        @test ret == 2
+    end
+
+    JuliaInterpreter.remove(bp_log)
+
+    # Check that stopping on a line only stops in the correct file
+    mktemp() do path, io
+        for _ in 1:line_logging-5
+            print(io, "\n")
+        end
+        print(io, 
+        """
+        function f_check(x)
+            sin(x)
+            @info "foo"
+            sin(x)
+            sin(x)
+            sin(x)
+            sin(x)
+            sin(x)
+
+            return x
+        end
+        """)
+        bp_f = breakpoint(path, line_logging)
+        flush(io)
+        include(path)
+
+        with_logger(NullLogger()) do
+            frame, bp = @interpret f_check(1)
+            file, ln = JuliaInterpreter.whereis(frame)
+            @test file == path # Should not have stopped in logging.jl at line `line_logging`
+            @test ln == line_logging
+            remove(bp_f)
+            @test (@interpret f_check(1)) == 1
+            breakpoint(f_check, line_logging)
+            frame, bp = @interpret f_check(1)
+            file, ln = JuliaInterpreter.whereis(frame)
+            @test file == path # Should not have stopped in logging.jl at line `line_logging`
+            @test ln == line_logging
+        end
+    end
+end

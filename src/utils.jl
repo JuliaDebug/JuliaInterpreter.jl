@@ -38,7 +38,9 @@ function whichtt(@nospecialize(tt))
         # for now, actual code execution doesn't ever need to consider overlayed method table
         result = Core.Compiler._findsup(tt, nothing, get_world_counter())
         result === nothing && return nothing
-        return first(result).method
+        fresult = first(result)
+        fresult === nothing && return nothing
+        return fresult.method
     else
         m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), tt, get_world_counter())
         m === nothing && return nothing
@@ -378,42 +380,74 @@ function compute_corrected_linerange(method::Method)
     return line1:getline(lastline) + offset
 end
 
-function method_contains_line(method::Method, line::Integer)
-    # Check to see if this method really contains that line. Methods that fill in a default positional argument,
+function compute_linerange(framecode)
+    getline(linetable(framecode, 1)):getline(last(linetable(framecode)))
+end
+
+function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
+    # Check to see if this framecode really contains that line. Methods that fill in a default positional argument,
     # keyword arguments, and @generated sections may not contain the line.
-    return line in compute_corrected_linerange(method)
-end
-
-function toplevel_code_contains_line(framecode::FrameCode, line::Integer)
-    return getline(linetable(framecode, 1)) <= line <= getline(last(linetable(framecode)))
-end
-
-"""
-    stmtidx = statementnumber(frame, line::Integer)
-
-Return the index of the first statement in `frame`'s `CodeInfo` that corresponds to
-static line number `line`.
-"""
-function statementnumber(framecode::FrameCode, line::Integer)
-    sortby(lin) = isa(lin, Int) ? lin : getline(lin)  # for comparison to x=Int(line)
+    scope = framecode.scope
+    offset = if scope isa Method
+        method = scope
+        _, line1 = whereis(method)
+        line1 - method.line
+    else
+        0
+    end
 
     lt = linetable(framecode)
-    lineidx = searchsortedfirst(lt, Int(line); by=sortby)::Int
-    1 <= lineidx <= length(lt) || throw(ArgumentError("line $line not found in $(framecode.scope)"))
-    return searchsortedfirst(codelocs(framecode), lineidx)
-end
-statementnumber(frame::Frame, line) = statementnumber(frame.framecode, line)
 
-"""
-    framecode, stmtidx = statementnumber(method, line)
+    # Check if the exact line number exist
+    idxs = findall(entry -> entry.line + offset == line && entry.file == file, lt)
+    locs = codelocs(framecode)
+    if !isempty(idxs)
+        stmtidxs = Int[]
+        stmtidx = 1
+        while stmtidx <= length(locs)
+            loc = locs[stmtidx] 
+            if loc in idxs
+                push!(stmtidxs, stmtidx)
+                stmtidx += 1
+                # Skip continous statements that are on the same line 
+                while stmtidx <= length(locs) && loc == locs[stmtidx]
+                    stmtidx += 1
+                end
+            else
+                stmtidx += 1
+            end
+        end
+        return stmtidxs
+    end
 
-Return the index of the first statement in `framecode` that corresponds to the given
-static line number `line` in `method`.
-"""
-function statementnumber(method::Method, line; line1=whereis(method)[2])
-    linec = line - line1 + method.line  # line number at time of compilation
-    framecode = get_framecode(method)
-    return framecode, statementnumber(framecode, linec)
+
+    # If the exact line number does not exist in the line table, take the one that is closest after that line
+    # restricted to the line range of the current scope.
+    scope = framecode.scope 
+    range = scope isa Method ? compute_corrected_linerange(scope) : compute_linerange(framecode)
+    if line in range
+        closest = nothing
+        closest_idx = nothing
+        for (i, entry) in enumerate(lt)
+            if entry.file == file && entry.line in range && entry.line >= line
+                if closest === nothing
+                    closest = entry
+                    closest_idx = i
+                else
+                    if entry.line < closest.line
+                        closest = entry
+                        closest_idx = i
+                    end
+                end
+            end
+        end
+        if closest_idx !== nothing
+            idx = findfirst(i-> i==closest_idx, locs)
+            return idx === nothing ? nothing : Int[idx]
+        end
+    end
+
+    return nothing
 end
 
 ## Printing

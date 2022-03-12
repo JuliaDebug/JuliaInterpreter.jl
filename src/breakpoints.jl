@@ -62,11 +62,20 @@ function add_to_existing_framecodes(bp::AbstractBreakpoint)
     end
 end
 
-function add_breakpoint_if_match!(framecode::FrameCode, bp::AbstractBreakpoint)
+function add_breakpoint_if_match!(framecode::FrameCode, bp::BreakpointSignature)
     if framecode_matches_breakpoint(framecode, bp)
-        stmtidx = bp.line === 0 ? 1 : statementnumber(framecode, bp.line)
-        breakpoint!(framecode, stmtidx, bp.condition, bp.enabled[])
-        push!(bp.instances, BreakpointRef(framecode, stmtidx))
+        scope = framecode.scope
+        matching_file = if scope isa Method
+            scope.file
+        else
+            # TODO: make more precise?
+            first(framecode.src.linetable).file
+        end
+        stmtidxs = bp.line === 0 ? [1] : statementnumbers(framecode, bp.line, matching_file::Symbol)
+        stmtidxs === nothing && return
+        breakpoint!(framecode, stmtidxs, bp.condition, bp.enabled[])
+        foreach(stmtidx -> push!(bp.instances, BreakpointRef(framecode, stmtidx)), stmtidxs)
+        return
     end
 end
 
@@ -156,29 +165,24 @@ function breakpoint(file::AbstractString, line::Integer, condition::Condition=no
     return bp
 end
 
-function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointFileLocation)
-    if framecode.scope isa Method
-        meth = framecode.scope::Method
-        methpath = CodeTracking.maybe_fix_path(String(meth.file))
-        ispath(methpath) && (methpath = realpath(methpath))
-        if bp.abspath == methpath || endswith(methpath, bp.path)
-            return method_contains_line(meth, bp.line)
-        else
-            return false
-        end
-    else
-        w = whereis(framecode, 1)
-        w === nothing && return false
-        path, _ = w
-        path = CodeTracking.maybe_fix_path(path)
-        ispath(path) && (path = realpath(path))
-
-        if bp.abspath == path || endswith(path, bp.path)
-            return toplevel_code_contains_line(framecode, bp.line)
-        else
-            return false
+function add_breakpoint_if_match!(framecode::FrameCode, bp::BreakpointFileLocation)
+    framecode_contains_file = false
+    matching_file = nothing
+    for file in framecode.unique_files
+        filepath = CodeTracking.maybe_fix_path(String(file))
+        if Base.samefile(bp.abspath, filepath) || endswith(filepath, bp.path)
+            framecode_contains_file = true
+            matching_file = file
+            break
         end
     end
+    framecode_contains_file || return nothing
+
+    stmtidxs = bp.line === 0 ? [1] : statementnumbers(framecode, bp.line, matching_file::Symbol)
+    stmtidxs === nothing && return
+    breakpoint!(framecode, stmtidxs, bp.condition, bp.enabled[])
+    foreach(stmtidx -> push!(bp.instances, BreakpointRef(framecode, stmtidx)), stmtidxs)
+    return
 end
 
 function shouldbreak(frame::Frame, pc::Int)
@@ -240,6 +244,8 @@ function breakpoint!(framecode::FrameCode, pc, condition::Condition=nothing, ena
         framecode.breakpoints[stmtidx] = BreakpointState(enabled, Core.eval(mod, fex))
     end
 end
+breakpoint!(framecode::FrameCode, pcs::AbstractArray, condition::Condition=nothing, enabled=true) = 
+    foreach(pc -> breakpoint!(framecode, pc, condition, enabled), pcs)
 breakpoint!(frame::Frame, pc=frame.pc, condition::Condition=nothing) =
     breakpoint!(frame.framecode, pc, condition)
 
