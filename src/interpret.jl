@@ -196,7 +196,12 @@ function bypass_builtins(@nospecialize(recurse), frame, call_expr, pc)
             f = to_function(fargs[1])
             fmod = parentmodule(f)::Module
             if fmod === JuliaInterpreter.CompiledCalls || fmod === Core.Compiler
-                return Some{Any}(Base.invokelatest(f, fargs[2:end]...))
+                # Fixing https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/432.
+                @static if VERSION >= v"1.7.0"
+                    return Some{Any}(Base.invoke_in_world(get_world_counter(), f, fargs[2:end]...))
+                else
+                    return Some{Any}(Base.invokelatest(f, fargs[2:end]...))
+                end
             else
                 return Some{Any}(f(fargs[2:end]...))
             end

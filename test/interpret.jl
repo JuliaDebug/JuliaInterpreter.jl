@@ -823,6 +823,16 @@ module ForInclude end
     @test JuliaInterpreter.finish_and_return!(Frame(ForInclude, ex), true) == 55
 end
 
+@static if VERSION >= v"1.7.0"
+    @testset "issue #432" begin
+        function f()
+            t = @ccall time()::Cint
+        end
+        @test @interpret(f()) !== 0
+        @test @interpret(f()) !== 0
+    end
+end
+
 @testset "issue #385" begin
     using FunctionWrappers:FunctionWrapper
     @interpret FunctionWrapper{Int,Tuple{}}(()->42)
