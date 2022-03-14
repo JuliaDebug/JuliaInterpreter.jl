@@ -97,6 +97,7 @@ struct FrameCode
     used::BitSet
     generator::Bool   # true if this is for the expression-generator of a @generated function
     report_coverage::Bool
+    unique_files::Set{Symbol}
 end
 
 const BREAKPOINT_EXPR = :($(QuoteNode(getproperty))($JuliaInterpreter, :__BREAKPOINT_MARKER__))
@@ -131,7 +132,14 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
     end
     used = find_used(src)
     report_coverage = do_coverage(moduleof(scope))
-    framecode = FrameCode(scope, src, methodtables, breakpoints, slotnamelists, used, generator, report_coverage)
+
+    lt = linetable(src)
+    unique_files = Set{Symbol}()
+    for entry in lt
+        push!(unique_files, entry.file)
+    end
+
+    framecode = FrameCode(scope, src, methodtables, breakpoints, slotnamelists, used, generator, report_coverage, unique_files)
     if scope isa Method
         for bp in _breakpoints
             # Manual union splitting
@@ -416,14 +424,14 @@ A `BreakpointSignature` is a breakpoint that is set on methods or functions.
 
 Fields:
 
-- `f::Union{Method, Function}`: A method or function that the breakpoint should apply to.
+- `f::Union{Method, Function, Type}`: A method or function that the breakpoint should apply to.
 - `sig::Union{Nothing, Type}`: if `f` is a `Method`, always equal to `nothing`. Otherwise, contains the method signature
    as a tuple type for what methods the breakpoint should apply to.
 
 For common fields shared by all breakpoints, see [`AbstractBreakpoint`](@ref).
 """
 struct BreakpointSignature <: AbstractBreakpoint
-    f::Union{Method, Function}
+    f::Union{Method, Base.Callable}
     sig::Union{Nothing, Type}
     line::Int # 0 is a sentinel for first statement
     condition::Condition

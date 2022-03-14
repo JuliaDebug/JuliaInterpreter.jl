@@ -165,9 +165,24 @@ function evaluate_foreigncall(@nospecialize(recurse), frame::Frame, call_expr::E
     if !isempty(data.sparams) && scope isa Method
         sig = scope.sig
         args[2] = instantiate_type_in_env(args[2], sig, data.sparams)
-        args[3] = Core.svec(map(args[3]) do arg
-            instantiate_type_in_env(arg, sig, data.sparams)
-        end...)
+        @static if VERSION < v"1.7.0"
+            arg3 = args[3]
+            if arg3 isa Core.SimpleVector
+                args[3] = Core.svec(map(arg3) do arg
+                    instantiate_type_in_env(arg, sig, data.sparams)
+                end...)
+            else
+                args[3] = instantiate_type_in_env(arg3, sig, data.sparams)
+                args[4] = Core.svec(map(args[4]::Core.SimpleVector) do arg
+                    instantiate_type_in_env(arg, sig, data.sparams)
+                end...)
+            end
+        else
+            args[3] = instantiate_type_in_env(args[3], sig, data.sparams)
+            args[4] = Core.svec(map(args[4]::Core.SimpleVector) do arg
+                instantiate_type_in_env(arg, sig, data.sparams)
+            end...)
+        end
     end
     return Core.eval(moduleof(frame), Expr(head, args...))
 end
@@ -462,14 +477,14 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                     return (frame.pc = node.args[2]::Int)
                 end
             elseif node.head === :enter
-                rhs = node.args[1]
+                rhs = node.args[1]::Int
                 push!(data.exception_frames, rhs)
             elseif node.head === :leave
                 for _ = 1:node.args[1]::Int
                     pop!(data.exception_frames)
                 end
             elseif node.head === :pop_exception
-                n = lookup_var(frame, node.args[1])
+                n = lookup_var(frame, node.args[1]::SSAValue)::Int
                 deleteat!(data.exception_frames, n+1:length(data.exception_frames))
             elseif node.head === :return
                 return nothing
@@ -489,7 +504,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                     end
                     Core.eval(mod, Expr(:const, name))
                 elseif node.head === :thunk
-                    newframe = Frame(moduleof(frame), node.args[1])
+                    newframe = Frame(moduleof(frame), node.args[1]::CodeInfo)
                     if isa(recurse, Compiled)
                         finish!(recurse, newframe, true)
                     else

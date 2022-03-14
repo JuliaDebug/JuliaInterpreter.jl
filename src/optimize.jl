@@ -268,9 +268,8 @@ function build_compiled_call!(stmt::Expr, fcall, code, idx, nargs::Int, sparams:
     delete_idx = Int[]
     if fcall === :ccall
         cfunc, RetType, ArgType = lookup_stmt(code.code, stmt.args[1]), stmt.args[2], stmt.args[3]::SimpleVector
-        # The result of this is useful to have next to you when reading this code:
-        # f(x, y) =  ccall(:jl_value_ptr, Ptr{Cvoid}, (Float32,Any), x, y)
-        # @code_lowered f(2, 3)
+        # delete cconvert and unsafe_convert calls and forward the original values, since
+        # the same conversions will be applied within the generated compiled variant of this :foreigncall anyway
         args = []
         for (atype, arg) in zip(ArgType, stmt.args[6:6+nargs-1])
             if atype === Any
@@ -279,19 +278,23 @@ function build_compiled_call!(stmt::Expr, fcall, code, idx, nargs::Int, sparams:
                 if arg isa SSAValue
                     unsafe_convert_expr = code.code[arg.id]::Expr
                     push!(delete_idx, arg.id) # delete the unsafe_convert
-                    cconvert_stmt = unsafe_convert_expr.args[3]::SSAValue
-                    push!(delete_idx, cconvert_stmt.id) # delete the cconvert
-                    cconvert_expr = code.code[cconvert_stmt.id]::Expr
-                    push!(args, cconvert_expr.args[3])
+                    cconvert_val = unsafe_convert_expr.args[3]
+                    if isa(cconvert_val, SSAValue)
+                        push!(delete_idx, cconvert_val.id) # delete the cconvert
+                        newarg = (code.code[cconvert_val.id]::Expr).args[3]
+                        push!(args, newarg)
+                    else
+                        @assert isa(cconvert_val, SlotNumber)
+                        push!(args, cconvert_val)
+                    end
                 elseif arg isa SlotNumber
-                    index = findfirst(code.code) do expr
+                    idx = findfirst(code.code) do expr
                         Meta.isexpr(expr, :(=)) || return false
                         lhs = expr.args[1]
                         return lhs isa SlotNumber && lhs.id === arg.id
-                    end
-                    index = index::Int
-                    unsafe_convert_expr = code.code[index]::Expr
-                    push!(delete_idx, index) # delete the unsafe_convert
+                    end::Int
+                    unsafe_convert_expr = code.code[idx]::Expr
+                    push!(delete_idx, idx) # delete the unsafe_convert
                     push!(args, unsafe_convert_expr.args[2])
                 else
                     error("unexpected foreigncall argument type encountered: $(typeof(arg))")

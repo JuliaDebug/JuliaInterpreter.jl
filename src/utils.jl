@@ -28,14 +28,25 @@ end
 """
     method = whichtt(tt)
 
-Like `which` except it operates on the complete tuple-type `tt`.
+Like `which` except it operates on the complete tuple-type `tt`,
+and doesn't throw when there is no matching method.
 """
 function whichtt(@nospecialize(tt))
     # TODO: provide explicit control over world age? In case we ever need to call "old" methods.
-    m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), tt, get_world_counter())
-    m === nothing && return nothing
-    isa(m, Method) && return m
-    return m.func::Method
+    @static if VERSION ≥ v"1.9.0-DEV.149"
+        # branch on https://github.com/JuliaLang/julia/pull/44448
+        # for now, actual code execution doesn't ever need to consider overlayed method table
+        result = Core.Compiler._findsup(tt, nothing, get_world_counter())
+        result === nothing && return nothing
+        fresult = first(result)
+        fresult === nothing && return nothing
+        return fresult.method
+    else
+        m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), tt, get_world_counter())
+        m === nothing && return nothing
+        isa(m, Method) && return m
+        return m.func::Method
+    end
 end
 
 instantiate_type_in_env(arg, spsig, spvals) =
@@ -369,42 +380,74 @@ function compute_corrected_linerange(method::Method)
     return line1:getline(lastline) + offset
 end
 
-function method_contains_line(method::Method, line::Integer)
-    # Check to see if this method really contains that line. Methods that fill in a default positional argument,
+function compute_linerange(framecode)
+    getline(linetable(framecode, 1)):getline(last(linetable(framecode)))
+end
+
+function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
+    # Check to see if this framecode really contains that line. Methods that fill in a default positional argument,
     # keyword arguments, and @generated sections may not contain the line.
-    return line in compute_corrected_linerange(method)
-end
-
-function toplevel_code_contains_line(framecode::FrameCode, line::Integer)
-    return getline(linetable(framecode, 1)) <= line <= getline(last(linetable(framecode)))
-end
-
-"""
-    stmtidx = statementnumber(frame, line::Integer)
-
-Return the index of the first statement in `frame`'s `CodeInfo` that corresponds to
-static line number `line`.
-"""
-function statementnumber(framecode::FrameCode, line::Integer)
-    sortby(lin) = isa(lin, Int) ? lin : getline(lin)  # for comparison to x=Int(line)
+    scope = framecode.scope
+    offset = if scope isa Method
+        method = scope
+        _, line1 = whereis(method)
+        line1 - method.line
+    else
+        0
+    end
 
     lt = linetable(framecode)
-    lineidx = searchsortedfirst(lt, Int(line); by=sortby)::Int
-    1 <= lineidx <= length(lt) || throw(ArgumentError("line $line not found in $(framecode.scope)"))
-    return searchsortedfirst(codelocs(framecode), lineidx)
-end
-statementnumber(frame::Frame, line) = statementnumber(frame.framecode, line)
 
-"""
-    framecode, stmtidx = statementnumber(method, line)
+    # Check if the exact line number exist
+    idxs = findall(entry -> entry.line + offset == line && entry.file == file, lt)
+    locs = codelocs(framecode)
+    if !isempty(idxs)
+        stmtidxs = Int[]
+        stmtidx = 1
+        while stmtidx <= length(locs)
+            loc = locs[stmtidx] 
+            if loc in idxs
+                push!(stmtidxs, stmtidx)
+                stmtidx += 1
+                # Skip continous statements that are on the same line 
+                while stmtidx <= length(locs) && loc == locs[stmtidx]
+                    stmtidx += 1
+                end
+            else
+                stmtidx += 1
+            end
+        end
+        return stmtidxs
+    end
 
-Return the index of the first statement in `framecode` that corresponds to the given
-static line number `line` in `method`.
-"""
-function statementnumber(method::Method, line; line1=whereis(method)[2])
-    linec = line - line1 + method.line  # line number at time of compilation
-    framecode = get_framecode(method)
-    return framecode, statementnumber(framecode, linec)
+
+    # If the exact line number does not exist in the line table, take the one that is closest after that line
+    # restricted to the line range of the current scope.
+    scope = framecode.scope 
+    range = scope isa Method ? compute_corrected_linerange(scope) : compute_linerange(framecode)
+    if line in range
+        closest = nothing
+        closest_idx = nothing
+        for (i, entry) in enumerate(lt)
+            if entry.file == file && entry.line in range && entry.line >= line
+                if closest === nothing
+                    closest = entry
+                    closest_idx = i
+                else
+                    if entry.line < closest.line
+                        closest = entry
+                        closest_idx = i
+                    end
+                end
+            end
+        end
+        if closest_idx !== nothing
+            idx = findfirst(i-> i==closest_idx, locs)
+            return idx === nothing ? nothing : Int[idx]
+        end
+    end
+
+    return nothing
 end
 
 ## Printing
@@ -589,24 +632,43 @@ respectively) can be evaluated using the syntax `var"%3"` and `var"@_4"` respect
 """
 function eval_code end
 
+function extract_usage!(s::Set{Symbol}, expr)
+    if expr isa Expr
+        for arg in expr.args
+            if arg isa Symbol
+                push!(s, arg)
+            elseif arg isa Expr
+                extract_usage!(s, arg)
+            end
+        end
+    elseif expr isa Symbol
+        push!(s, expr)
+    end
+    return s
+end
+
 eval_code(frame::Frame, command::AbstractString) = eval_code(frame, Base.parse_input_line(command))
-function eval_code(frame::Frame, expr)
+function eval_code(frame::Frame, expr::Expr)
     code = frame.framecode
     data = frame.framedata
     isexpr(expr, :toplevel) && (expr = expr.args[end])
 
     if isexpr(expr, :toplevel)
-      expr = Expr(:block, expr.args...)
+        expr = Expr(:block, expr.args...)
     end
+
+    used_symbols = Set{Symbol}((Symbol("#self#"),))
+    extract_usage!(used_symbols, expr)
     # see https://github.com/JuliaLang/julia/issues/31255 for the Symbol("") check
-    vars = filter(v -> v.name != Symbol(""), locals(frame))
-    defined_ssa = findall(x -> x!=0, [isassigned(data.ssavalues, i) for i in 1:length(data.ssavalues)])
-    defined_locals = findall(x -> x isa Some, data.locals)
+    vars = filter(v -> v.name != Symbol("") && v.name in used_symbols, locals(frame))
+    defined_ssa    = findall(i -> isassigned(data.ssavalues, i) && Symbol("%$i")  in used_symbols, 1:length(data.ssavalues))
+    defined_locals = findall(i-> data.locals[i] isa Some        && Symbol("@_$i") in used_symbols, 1:length(data.locals))
     res = gensym()
     eval_expr = Expr(:let,
                      Expr(:block, map(x->Expr(:(=), x...), [(v.name, QuoteNode(v.value isa Core.Box ? v.value.contents : v.value)) for v in vars])...,
-                     map(x->Expr(:(=), x...), [(Symbol("%$i"), QuoteNode(data.ssavalues[i])) for i in defined_ssa])...,
-                     map(x->Expr(:(=), x...), [(Symbol("@_$i"), QuoteNode(data.locals[i].value)) for i in defined_locals])...),
+                                  map(x->Expr(:(=), x...), [(Symbol("%$i"), QuoteNode(data.ssavalues[i]))                          for i in defined_ssa])...,
+                                  map(x->Expr(:(=), x...), [(Symbol("@_$i"), QuoteNode(data.locals[i].value))                      for i in defined_locals])...,
+                     ),
         Expr(:block,
             Expr(:(=), res, expr),
             Expr(:tuple, res, Expr(:tuple, [v.name for v in vars]...))

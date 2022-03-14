@@ -13,6 +13,16 @@ end
 const kwinvoke_name = isdefined(Core, Symbol("#kw##invoke")) ? Symbol("#kw##invoke") : Symbol("##invoke")
 const kwinvoke_instance = getfield(Core, kwinvoke_name).instance
 
+
+function maybe_recurse_expanded_builtin(frame, new_expr)
+    f = new_expr.args[1]
+    if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
+        return maybe_evaluate_builtin(frame, new_expr, true)
+    else
+        return new_expr
+    end
+end
+
 """
     ret = maybe_evaluate_builtin(frame, call_expr, expand::Bool)
 
@@ -22,8 +32,6 @@ Otherwise, return `call_expr`.
 If `expand` is true, `Core._apply` calls will be resolved as a call to the applied function.
 """
 function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
-    # By having each call appearing statically in the "switch" block below,
-    # each gets call-site optimized.
     args = call_expr.args
     nargs = length(args) - 1
     fex = args[1]
@@ -32,13 +40,11 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     else
         f = @lookup(frame, fex)
     end
-    # Builtins and intrinsics have empty method tables. We can circumvent
-    # a long "switch" check by looking for this.
-    mt = typeof(f).name.mt
-    if isa(mt, Core.MethodTable)
-        isempty(mt) || return call_expr
+    if !(isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction))
+        return call_expr
     end
-    # Builtins
+    # By having each call appearing statically in the "switch" block below,
+    # each gets call-site optimized.
     if f === <:
         if nargs == 2
             return Some{Any}(<:(@lookup(frame, args[2]), @lookup(frame, args[3])))
@@ -62,7 +68,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         for x in argsflat
             push!(new_expr.args, (isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode)) ? QuoteNode(x) : x)
         end
-        return new_expr
+        return maybe_recurse_expanded_builtin(frame, new_expr)
     elseif @static isdefined(Core, :_call_latest) ? f === Core._call_latest : false
         args = getargs(args, frame)
         if !expand
@@ -73,7 +79,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         for x in args
             push!(new_expr.args, (isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode)) ? QuoteNode(x) : x)
         end
-        return new_expr
+        return maybe_recurse_expanded_builtin(frame, new_expr)
     elseif @static isdefined(Core, :_apply_latest) ? f === Core._apply_latest : false
         args = getargs(args, frame)
         if !expand
@@ -84,7 +90,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         for x in args
             push!(new_expr.args, (isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode)) ? QuoteNode(x) : x)
         end
-        return new_expr
+        return maybe_recurse_expanded_builtin(frame, new_expr)
     elseif @static isdefined(Core, :_apply_iterate) ? f === Core._apply_iterate : false
         argswrapped = getargs(args, frame)
         if !expand
@@ -99,7 +105,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         for x in argsflat
             push!(new_expr.args, (isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode)) ? QuoteNode(x) : x)
         end
-        return new_expr
+        return maybe_recurse_expanded_builtin(frame, new_expr)
     elseif f === Core._apply_pure
         return Some{Any}(Core._apply_pure(getargs(args, frame)...))
     elseif f === Core._expr

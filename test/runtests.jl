@@ -1,5 +1,6 @@
 using JuliaInterpreter
 using Test
+using Logging
 
 @test isempty(detect_ambiguities(JuliaInterpreter, Base, Core))
 
@@ -7,7 +8,7 @@ if !isdefined(@__MODULE__, :read_and_parse)
     include("utils.jl")
 end
 
-Core.eval(JuliaInterpreter, :(debug_recycle() = true))
+Core.eval(JuliaInterpreter, :(debug_mode() = true))
 
 @testset "Main tests" begin
     include("core.jl")

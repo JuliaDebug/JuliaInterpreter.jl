@@ -85,7 +85,11 @@ module EvalLimited end
         insert!(ex.args, 1, LineNumberNode(1, Symbol("fake.jl")))
     end
     modexs = collect(ExprSplitter(EvalLimited, ex))
-    nstmts = 100 # enough to ensure it gets into the loop but doesn't finish
+    @static if isdefined(Core, :get_binding_type)
+        nstmts = 10*12 + 20 # 10 * 12 statements per iteration + α
+    else
+        nstmts = 9*12 + 20 # 10 * 9 statements per iteration + α
+    end
     for (mod, ex) in modexs
         frame = Frame(mod, ex)
         @test isa(frame, Frame)
@@ -96,7 +100,7 @@ module EvalLimited end
             isa(ret, Aborted) && (push!(aborts, ret); break)
         end
     end
-    @test 8 < EvalLimited.s < 50  # with Compiled(), 9 statements per iteration
+    @test 10 ≤ EvalLimited.s < 50
     @test length(aborts) == 1
     @test aborts[1].at.line ∈ (2, 3, 4, 5)  # 2 corresponds to lowering of the for loop
 

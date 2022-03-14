@@ -585,8 +585,11 @@ function call_cf()
     ccall(cf[1], Int, (Int, Int), 1, 2)
 end
 @test (@interpret call_cf()) == call_cf()
-frame = JuliaInterpreter.enter_call(call_cf)
-@test frame.framecode.methodtables[2] == Compiled()
+let mt = JuliaInterpreter.enter_call(call_cf).framecode.methodtables
+    @test any(1:length(mt)) do i
+        isassigned(mt, i) && mt[i] === Compiled()
+    end
+end
 
 # ccall with integer static parameter
 f_N() =  Array{Float64, 4}(undef, 1, 3, 2, 1)
@@ -597,8 +600,11 @@ f() = ccall((:clock, "libc"), Int32, ())
 try @interpret f()
 catch
 end
-frame = JuliaInterpreter.enter_call(f)
-@test frame.framecode.methodtables[1] == Compiled()
+let mt = JuliaInterpreter.enter_call(f).framecode.methodtables
+    @test any(1:length(mt)) do i
+        isassigned(mt, i) && mt[i] === Compiled()
+    end
+end
 
 # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/194
 f() =  Meta.lower(Main, Meta.parse("(a=1,0)"))
@@ -827,6 +833,11 @@ end
     end
 end
 
+@testset "issue #385" begin
+    using FunctionWrappers:FunctionWrapper
+    @interpret FunctionWrapper{Int,Tuple{}}(()->42)
+end
+
 @testset "TypedSlots" begin
     function foo(x, y)
         z = x + y
@@ -858,7 +869,7 @@ end
         src = lwr.args[1]::Core.CodeInfo
         frame = Frame(M, src; optimize=false)
         @test length(frame.framecode.src.code) == length(src.code)
-        @test JuliaInterpreter.finish_and_return!(frame, true) 
+        @test JuliaInterpreter.finish_and_return!(frame, true)
 
         M = Module()
         lwr = Meta.@lower M begin
@@ -878,7 +889,7 @@ end
         src = lwr.args[1]::Core.CodeInfo
         frame = Frame(M, src; optimize=false)
         @test length(frame.framecode.src.code) == length(src.code)
-        @test JuliaInterpreter.finish_and_return!(frame, true) 
+        @test JuliaInterpreter.finish_and_return!(frame, true)
     end
 
     iscallexpr(ex::Expr) = ex.head === :call
