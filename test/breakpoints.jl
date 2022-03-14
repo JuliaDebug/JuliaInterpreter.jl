@@ -489,9 +489,9 @@ end
     ln = @__LINE__
     function f_emptylines()
         sin(2.0)
-    
-    
-    
+
+
+
         return sin(2.0)
     end
 
@@ -544,7 +544,7 @@ end
         for _ in 1:line_logging-5
             print(io, "\n")
         end
-        print(io, 
+        print(io,
         """
         function f_check(x)
             sin(x)
@@ -576,4 +576,12 @@ end
             @test ln == line_logging
         end
     end
+end
+
+@testset "breakpoint in kwfuncs" begin
+    fkw(;x=1) = x
+    breakpoint(fkw)
+    g() = fkw(; x=1)
+    frame, bp = @interpret g()
+    @test isa(frame, Frame) && isa(bp, JuliaInterpreter.BreakpointRef)
 end

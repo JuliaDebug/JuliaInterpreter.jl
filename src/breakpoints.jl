@@ -96,7 +96,10 @@ function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointSignat
     meth = framecode.scope
     meth isa Method || return false
     bp.f isa Method && return meth === bp.f
-    bp.f === extract_function_from_method(meth) || return false
+    f = extract_function_from_method(meth)
+    if !(bp.f === f || Core.kwfunc(bp.f) === f)
+        return false
+    end
     bp.sig === nothing && return true
     return bp.sig <: meth.sig
 end
