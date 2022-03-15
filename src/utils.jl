@@ -33,14 +33,12 @@ and doesn't throw when there is no matching method.
 """
 function whichtt(@nospecialize(tt))
     # TODO: provide explicit control over world age? In case we ever need to call "old" methods.
-    @static if VERSION ≥ v"1.9.0-DEV.149"
-        # branch on https://github.com/JuliaLang/julia/pull/44448
+    @static if VERSION ≥ v"1.8-beta2"
+        # branch on https://github.com/JuliaLang/julia/pull/44515
         # for now, actual code execution doesn't ever need to consider overlayed method table
-        result = Core.Compiler._findsup(tt, nothing, get_world_counter())
-        result === nothing && return nothing
-        fresult = first(result)
-        fresult === nothing && return nothing
-        return fresult.method
+        match, _ = Core.Compiler._findsup(tt, nothing, get_world_counter())
+        match === nothing && return nothing
+        return match.method
     else
         m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), tt, get_world_counter())
         m === nothing && return nothing
@@ -405,11 +403,11 @@ function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
         stmtidxs = Int[]
         stmtidx = 1
         while stmtidx <= length(locs)
-            loc = locs[stmtidx] 
+            loc = locs[stmtidx]
             if loc in idxs
                 push!(stmtidxs, stmtidx)
                 stmtidx += 1
-                # Skip continous statements that are on the same line 
+                # Skip continous statements that are on the same line
                 while stmtidx <= length(locs) && loc == locs[stmtidx]
                     stmtidx += 1
                 end
@@ -423,7 +421,7 @@ function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
 
     # If the exact line number does not exist in the line table, take the one that is closest after that line
     # restricted to the line range of the current scope.
-    scope = framecode.scope 
+    scope = framecode.scope
     range = scope isa Method ? compute_corrected_linerange(scope) : compute_linerange(framecode)
     if line in range
         closest = nothing
