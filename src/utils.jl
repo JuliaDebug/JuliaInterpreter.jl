@@ -389,7 +389,7 @@ function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
     offset = if scope isa Method
         method = scope
         _, line1 = whereis(method)
-        line1 - method.line
+        Int(line1 - method.line)
     else
         0
     end
@@ -397,7 +397,7 @@ function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
     lt = linetable(framecode)
 
     # Check if the exact line number exist
-    idxs = findall(entry -> entry.line + offset == line && entry.file == file, lt)
+    idxs = findall(entry::Union{LineInfoNode,LineNumberNode} -> entry.line + offset == line && entry.file == file, lt)
     locs = codelocs(framecode)
     if !isempty(idxs)
         stmtidxs = Int[]
@@ -427,6 +427,7 @@ function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
         closest = nothing
         closest_idx = nothing
         for (i, entry) in enumerate(lt)
+            entry = entry::Union{LineInfoNode,LineNumberNode}
             if entry.file == file && entry.line in range && entry.line >= line
                 if closest === nothing
                     closest = entry
@@ -440,7 +441,9 @@ function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
             end
         end
         if closest_idx !== nothing
-            idx = findfirst(i-> i==closest_idx, locs)
+            idx = let closest_idx=closest_idx    # julia #15276
+                findfirst(i-> i==closest_idx, locs)
+            end
             return idx === nothing ? nothing : Int[idx]
         end
     end
