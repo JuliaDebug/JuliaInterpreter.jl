@@ -230,7 +230,7 @@ function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
         end
     end
 
-    has_selfarg = isexpr(last, :call) && any(isequal(SlotNumber(1)), last.args)
+    has_selfarg = isexpr(last, :call) && any(@nospecialize(x) -> isa(x, SlotNumber) && x.id == 1, last.args) # isequal(SlotNumber(1)) vulnerable to invalidation
     issplatcall, _callee = unpack_splatcall(last)
     if is_kw || has_selfarg || (issplatcall && is_bodyfunc(_callee))
         # If the last expr calls #self# or passes it to an implementation method,
