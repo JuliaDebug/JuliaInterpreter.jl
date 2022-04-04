@@ -35,6 +35,7 @@ end
 function generate_fcall_nargs(fname, minarg, maxarg)
     # Generate a separate call for each number of arguments
     maxarg < typemax(Int) || error("call this only for constrained number of arguments")
+    annotation = fname == "fieldtype" ? "::Type" : ""
     wrapper = "if nargs == "
     for nargs = minarg:maxarg
         wrapper *= "$nargs\n            "
@@ -45,13 +46,13 @@ function generate_fcall_nargs(fname, minarg, maxarg)
                 argcall *= ", "
             end
         end
-        wrapper *= "return Some{Any}($fname($argcall))"
+        wrapper *= "return Some{Any}($fname($argcall)$annotation)"
         if nargs < maxarg
             wrapper *= "\n        elseif nargs == "
         end
     end
     wrapper *= "\n        else"
-    wrapper *= "\n            return Some{Any}($fname(getargs(args, frame)...))"  # to throw the correct error
+    wrapper *= "\n            return Some{Any}($fname(getargs(args, frame)...)$annotation)"  # to throw the correct error
     wrapper *= "\n        end"
     return wrapper
 end

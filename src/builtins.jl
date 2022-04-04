@@ -166,11 +166,11 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         return Some{Any}(applicable(getargs(args, frame)...))
     elseif f === fieldtype
         if nargs == 2
-            return Some{Any}(fieldtype(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(fieldtype(@lookup(frame, args[2]), @lookup(frame, args[3]))::Type)
         elseif nargs == 3
-            return Some{Any}(fieldtype(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(fieldtype(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]))::Type)
         else
-            return Some{Any}(fieldtype(getargs(args, frame)...))
+            return Some{Any}(fieldtype(getargs(args, frame)...)::Type)
         end
     elseif f === getfield
         if nargs == 2
