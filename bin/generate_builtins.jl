@@ -1,7 +1,7 @@
 # This file generates builtins.jl.
 using InteractiveUtils
 
-const kwinvoke_name = isdefined(Core, Symbol("#kw##invoke")) ? Symbol("#kw##invoke") : Symbol("##invoke")
+const kwinvoke = Core.kwfunc(Core.invoke)
 
 function scopedname(f)
     io = IOBuffer()
@@ -22,10 +22,6 @@ function nargs(f, table, id)
     else
         minarg = 0
         maxarg = typemax(Int)
-    end
-    # The tfunc tables are wrong for fptoui and fptosi (fixed in https://github.com/JuliaLang/julia/pull/30787)
-    if f == Base.fptoui || f == Base.fptosi
-        minarg = 2
     end
     # Specialize arrayref and arrayset for small numbers of arguments
     if f == Core.arrayref
@@ -93,8 +89,16 @@ function getargs(args, frame)
     return callargs
 end
 
-const kwinvoke_name = isdefined(Core, Symbol("#kw##invoke")) ? Symbol("#kw##invoke") : Symbol("##invoke")
-const kwinvoke_instance = getfield(Core, kwinvoke_name).instance
+const kwinvoke = Core.kwfunc(Core.invoke)
+
+function maybe_recurse_expanded_builtin(frame, new_expr)
+    f = new_expr.args[1]
+    if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
+        return maybe_evaluate_builtin(frame, new_expr, true)
+    else
+        return new_expr
+    end
+end
 
 \"\"\"
     ret = maybe_evaluate_builtin(frame, call_expr, expand::Bool)
@@ -102,11 +106,9 @@ const kwinvoke_instance = getfield(Core, kwinvoke_name).instance
 If `call_expr` is to a builtin function, evaluate it, returning the result inside a `Some` wrapper.
 Otherwise, return `call_expr`.
 
-If `expand` is true, `Core._apply` calls will be resolved as a call to the applied function.
+If `expand` is true, `Core._apply_iterate` calls will be resolved as a call to the applied function.
 \"\"\"
 function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
-    # By having each call appearing statically in the "switch" block below,
-    # each gets call-site optimized.
     args = call_expr.args
     nargs = length(args) - 1
     fex = args[1]
@@ -115,18 +117,16 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     else
         f = @lookup(frame, fex)
     end
-    # Builtins and intrinsics have empty method tables. We can circumvent
-    # a long "switch" check by looking for this.
-    mt = typeof(f).name.mt
-    if isa(mt, Core.MethodTable)
-        isempty(mt) || return call_expr
+    if !(isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction))
+        return call_expr
     end
-    # Builtins
+    # By having each call appearing statically in the "switch" block below,
+    # each gets call-site optimized.
 """)
     firstcall = true
     for ft in subtypes(Core.Builtin)
         ft === Core.IntrinsicFunction && continue
-        ft === getfield(Core, kwinvoke_name) && continue  # handle this one later
+        ft === typeof(kwinvoke) && continue  # handle this one later
         head = firstcall ? "if" : "elseif"
         firstcall = false
         f = ft.instance
@@ -137,47 +137,79 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             print(io,
 """
     $head f === tuple
-        return Some{Any}(ntuple(i->@lookup(frame, args[i+1]), length(args)-1))
+        return Some{Any}(ntupleany(i->@lookup(frame, args[i+1]), length(args)-1))
 """)
             continue
-        elseif f === Core._apply || f === Core._apply_latest
-            # Resolve varargs calls and invokelatest
+        elseif f === Core._apply_iterate
+            # Resolve varargs calls
+            print(io,
+"""
+    $head f === Core._apply_iterate
+        argswrapped = getargs(args, frame)
+        if !expand
+            return Some{Any}(Core._apply_iterate(argswrapped...))
+        end
+        aw1 = argswrapped[1]::Function
+        @assert aw1 === Core.iterate || aw1 === Core.Compiler.iterate || aw1 === Base.iterate "cannot handle `_apply_iterate` with non iterate as first argument, got \$(aw1), \$(typeof(aw1))"
+        new_expr = Expr(:call, argswrapped[2])
+        popfirst!(argswrapped) # pop the iterate
+        popfirst!(argswrapped) # pop the function
+        argsflat = append_any(argswrapped...)
+        for x in argsflat
+            push!(new_expr.args, QuoteNode(x))
+        end
+        return maybe_recurse_expanded_builtin(frame, new_expr)
+""")
+            continue
+        elseif f === Core.invoke
             fstr = scopedname(f)
             print(io,
 """
     $head f === $fstr
+            argswrapped = getargs(args, frame)
+            if !expand
+                return Some{Any}($fstr(argswrapped...))
+            end
+            return Expr(:call, $fstr, argswrapped...)
+""")
+            continue
+        elseif f === Core._call_latest
+            print(io,
+"""
+    elseif f === Core._call_latest
         args = getargs(args, frame)
         if !expand
-            return Some{Any}($fstr(args...))
+            return Some{Any}(Core._call_latest(args...))
         end
         new_expr = Expr(:call, args[1])
         popfirst!(args)
         for x in args
-            push!(new_expr.args, (isa(x, Symbol) || isa(x, Expr) || isa(x, QuoteNode)) ? QuoteNode(x) : x)
+            push!(new_expr.args, QuoteNode(x))
         end
-        return new_expr
+        return maybe_recurse_expanded_builtin(frame, new_expr)
 """)
-            continue
-        elseif f === Core.invoke
-            print(io,
-"""
-    $head f === invoke
-            argswrapped = getargs(args, frame)
-            if !expand
-                return Some{Any}(invoke(argswrapped...))
-            end
-            return Expr(:call, invoke, argswrapped...)
-""")
-            continue
         end
 
         id = findfirst(isequal(f), Core.Compiler.T_FFUNC_KEY)
         fcall = generate_fcall(f, Core.Compiler.T_FFUNC_VAL, id)
-        print(io,
+        if f in Core.Builtin[
+            Core._call_in_world_total, Core.donotdelete,
+            Core.get_binding_type, Core.set_binding_type!,
+            Core.getglobal, Core.setglobal!,
+            Core.modifyfield!, Core.replacefield!, Core.swapfield!,
+        ]
+            print(io,
+"""
+    $head @static isdefined($(ft.name.module), $(repr(nameof(f)))) && f === $fname
+        $fcall
+""")
+        else
+            print(io,
 """
     $head f === $fname
         $fcall
 """)
+        end
         firstcall = false
     end
     print(io,
@@ -188,9 +220,14 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
 """
     elseif f === Base.cglobal
         if nargs == 1
+            call_expr = copy(call_expr)
+            args2 = args[2]
+            call_expr.args[2] = isa(args2, QuoteNode) ? args2 : @lookup(frame, args2)
             return Some{Any}(Core.eval(moduleof(frame), call_expr))
         elseif nargs == 2
             call_expr = copy(call_expr)
+            args2 = args[2]
+            call_expr.args[2] = isa(args2, QuoteNode) ? args2 : @lookup(frame, args2)
             call_expr.args[3] = @lookup(frame, args[3])
             return Some{Any}(Core.eval(moduleof(frame), call_expr))
         end
@@ -232,8 +269,8 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     print(io,
 """
     end
-    if isa(f, getfield(Core, kwinvoke_name))
-        return Some{Any}(kwinvoke_instance(getargs(args, frame)...))
+    if isa(f, typeof(kwinvoke))
+        return Some{Any}(kwinvoke(getargs(args, frame)...))
     end
     return call_expr
 end
