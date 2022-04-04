@@ -116,6 +116,15 @@ function set_compiled_methods()
     push!(compiled_modules, Base.Threads)
 end
 
+function _have_fma_compiled(T)
+    Base.Experimental.@force_compile
+    Core.Intrinsics.have_fma(T)
+end
+
+const FMA_FLOAT64 = Ref(false)
+const FMA_FLOAT32 = Ref(false)
+const FMA_FLOAT16 = Ref(false)
+
 function __init__()
     set_compiled_methods()
     COVERAGE[] = Base.JLOptions().code_coverage
@@ -144,6 +153,10 @@ function __init__()
     #     compiled_calls[(qsym, RT, Core.svec(AT...), Core.Compiler)] = f
     #     precompile(f, AT)
     # end
+    
+    FMA_FLOAT64[] = _have_fma_compiled(Float64)
+    FMA_FLOAT32[] = _have_fma_compiled(Float32)
+    FMA_FLOAT16[] = _have_fma_compiled(Float16)
 end
 
 include("precompile.jl")

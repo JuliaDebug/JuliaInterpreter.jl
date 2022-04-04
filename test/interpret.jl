@@ -895,3 +895,12 @@ end
     iscallexpr(ex::Expr) = ex.head === :call
     @test (@interpret iscallexpr(:(sin(3.14))))
 end
+
+f_fma() = Base.have_fma(Float64)
+@testset "fma" begin
+    @test (@interpret f_fma()) == f_fma()
+    a, b, c = (1.0585073227945125, -0.00040303348596386557, 1.5051263504758005e-16)
+    @test (@interpret muladd(a, b, c)) === muladd(a,b,c)
+    a = 1.0883740903666346; b = 2/3
+    @test (@interpret a^b) === a^b
+end
