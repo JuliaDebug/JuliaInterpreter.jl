@@ -268,6 +268,32 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
 """
     if isa(f, Core.IntrinsicFunction)
         cargs = getargs(args, frame)
+        @static if isdefined(Core.Intrinsics, :have_fma)
+            if f === Core.Intrinsics.have_fma && length(cargs) == 1
+                cargs1 = cargs[1]
+                if cargs1 == Float64
+                    return Some{Any}(FMA_FLOAT64[])
+                elseif cargs1 == Float32
+                    return Some{Any}(FMA_FLOAT32[])
+                elseif cargs1 == Float16
+                    return Some{Any}(FMA_FLOAT16[])
+                end
+            end
+        end
+        if f === Core.Intrinsics.muladd_float && length(cargs) == 3
+            a, b, c = cargs
+            Ta, Tb, Tc = typeof(a), typeof(b), typeof(c)
+            if !(Ta == Tb == Tc)
+                error("muladd_float: types of a, b, and c must match")
+            end
+            if Ta == Float64 && FMA_FLOAT64[]
+                f = Core.Intrinsics.fma_float
+            elseif Ta == Float32 && FMA_FLOAT32[]
+                f = Core.Intrinsics.fma_float
+            elseif Ta == Float16 && FMA_FLOAT16[]
+                f = Core.Intrinsics.fma_float
+            end
+        end
         return Some{Any}(ccall(:jl_f_intrinsic_call, Any, (Any, Ptr{Any}, UInt32), f, cargs, length(cargs)))
 """)
     print(io,
