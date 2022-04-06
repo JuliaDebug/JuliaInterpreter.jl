@@ -116,10 +116,7 @@ function set_compiled_methods()
     push!(compiled_modules, Base.Threads)
 end
 
-function _have_fma_compiled(T)
-    Base.Experimental.@force_compile
-    Core.Intrinsics.have_fma(T)
-end
+_have_fma_compiled(::Type{T}) where {T} = Core.Intrinsics.have_fma(T)
 
 const FMA_FLOAT64 = Ref(false)
 const FMA_FLOAT32 = Ref(false)
@@ -154,9 +151,11 @@ function __init__()
     #     precompile(f, AT)
     # end
     
-    FMA_FLOAT64[] = _have_fma_compiled(Float64)
-    FMA_FLOAT32[] = _have_fma_compiled(Float32)
-    FMA_FLOAT16[] = _have_fma_compiled(Float16)
+    @static if isdefined(Base, :have_fma)
+        FMA_FLOAT64[] = _have_fma_compiled(Float64)
+        FMA_FLOAT32[] = _have_fma_compiled(Float32)
+        FMA_FLOAT16[] = _have_fma_compiled(Float16)
+    end
 end
 
 include("precompile.jl")

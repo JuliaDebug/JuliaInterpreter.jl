@@ -896,6 +896,7 @@ end
     @test (@interpret iscallexpr(:(sin(3.14))))
 end
 
+if isdefined(Base, :have_fma)
 f_fma() = Base.have_fma(Float64)
 @testset "fma" begin
     @test (@interpret f_fma()) == f_fma()
@@ -903,4 +904,5 @@ f_fma() = Base.have_fma(Float64)
     @test (@interpret muladd(a, b, c)) === muladd(a,b,c)
     a = 1.0883740903666346; b = 2/3
     @test (@interpret a^b) === a^b
+end
 end
