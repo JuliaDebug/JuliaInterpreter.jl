@@ -356,9 +356,9 @@ function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
         end
     elseif isa(lhs, Symbol)
         @static if @isdefined setglobal!
-            setglobal!(moduleof(code), lhs.name, rhs)
+            setglobal!(moduleof(code), lhs, rhs)
         else
-            ccall(:jl_set_global, Cvoid, (Any, Any, Any), moduleof(code), lhs.name, rhs)
+            ccall(:jl_set_global, Cvoid, (Any, Any, Any), moduleof(code), lhs, rhs)
         end
     end
 end
