@@ -349,9 +349,17 @@ function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
         data.locals[lhs.id] = Some{Any}(rhs)
         data.last_reference[lhs.id] = counter
     elseif isa(lhs, GlobalRef)
-        Core.eval(lhs.mod, :($(lhs.name) = $(QuoteNode(rhs))))
+        @static if @isdefined setglobal!
+            setglobal!(lhs.mod, lhs.name, rhs)
+        else
+            ccall(:jl_set_global, Cvoid, (Any, Any, Any), lhs.mod, lhs.name, rhs)
+        end
     elseif isa(lhs, Symbol)
-        Core.eval(moduleof(code), :($lhs = $(QuoteNode(rhs))))
+        @static if @isdefined setglobal!
+            setglobal!(moduleof(code), lhs.name, rhs)
+        else
+            ccall(:jl_set_global, Cvoid, (Any, Any, Any), moduleof(code), lhs.name, rhs)
+        end
     end
 end
 
