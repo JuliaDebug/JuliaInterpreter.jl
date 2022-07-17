@@ -226,6 +226,7 @@ function is_doc_expr(@nospecialize(ex))
     docsym = Symbol("@doc")
     if isexpr(ex, :macrocall)
         ex::Expr
+        length(ex.args) == 4 || return false
         a = ex.args[1]
         is_global_ref(a, Core, docsym) && return true
         isa(a, Symbol) && a == docsym && return true
