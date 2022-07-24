@@ -195,6 +195,8 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
                 argswrapped = getargs(args, frame)
                 return Some{Any}(invoke(argswrapped...))
             end
+            # This uses the original arguments to avoid looking them up twice
+            # See #442
             return Expr(:call, invoke, args[2:end]...)
     elseif f === isa
         if nargs == 2
