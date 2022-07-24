@@ -36,6 +36,16 @@ end
     io = IOBuffer()
     show(io, @doc(Main.DocStringTest))
     @test occursin("Special", String(take!(io)))
+    # issue #538
+    @test !JuliaInterpreter.is_doc_expr(:(Core.@doc "string"))
+    ex = quote
+        @doc("no docstring")
+
+        sum
+    end
+    modexs = collect(ExprSplitter(Main, ex))
+    m, ex = first(modexs)
+    @test !JuliaInterpreter.is_doc_expr(ex.args[2])
 
     @test !isdefined(Main, :JIInvisible)
     collect(ExprSplitter(JIVisible, :(module JIInvisible f() = 1 end)))
