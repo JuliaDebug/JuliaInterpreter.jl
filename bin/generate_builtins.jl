@@ -8,7 +8,7 @@ const RECENTLY_ADDED = Core.Builtin[
     Core.get_binding_type, Core.set_binding_type!,
     Core.getglobal, Core.setglobal!,
     Core.modifyfield!, Core.replacefield!, Core.swapfield!,
-] 
+]
 const kwinvoke = Core.kwfunc(Core.invoke)
 
 function scopedname(f)
@@ -175,11 +175,13 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             print(io,
 """
     $head f === $fstr
-            argswrapped = getargs(args, frame)
             if !expand
+                argswrapped = getargs(args, frame)
                 return Some{Any}($fstr(argswrapped...))
             end
-            return Expr(:call, $fstr, argswrapped...)
+            # This uses the original arguments to avoid looking them up twice
+            # See #442
+            return Expr(:call, invoke, args[2:end]...)
 """)
             continue
         elseif f === Core._call_latest

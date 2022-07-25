@@ -727,9 +727,12 @@ end
     D = Diagonal([1.0, 2.0])
     @test @interpret(f(D)) === f(D)
 
-    # issue #441
+    # issue #441 & #535
     flog() = @info "logging macros"
-    @test @interpret flog() === nothing
+    @test_logs (:info, "logging macros") @test @interpret flog() === nothing
+    flog2() = @error "this error is ok"
+    frame = JuliaInterpreter.enter_call(flog2)
+    @test_logs (:error, "this error is ok") @test debug_command(frame, :c) === nothing
 end
 
 struct A396
