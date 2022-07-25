@@ -8,6 +8,7 @@ const RECENTLY_ADDED = Core.Builtin[
     Core.get_binding_type, Core.set_binding_type!,
     Core.getglobal, Core.setglobal!,
     Core.modifyfield!, Core.replacefield!, Core.swapfield!,
+    Core.finalizer
 ]
 const kwinvoke = Core.kwfunc(Core.invoke)
 

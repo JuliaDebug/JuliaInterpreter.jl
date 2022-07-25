@@ -140,7 +140,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         return Some{Any}(Core.const_arrayref(getargs(args, frame)...))
     elseif @static isdefined(Core, :donotdelete) && f === Core.donotdelete
         return Some{Any}(Core.donotdelete(getargs(args, frame)...))
-    elseif f === Core.finalizer
+    elseif @static isdefined(Core, :finalizer) && f === Core.finalizer
         if nargs == 2
             return Some{Any}(Core.finalizer(@lookup(frame, args[2]), @lookup(frame, args[3])))
         elseif nargs == 3
