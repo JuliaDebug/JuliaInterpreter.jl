@@ -2,6 +2,8 @@ using JuliaInterpreter
 using Test
 using Logging
 
+include("check_builtins.jl")
+
 @test isempty(detect_ambiguities(JuliaInterpreter, Base, Core))
 
 if !isdefined(@__MODULE__, :read_and_parse)
