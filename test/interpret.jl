@@ -909,3 +909,12 @@ f_fma() = Base.have_fma(Float64)
     @test (@interpret a^b) === a^b
 end
 end
+
+# issue 536
+function foo_536(y::T) where {T}
+    x = "A"
+    return ccall(:memcmp, Cint, (Ptr{UInt8}, Ref{T}, Csize_t),
+            pointer(x), Ref(y), 1) == 0
+end
+@test !@interpret foo_536(0x00)
+@test @interpret foo_536(UInt8('A'))
