@@ -195,12 +195,17 @@ struct Squarer end
     # Breakpoint display
     io = IOBuffer()
     frame = JuliaInterpreter.enter_call(loop_radius2, 2)
+    if VERSION < v"1.9.0-DEV.846" # https://github.com/JuliaLang/julia/pull/45069
+        LOC = " in $(@__MODULE__) at $(@__FILE__)"
+    else
+        LOC = "\n     @ $(@__MODULE__) $(contractuser(@__FILE__))"
+    end
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 1)
-    @test repr(bp) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):$(3-Δ), line 3)"
+    @test repr(bp) == "breakpoint(loop_radius2(n)$LOC:$(3-Δ), line 3)"
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 0)  # fictive breakpoint
-    @test repr(bp) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):$(3-Δ), %0)"
+    @test repr(bp) == "breakpoint(loop_radius2(n)$LOC:$(3-Δ), %0)"
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 1, ArgumentError("whoops"))
-    @test repr(bp) == "breakpoint(loop_radius2(n) in $(@__MODULE__) at $(@__FILE__):$(3-Δ), line 3, ArgumentError(\"whoops\"))"
+    @test repr(bp) == "breakpoint(loop_radius2(n)$LOC:$(3-Δ), line 3, ArgumentError(\"whoops\"))"
 
     # In source breakpointing
     f_outer_bp(x) = g_inner_bp(x)
@@ -434,7 +439,7 @@ end
     tmp_dupl() = (1,2,3,4)
     ln = @__LINE__
     function duplnames(x)
-        for iter in Iterators.CartesianIndices(x)
+        for iter in CartesianIndices(x)
             i = iter[1]
             c = i
             a, b, c, d = tmp_dupl()
