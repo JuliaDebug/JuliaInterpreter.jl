@@ -165,20 +165,14 @@ function evaluate_foreigncall(@nospecialize(recurse), frame::Frame, call_expr::E
     if !isempty(data.sparams) && scope isa Method
         sig = scope.sig
         args[2] = instantiate_type_in_env(args[2], sig, data.sparams)
-        @static if VERSION < v"1.7.0"
-            arg3 = args[3]
-            if arg3 isa Core.SimpleVector
-                args[3] = Core.svec(map(arg3) do arg
-                    instantiate_type_in_env(arg, sig, data.sparams)
-                end...)
-            else
-                args[3] = instantiate_type_in_env(arg3, sig, data.sparams)
-                args[4] = Core.svec(map(args[4]::Core.SimpleVector) do arg
-                    instantiate_type_in_env(arg, sig, data.sparams)
-                end...)
-            end
+        arg3 = args[3]
+        if (@static VERSION < v"1.7.0" && arg3 isa Core.SimpleVector) ||
+            head === :foreigncall
+            args[3] = Core.svec(map(arg3) do arg
+                instantiate_type_in_env(arg, sig, data.sparams)
+            end...)
         else
-            args[3] = instantiate_type_in_env(args[3], sig, data.sparams)
+            args[3] = instantiate_type_in_env(arg3, sig, data.sparams)
             args[4] = Core.svec(map(args[4]::Core.SimpleVector) do arg
                 instantiate_type_in_env(arg, sig, data.sparams)
             end...)
