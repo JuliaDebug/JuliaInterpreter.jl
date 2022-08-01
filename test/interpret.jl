@@ -468,7 +468,11 @@ fr = JuliaInterpreter.enter_call(Test.eval, 1)
 file, line = JuliaInterpreter.whereis(fr)
 @test isfile(file)
 @test isfile(JuliaInterpreter.getfile(fr.framecode.src.linetable[1]))
-@test occursin(Sys.STDLIB, repr(fr))
+if VERSION < v"1.9.0-DEV.846" # https://github.com/JuliaLang/julia/pull/45069
+    @test occursin(Sys.STDLIB, repr(fr))
+else
+    @test occursin(contractuser(Sys.STDLIB), repr(fr))
+end
 
 # Test undef sparam (https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/165)
 function foo(x::T) where {T <: AbstractString, S <: AbstractString}
