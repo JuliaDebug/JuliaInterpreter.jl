@@ -25,5 +25,6 @@ jobs:
             ${{ runner.os }}-test-${{ env.cache-name }}-
             ${{ runner.os }}-test-
             ${{ runner.os }}-
+      - run: julia -e 'import Pkg; Pkg.add(["DeepDiffs", "Test"])'
       - uses: julia-actions/julia-buildpkg@v1
       - run: julia test/check_builtins.jl
