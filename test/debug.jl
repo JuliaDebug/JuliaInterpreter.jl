@@ -136,7 +136,7 @@ end
         frame = enter_call_expr(:($(callgenerated)()))
         f, pc = debug_command(frame, :s)
         @test isa(pc, BreakpointRef)
-        @test JuliaInterpreter.scopeof(f).name == :generatedfoo
+        @test JuliaInterpreter.scopeof(f).name === :generatedfoo
         stmt = JuliaInterpreter.pc_expr(f)
         @test JuliaInterpreter.is_return(stmt) && JuliaInterpreter.lookup_return(frame, stmt) === Int
         @test debug_command(frame, :c) === nothing
@@ -149,11 +149,11 @@ end
             lt = JuliaInterpreter.linetable(f, 2)
             @test isexpr(lt, :line) || isa(lt, Core.LineInfoNode)
         @test isa(pc, BreakpointRef)
-        @test JuliaInterpreter.scopeof(f).name == :generatedfoo
+        @test JuliaInterpreter.scopeof(f).name === :generatedfoo
         stmt = JuliaInterpreter.pc_expr(f)
         @test JuliaInterpreter.is_return(stmt) && JuliaInterpreter.lookup_return(f, stmt) === 1
         f2, pc = debug_command(f, :finish)
-        @test JuliaInterpreter.scopeof(f2).name == :callgenerated
+        @test JuliaInterpreter.scopeof(f2).name === :callgenerated
         # Now finish the regular function
         @test debug_command(frame, :finish) === nothing
         @test frame.callee === nothing
@@ -165,7 +165,7 @@ end
             fr, pc = debug_command(fr, :se)
         end
         fr, pc = debug_command(fr, :sg)
-        @test JuliaInterpreter.scopeof(fr).name == :generatedparams
+        @test JuliaInterpreter.scopeof(fr).name === :generatedparams
         fr, pc = debug_command(fr, :finish)
         @test debug_command(fr, :finish) === nothing
         @test JuliaInterpreter.get_return(fr) == (Int, 2)
@@ -335,7 +335,7 @@ end
             break_on(:error)
             fr = JuliaInterpreter.enter_call(f_outer)
             fr, pc = debug_command(JuliaInterpreter.finish_and_return!, fr, :finish)
-            @test fr.framecode.scope.name == :error
+            @test fr.framecode.scope.name === :error
 
             fundef() = undef_func()
             frame = JuliaInterpreter.enter_call(fundef)
@@ -553,8 +553,8 @@ end
     end
     frame = JuliaInterpreter.enter_call(z, 5)
     frame, pc = JuliaInterpreter.debug_command(frame, :sl)
-    @test JuliaInterpreter.scopeof(frame).name == :h
+    @test JuliaInterpreter.scopeof(frame).name === :h
     frame, pc = JuliaInterpreter.debug_command(frame, :finish)
     frame, pc = JuliaInterpreter.debug_command(frame, :sl)
-    @test JuliaInterpreter.scopeof(frame).name == :h
+    @test JuliaInterpreter.scopeof(frame).name === :h
 end

@@ -342,7 +342,7 @@ function build_compiled_call!(stmt::Expr, fcall, code, idx, nargs::Int, sparams:
     f = get(compiled_calls, cc_key, nothing)
     argnames = Any[Symbol(:arg, i) for i = 1:nargs]
     if f === nothing
-        if fcall == :ccall
+        if fcall === :ccall
             ArgType = Expr(:tuple, Any[parametric_type_to_expr(t) for t in ArgType::SimpleVector]...)
         end
         RetType = parametric_type_to_expr(RetType)

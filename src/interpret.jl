@@ -154,7 +154,7 @@ Evaluate a `:foreigncall` (from a `ccall`) statement `callexpr` in the context o
 """
 function evaluate_foreigncall(@nospecialize(recurse), frame::Frame, call_expr::Expr)
     head = call_expr.head
-    args = collect_args(recurse, frame, call_expr; isfc = head==:foreigncall)
+    args = collect_args(recurse, frame, call_expr; isfc = head === :foreigncall)
     for i = 2:length(args)
         arg = args[i]
         args[i] = isa(arg, Symbol) ? QuoteNode(arg) : arg
@@ -400,7 +400,7 @@ function eval_rhs(@nospecialize(recurse), frame, node::Expr)
         return length(frame.framedata.exception_frames)
     elseif head === :boundscheck
         return true
-    elseif head === :meta || head === :inbounds || head == :loopinfo ||
+    elseif head === :meta || head === :inbounds || head === :loopinfo ||
            head === :gc_preserve_begin || head === :gc_preserve_end
         return nothing
     elseif head === :method && length(node.args) == 1

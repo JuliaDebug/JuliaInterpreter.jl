@@ -42,7 +42,7 @@ end
     @test Aborted(frame, i).at.line == 9
     # Check macro
     frame = Frame(modexs[5]...)
-    @test Aborted(frame, 1).at.file == Symbol("fake.jl")
+    @test Aborted(frame, 1).at.file === Symbol("fake.jl")
     @test whereis(frame, 1; macro_caller=true) == ("fake.jl", 11)
 end
 
@@ -120,7 +120,7 @@ module EvalLimited end
     @test EvalLimited.s < 5
     @test length(aborts) == 1
     lin = aborts[1].at
-    if lin.file == Symbol("fake.jl")
+    if lin.file === Symbol("fake.jl")
         @test lin.line ∈ (2, 3, 4, 5)
     else
         @test lin.method === :iterate || lin.method === :getproperty

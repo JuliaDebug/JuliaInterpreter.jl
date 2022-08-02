@@ -60,7 +60,7 @@ function evaluate_limited!(@nospecialize(recurse), frame::Frame, nstmts::Int, is
         shouldbreak(frame, pc) && return BreakpointRef(frame.framecode, pc), refnstmts[]
         stmt = pc_expr(frame, pc)
         if isa(stmt, Expr)
-            if stmt.head == :call && !isa(recurse, Compiled)
+            if stmt.head === :call && !isa(recurse, Compiled)
                 refnstmts[] = nstmts
                 try
                     rhs = evaluate_call!(limexec!, frame, stmt)
@@ -72,7 +72,7 @@ function evaluate_limited!(@nospecialize(recurse), frame::Frame, nstmts::Int, is
                     new_pc = handle_err(recurse, frame, err)
                 end
                 nstmts = refnstmts[]
-            elseif stmt.head == :(=) && isexpr(stmt.args[2], :call) && !isa(recurse, Compiled)
+            elseif stmt.head === :(=) && isexpr(stmt.args[2], :call) && !isa(recurse, Compiled)
                 refnstmts[] = nstmts
                 try
                     rhs = evaluate_call!(limexec!, frame, stmt.args[2])
@@ -83,7 +83,7 @@ function evaluate_limited!(@nospecialize(recurse), frame::Frame, nstmts::Int, is
                     new_pc = handle_err(recurse, frame, err)
                 end
                 nstmts = refnstmts[]
-            elseif istoplevel && stmt.head == :thunk
+            elseif istoplevel && stmt.head === :thunk
                 code = stmt.args[1]
                 if length(code.code) == 1 && JuliaInterpreter.is_return(code.code[end]) && isexpr(code.code[end].args[1], :method)
                     # Julia 1.2+ puts a :thunk before the start of each method
@@ -105,7 +105,7 @@ function evaluate_limited!(@nospecialize(recurse), frame::Frame, nstmts::Int, is
                     frame.pc = pc + 1
                     return nothing, refnstmts[]
                 end
-            elseif istoplevel && stmt.head == :method && length(stmt.args) == 3
+            elseif istoplevel && stmt.head === :method && length(stmt.args) == 3
                 step_expr!(recurse, frame, stmt, istoplevel)
                 frame.pc = pc + 1
                 return nothing, nstmts - 1
