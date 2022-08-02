@@ -346,7 +346,7 @@ f113(;x) = x
 @test @interpret(f113(;x=[1,2,3])) == f113(;x=[1,2,3])
 
 # Some expressions can appear nontrivial but lower to nothing
-# @test isa(Frame(Main, :(@static if ccall(:jl_get_UNAME, Any, ()) == :NoOS 1+1 end)), Nothing)
+# @test isa(Frame(Main, :(@static if ccall(:jl_get_UNAME, Any, ()) === :NoOS 1+1 end)), Nothing)
 # @test isa(Frame(Main, :(Base.BaseDocs.@kw_str "using")), Nothing)
 
 @testset "locals" begin
@@ -484,7 +484,7 @@ e = try
         err
     end
 @test e isa UndefVarError
-@test e.var == :S
+@test e.var === :S
 # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/200
 locs = JuliaInterpreter.locals(JuliaInterpreter.enter_call(foo, ""))
 @test length(locs) == 3 # #self# + 2 variables

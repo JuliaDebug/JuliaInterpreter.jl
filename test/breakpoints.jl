@@ -454,7 +454,7 @@ end
         @test ex isa Expr
         found = false
         for arg in ex.args[end].args
-            if arg.args[1] == :i
+            if arg.args[1] === :i
                 found = true
             end
         end
@@ -523,7 +523,7 @@ end
     file_logging = "logging.jl"
     line_logging = 0
     for entry in frame.framecode.src.linetable
-        if entry.file == Symbol(file_logging)
+        if entry.file === Symbol(file_logging)
             line_logging = entry.line
             break
         end

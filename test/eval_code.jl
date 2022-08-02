@@ -33,7 +33,7 @@ frame = JuliaInterpreter.enter_call(evalsym)
 # Step until the local actually end up getting defined
 JuliaInterpreter.step_expr!(frame)
 JuliaInterpreter.step_expr!(frame)
-@test eval_code(frame, "x") == :foo
+@test eval_code(frame, "x") === :foo
 
 # Evaling multiple statements (https://github.com/JuliaDebug/Debugger.jl/issues/188)
 frame = JuliaInterpreter.enter_call(evalfoo1, 1, 2)
@@ -91,9 +91,9 @@ fr = JuliaInterpreter.enter_call(fun)
 fr = JuliaInterpreter.maybe_step_through_wrapper!(fr)
 JuliaInterpreter.step_expr!(fr)
 @test eval_code(fr, "x") == 5
-@test eval_code(fr, "output") == :sym
+@test eval_code(fr, "output") === :sym
 eval_code(fr, "output = :foo")
-@test eval_code(fr, "output") == :foo
+@test eval_code(fr, "output") === :foo
 
 let f() = GlobalRef(Main, :doesnotexist)
     fr = JuliaInterpreter.enter_call(f)

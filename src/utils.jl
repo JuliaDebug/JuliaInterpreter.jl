@@ -247,7 +247,7 @@ function is_vararg_type(x)
             if isa(x, UnionAll)
                 x = Base.unwrap_unionall(x)
             end
-            return isa(x, DataType) && nameof(x) == :Vararg
+            return isa(x, DataType) && nameof(x) === :Vararg
         end
     else
         return isa(x, typeof(Vararg))
@@ -569,7 +569,7 @@ end
 
 function print_vars(io::IO, vars::Vector{Variable})
     for v in vars
-        v.name == Symbol("#self#") && (isa(v.value, Type) || sizeof(v.value) == 0) && continue
+        v.name === Symbol("#self#") && (isa(v.value, Type) || sizeof(v.value) == 0) && continue
         print(io, '\n', v)
     end
 end
