@@ -340,5 +340,8 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     if isa(f, typeof(kwinvoke))
         return Some{Any}(kwinvoke(getargs(args, frame)...))
     end
+    if f isa Core.OpaqueClosure
+        return Some{Any}(f(args...))
+    end
     return call_expr
 end
