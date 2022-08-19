@@ -922,3 +922,7 @@ function foo_536(y::T) where {T}
 end
 @test !@interpret foo_536(0x00)
 @test @interpret foo_536(UInt8('A'))
+
+@static if isdefined(Base.Experimental, Symbol("@opaque"))
+    @test @interpret (Base.Experimental.@opaque x->3*x)(4) == 12
+end
