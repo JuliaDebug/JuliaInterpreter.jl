@@ -37,7 +37,10 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     else
         f = @lookup(frame, fex)
     end
-    if !(isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction))
+    
+    if f isa Core.OpaqueClosure
+        return Some{Any}(f(args...))
+    elseif !(isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction))
         return call_expr
     end
     # By having each call appearing statically in the "switch" block below,
@@ -339,9 +342,6 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     end
     if isa(f, typeof(kwinvoke))
         return Some{Any}(kwinvoke(getargs(args, frame)...))
-    end
-    if f isa Core.OpaqueClosure
-        return Some{Any}(f(args...))
     end
     return call_expr
 end
