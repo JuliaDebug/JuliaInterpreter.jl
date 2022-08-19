@@ -128,9 +128,12 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         f = @lookup(frame, fex)
     end
 
-    if isdefined(Core, :OpaqueClosure) && f isa Core.OpaqueClosure
-        return Some{Any}(f(args...))
-    elseif !(isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction))
+    @static if isdefined(Core, :OpaqueClosure)
+        if f isa Core.OpaqueClosure
+            return Some{Any}(f(args...))
+        end
+    end
+    if !(isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction))
         return call_expr
     end
     # By having each call appearing statically in the "switch" block below,
