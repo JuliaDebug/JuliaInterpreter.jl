@@ -727,7 +727,7 @@ function Base.StackTraces.StackFrame(frame::Frame)
     scope = scopeof(frame)
     if scope isa Method
         method = scope
-        method_args = something.(frame.framedata.locals[1:method.nargs])
+        method_args = something.(frame.framedata.locals[1:method.nargs]) :: Vector{Any}
         atypes = Tuple{mapany(_Typeof, method_args)...}
         sig = method.sig
         sparams = Core.svec(frame.framedata.sparams...)
