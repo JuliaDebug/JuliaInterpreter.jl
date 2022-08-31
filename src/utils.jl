@@ -732,7 +732,7 @@ function Base.StackTraces.StackFrame(frame::Frame)
         sig = method.sig
         sparams = Core.svec(frame.framedata.sparams...)
         mi = Core.Compiler.specialize_method(method, atypes, sparams)
-        fname = frame.framecode.scope.name
+        fname = method.name
     else
         mi = frame.framecode.src
         fname = gensym()
