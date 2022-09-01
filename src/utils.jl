@@ -727,12 +727,12 @@ function Base.StackTraces.StackFrame(frame::Frame)
     scope = scopeof(frame)
     if scope isa Method
         method = scope
-        method_args = something.(frame.framedata.locals[1:method.nargs])
+        method_args = [something(frame.framedata.locals[i]) for i in 1:method.nargs]
         atypes = Tuple{mapany(_Typeof, method_args)...}
         sig = method.sig
         sparams = Core.svec(frame.framedata.sparams...)
         mi = Core.Compiler.specialize_method(method, atypes, sparams)
-        fname = frame.framecode.scope.name
+        fname = method.name
     else
         mi = frame.framecode.src
         fname = gensym()
