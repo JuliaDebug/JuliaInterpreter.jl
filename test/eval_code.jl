@@ -100,3 +100,12 @@ let f() = GlobalRef(Main, :doesnotexist)
     JuliaInterpreter.step_expr!(fr)
     @test eval_code(fr, "var\"%1\"") == GlobalRef(Main, :doesnotexist)
 end
+
+# Don't error on empty input string
+function empty_code(x)
+    x+x
+end
+frame = JuliaInterpreter.enter_call(empty_code, 1)
+@test eval_code(frame, "") === nothing
+@test eval_code(frame, " ") === nothing
+@test eval_code(frame, "\n") === nothing

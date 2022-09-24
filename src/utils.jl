@@ -649,7 +649,11 @@ function extract_usage!(s::Set{Symbol}, expr)
     return s
 end
 
-eval_code(frame::Frame, command::AbstractString) = eval_code(frame, Base.parse_input_line(command))
+function eval_code(frame::Frame, command::AbstractString)
+    expr = Base.parse_input_line(command)
+    expr === nothing && return nothing
+    return eval_code(frame, expr)
+end
 function eval_code(frame::Frame, expr::Expr)
     code = frame.framecode
     data = frame.framedata
