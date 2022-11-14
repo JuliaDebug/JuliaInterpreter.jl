@@ -160,8 +160,6 @@ JuliaInterpreter.finish_and_return!(frame)
 # output
 
 Test Passed
-  Expression: x + y == 3
-   Evaluated: 3 == 3
 ```
 
 ## Toplevel code and world age
