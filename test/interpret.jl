@@ -845,6 +845,17 @@ end
     @interpret FunctionWrapper{Int,Tuple{}}(()->42)
 end
 
+@testset "issue #550" begin
+    using FunctionWrappers:FunctionWrapper
+    f    = (obs) -> (obs[1] = obs[3] * obs[4]; obs)
+    Tout = Vector{Int}
+    Tin  = Tuple{Vector{Int}}
+    fw   = FunctionWrapper{Tout, Tin}(f)
+
+    obs = [0,2,3,4]
+    @test @interpret(fw(obs)) == fw(obs)
+end
+
 @testset "TypedSlots" begin
     function foo(x, y)
         z = x + y
