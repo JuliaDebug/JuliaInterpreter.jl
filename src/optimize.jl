@@ -133,6 +133,16 @@ function lookup_global_refs!(ex::Expr)
     return nothing
 end
 
+function lookup_getproperties(a::Expr)
+    if a.head === :call && length(a.args) == 3 &&
+        a.args[1] isa QuoteNode && a.args[1].value === Base.getproperty && 
+        a.args[2] isa QuoteNode && a.args[2].value isa Module           &&
+        a.args[3] isa QuoteNode && a.args[3].value isa Symbol
+        return lookup_global_ref(Core.GlobalRef(a.args[2].value, a.args[3].value))
+    end
+    return a
+end
+
 """
     optimize!(code::CodeInfo, mod::Module)
 
@@ -161,6 +171,7 @@ function optimize!(code::CodeInfo, scope)
                 continue
             else
                 lookup_global_refs!(stmt)
+                code.code[i] = lookup_getproperties(stmt)
             end
         end
     end

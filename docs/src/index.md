@@ -114,13 +114,13 @@ before error
   2* 3  │        f_inner()
   3  4  │   %3 = Base.println("after error")
   4  4  └──      return %3
-callee: f_inner() in Main at none:1, breakpoint(error(s::AbstractString) in Base at error.jl:33, line 33, ErrorException("inner error")))
+callee: f_inner() in Main at none:1, breakpoint(error(s::AbstractString) in Base at error.jl:35, line 35, ErrorException("inner error")))
 
 julia> leaf(fr)
-Frame for error(s::AbstractString) in Base at error.jl:33
-  1  33  1 ─ %1 = ($(QuoteNode(ErrorException)))(s)
-  2* 33  │   %2 = Core.throw(%1)
-  3  33  └──      return %2
+Frame for error(s::AbstractString) in Base at error.jl:35
+  1  35  1 ─ %1 = ($(QuoteNode(ErrorException)))(s)
+  2* 35  │   %2 = Core.throw(%1)
+  3  35  └──      return %2
 s = "inner error"
 caller: f_inner() in Main at none:1
 
