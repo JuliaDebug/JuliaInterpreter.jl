@@ -937,3 +937,20 @@ end
 @static if isdefined(Base.Experimental, Symbol("@opaque"))
     @test @interpret (Base.Experimental.@opaque x->3*x)(4) == 12
 end
+
+# CassetteOverlay, issue #552
+@static if VERSION >= v"1.8"
+using CassetteOverlay
+end
+
+@static if VERSION >= v"1.8"
+function foo()
+    x = IdDict()
+    x[:foo] = 1
+end
+@MethodTable SinTable;
+@testset "CassetteOverlay" begin
+    pass = @overlaypass SinTable;
+    @test (@interpret pass(foo)) == 1
+end
+end
