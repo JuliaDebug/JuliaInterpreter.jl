@@ -13,6 +13,7 @@ CodeTracking = "0.5.9, 1"
 julia = "1.6"
 
 [extras]
+CassetteOverlay = "d78b62d4-37fa-4a6f-acd8-2f19986eb9ee"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 DeepDiffs = "ab62b9b5-e342-54a8-a765-a90f495de1a6"
@@ -29,4 +30,4 @@ Tensors = "48a634ad-e948-5137-8d70-aa71f2a747f4"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["DataFrames", "Dates", "DeepDiffs", "Distributed", "FunctionWrappers", "HTTP", "LinearAlgebra", "Logging", "Mmap", "PyCall", "SHA", "SparseArrays", "Tensors", "Test"]
+test = ["CassetteOverlay", "DataFrames", "Dates", "DeepDiffs", "Distributed", "FunctionWrappers", "HTTP", "LinearAlgebra", "Logging", "Mmap", "PyCall", "SHA", "SparseArrays", "Tensors", "Test"]
