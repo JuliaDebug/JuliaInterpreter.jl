@@ -442,8 +442,9 @@ same_location(bp2::BreakpointSignature, bp::BreakpointSignature) =
     bp2.f == bp.f && bp2.sig == bp.sig && bp2.line == bp.line
 function Base.show(io::IO, bp::BreakpointSignature)
     print(io, bp.f)
-    if bp.sig !== nothing
-        print(io, '(', join("::" .* string.(bp.sig.types), ", "), ')')
+    bbsig = bp.sig
+    if bbsig !== nothing
+        print(io, '(', join("::" .* string.(bpsig.types), ", "), ')')
     end
     if bp.line !== 0
         print(io, ":", bp.line)

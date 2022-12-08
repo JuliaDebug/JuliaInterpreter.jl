@@ -273,8 +273,10 @@ _linetable(list::Vector, i::Integer) = list[i]::Union{Expr,LineTypes}
 function linetable(arg, i::Integer; macro_caller::Bool=false)::Union{Expr,LineTypes}
     lt = linetable(arg)
     lineinfo = _linetable(lt, i)
-    macro_caller && while lineinfo.method === Symbol("macro expansion") && lineinfo.inlined_at != 0
-        lineinfo = _linetable(lt, lineinfo.inlined_at)
+    if macro_caller
+        while lineinfo isa Core.LineInfoNode && lineinfo.method === Symbol("macro expansion") && lineinfo.inlined_at != 0
+            lineinfo = _linetable(lt, lineinfo.inlined_at)
+        end
     end
     return lineinfo
 end
