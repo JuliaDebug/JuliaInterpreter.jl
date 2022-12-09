@@ -444,7 +444,7 @@ function Base.show(io::IO, bp::BreakpointSignature)
     print(io, bp.f)
     bbsig = bp.sig
     if bbsig !== nothing
-        print(io, '(', join("::" .* string.(bpsig.types), ", "), ')')
+        print(io, '(', join("::" .* string.(bbsig.types), ", "), ')')
     end
     if bp.line !== 0
         print(io, ":", bp.line)
