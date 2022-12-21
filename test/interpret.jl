@@ -954,3 +954,23 @@ end
     @test (@interpret pass(foo)) == 1
 end
 end
+
+using LoopVectorization
+
+@testset "interpolated llvmcall" begin
+    function f_lv!(A)
+        m, n = size(A)
+        k = 1
+        @turbo for j in (k + 1):n
+            for i in (k + 1):m
+                A[i, j] -= A[i, k] * A[k, j]
+            end
+        end
+        return A
+    end
+    A = rand(5,5)
+    B = copy(A)
+    @interpret f_lv!(A)
+    f_lv!(B)
+    @test A ≈ B
+end
