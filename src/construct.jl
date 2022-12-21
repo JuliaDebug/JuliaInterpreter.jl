@@ -181,6 +181,7 @@ end
 function get_framecode(method)
     framecode = get(framedict, method, nothing)
     if framecode === nothing
+        @assert !is_generated(method)
         code = get_source(method)
         framecode = FrameCode(method, code; generator=false)
         framedict[method] = framecode

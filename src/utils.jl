@@ -376,6 +376,7 @@ end
 function compute_corrected_linerange(method::Method)
     _, line1 = whereis(method)
     offset = line1 - method.line
+    @assert !is_generated(method)
     src = JuliaInterpreter.get_source(method)
     lastline = linetable(src)[end]::LineTypes
     return line1:getline(lastline) + offset
@@ -425,7 +426,7 @@ function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
     # If the exact line number does not exist in the line table, take the one that is closest after that line
     # restricted to the line range of the current scope.
     scope = framecode.scope
-    range = scope isa Method ? compute_corrected_linerange(scope) : compute_linerange(framecode)
+    range = (scope isa Method && !is_generated(scope)) ? compute_corrected_linerange(scope) : compute_linerange(framecode)
     if line in range
         closest = nothing
         closest_idx = nothing
