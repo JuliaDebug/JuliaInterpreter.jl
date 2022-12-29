@@ -317,7 +317,7 @@ function build_compiled_foreigncall!(stmt::Expr, code, sparams::Vector{Symbol}, 
     end
     args = stmt.args[6:end]
     # When the ccall is dynamic we pass the pointer as an argument so can reuse the function
-    cc_key = ((dynamic_ccall ? :ptr : cfunc), RetType, ArgType, evalmod, length(sparams))  # compiled call key
+    cc_key = ((dynamic_ccall ? :ptr : cfunc), RetType, ArgType, evalmod, length(sparams), length(args))  # compiled call key
     f = get(compiled_calls, cc_key, nothing)
     if f === nothing
         ArgType = Expr(:tuple, Any[parametric_type_to_expr(t) for t in ArgType::SimpleVector]...)
