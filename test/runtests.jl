@@ -2,7 +2,6 @@ using JuliaInterpreter
 using Test
 using Logging
 
-include("check_builtins.jl")
 
 @test isempty(detect_ambiguities(JuliaInterpreter, Base, Core))
 
@@ -13,6 +12,7 @@ end
 Core.eval(JuliaInterpreter, :(debug_mode() = true))
 
 @testset "Main tests" begin
+    include("check_builtins.jl")
     include("core.jl")
     include("interpret.jl")
     include("toplevel.jl")
