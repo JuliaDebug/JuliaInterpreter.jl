@@ -317,5 +317,5 @@ end
 """)
 end
 
-builtins_dir = get(ENV, "BUILTINS_DIR", joinpath(@__DIR__, "..", "src"))
+builtins_dir = get(ENV, "JULIAINTERPRETER_BUILTINS_DIR", joinpath(@__DIR__, "..", "src"))
 generate_builtins(joinpath(builtins_dir, "builtins.jl"))

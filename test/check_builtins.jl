@@ -6,7 +6,7 @@ using Test, DeepDiffs
         builtins_path = joinpath(@__DIR__, "..", "src", "builtins.jl")
         old_builtins = read(builtins_path, String)
         new_builtins_dir = mktempdir()
-        withenv("BUILTINS_DIR" => new_builtins_dir) do
+        withenv("JULIAINTERPRETER_BUILTINS_DIR" => new_builtins_dir) do
             include("../bin/generate_builtins.jl")
         end
         new_builtins = read(joinpath(new_builtins_dir, "builtins.jl"), String)
