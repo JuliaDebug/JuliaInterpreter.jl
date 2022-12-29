@@ -422,6 +422,7 @@ Perform one "debugger" command. The keyword arguments are not used for all debug
 - `:n`: advance to the next line
 - `:s`: step into the next call
 - `:sl` step into the last call on the current line (e.g. steps into `f` if the line is `f(g(h(x)))`).
+- `:sr` step until the current function will return
 - `:until`: advance the frame to line `line` if given, otherwise advance to the line after the current line
 - `:c`: continue execution until termination or reaching a breakpoint
 - `:finish`: finish the current frame and return to the parent
@@ -462,6 +463,10 @@ function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootis
                 next_call!(recurse, frame, istoplevel)
             end
             return debug_command(recurse, frame, :s, rootistoplevel; line)
+        end
+        if cmd === :sr
+            maybe_next_until!(frame -> is_return(pc_expr(frame)), recurse, frame, istoplevel)
+            return frame, frame.pc
         end
         enter_generated = false
         if cmd === :sg

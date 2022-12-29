@@ -558,3 +558,25 @@ end
     frame, pc = JuliaInterpreter.debug_command(frame, :sl)
     @test JuliaInterpreter.scopeof(frame).name === :h
 end
+
+@testset "step until return" begin
+    function f(x)
+        if x == 1
+            return 2
+        end
+        return 3
+    end
+    frame = JuliaInterpreter.enter_call(f, 1)
+    frame, _ = JuliaInterpreter.debug_command(frame, :sr)
+    @test JuliaInterpreter.get_return(frame) == f(1)
+    frame = JuliaInterpreter.enter_call(f, 4)
+    frame, _ = JuliaInterpreter.debug_command(frame, :sr)
+    @test JuliaInterpreter.get_return(frame) == f(4)
+    function g()
+        y = f(1) + f(2)
+        return y
+    end
+    frame = JuliaInterpreter.enter_call(g)
+    frame, _ = JuliaInterpreter.debug_command(frame, :sr)
+    @test JuliaInterpreter.get_return(frame) == g()
+end
