@@ -96,7 +96,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         return maybe_recurse_expanded_builtin(frame, new_expr)
     elseif f === Core._call_latest
         return Some{Any}(Core._call_latest(getargs(args, frame)...))
-    elseif f === Core._compute_sparams
+    elseif @static isdefined(Core, :_compute_sparams) && f === Core._compute_sparams
         return Some{Any}(Core._compute_sparams(getargs(args, frame)...))
     elseif f === Core._equiv_typedef
         return Some{Any}(Core._equiv_typedef(getargs(args, frame)...))
@@ -108,7 +108,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         return Some{Any}(Core._setsuper!(getargs(args, frame)...))
     elseif f === Core._structtype
         return Some{Any}(Core._structtype(getargs(args, frame)...))
-    elseif f === Core._svec_ref
+    elseif @static isdefined(Core, :_svec_ref) && f === Core._svec_ref
         return Some{Any}(Core._svec_ref(getargs(args, frame)...))
     elseif f === Core._typebody!
         return Some{Any}(Core._typebody!(getargs(args, frame)...))
@@ -146,7 +146,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(Core.arraysize(getargs(args, frame)...))
         end
-    elseif f === Core.compilerbarrier
+    elseif @static isdefined(Core, :compilerbarrier) && f === Core.compilerbarrier
         if nargs == 2
             return Some{Any}(Core.compilerbarrier(@lookup(frame, args[2]), @lookup(frame, args[3])))
         else
