@@ -8,7 +8,8 @@ const RECENTLY_ADDED = Core.Builtin[
     Core.get_binding_type, Core.set_binding_type!,
     Core.getglobal, Core.setglobal!,
     Core.modifyfield!, Core.replacefield!, Core.swapfield!,
-    Core.finalizer
+    Core.finalizer, Core._compute_sparams, Core._svec_ref,
+    Core.compilerbarrier
 ]
 const kwinvoke = Core.kwfunc(Core.invoke)
 
@@ -316,4 +317,5 @@ end
 """)
 end
 
-generate_builtins(joinpath(@__DIR__, "..", "src", "builtins.jl"))
+builtins_dir = get(ENV, "JULIAINTERPRETER_BUILTINS_DIR", joinpath(@__DIR__, "..", "src"))
+generate_builtins(joinpath(builtins_dir, "builtins.jl"))
