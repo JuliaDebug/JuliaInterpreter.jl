@@ -974,3 +974,8 @@ using LoopVectorization
     f_lv!(B)
     @test A ≈ B
 end
+
+@testset "nargs foreigncall #560" begin
+    @test (@interpret string("", "pcre_h.jl")) == string("", "pcre_h.jl")
+    @test (@interpret Base.strcat("", "build_h.jl")) ==  Base.strcat("", "build_h.jl")
+end
