@@ -29,5 +29,5 @@ using Test
     @test JuliaInterpreter.get_return_node(stmt) isa Core.SSAValue
 
     @test string(JuliaInterpreter.parametric_type_to_expr(Base.Iterators.Stateful{String})) ∈
-        ("Base.Iterators.Stateful{String, VS}", "(Base.Iterators).Stateful{String, VS}")
+        ("Base.Iterators.Stateful{String, VS}", "(Base.Iterators).Stateful{String, VS}", "Base.Iterators.Stateful{String, VS, N}")
 end
