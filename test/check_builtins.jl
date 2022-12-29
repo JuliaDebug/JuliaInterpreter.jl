@@ -5,11 +5,11 @@ using Test, DeepDiffs
     @testset "Check builtin.jl consistency" begin
         builtins_path = joinpath(@__DIR__, "..", "src", "builtins.jl")
         old_builtins = read(builtins_path, String)
-        new_builtins_path = tempname()
-        withenv("BUILTINS_PATH" => new_builtins_path) do
+        new_builtins_dir = mktempdir()
+        withenv("BUILTINS_DIR" => new_builtins_dir) do
             include("../bin/generate_builtins.jl")
         end
-        new_builtins = read(new_builtins_path, String)
+        new_builtins = read(joinpath(new_builtins_dir, "builtins.jl"), String)
         consistent = old_builtins == new_builtins
         if !consistent
             println(deepdiff(old_builtins, new_builtins))

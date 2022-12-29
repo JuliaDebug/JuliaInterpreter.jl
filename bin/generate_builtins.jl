@@ -316,5 +316,5 @@ end
 """)
 end
 
-builtins_path = get(ENV, "BUILTINS_PATH", joinpath(@__DIR__, "..", "src", "builtins.jl"))
-generate_builtins(builtins_path)
+builtins_dir = get(ENV, "BUILTINS_DIR", joinpath(@__DIR__, "..", "src"))
+generate_builtins(joinpath(builtins_dir, "builtins.jl"))
