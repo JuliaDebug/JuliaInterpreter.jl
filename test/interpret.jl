@@ -565,6 +565,17 @@ finally
     break_off(:error)
 end
 
+f_562(x::Union{Vector{T}, Nothing}) where {T} = x + 1
+try
+    break_on(:error)
+    local frame, bp = @interpret f_562(nothing)
+    
+    stacktrace_lines = split(sprint(Base.display_error, bp.err, leaf(frame)), '\n')
+    @test stacktrace_lines[1] == "ERROR: MethodError: no method matching +(::Nothing, ::Int64)"
+finally
+    break_off(:error)
+end
+
 # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/154
 q = QuoteNode([1])
 @test @interpret deepcopy(q) == q
