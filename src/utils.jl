@@ -738,7 +738,7 @@ function Base.StackTraces.StackFrame(frame::Frame)
         argt = Tuple{mapany(_Typeof, method_args)...}
         sig = method.sig
         atype, sparams = ccall(:jl_type_intersection_with_env, Any, (Any, Any), argt, sig)::SimpleVector
-        mi = Core.Compiler.specialize_method(method, atype, sparams)
+        mi = Core.Compiler.specialize_method(method, atype, sparams::SimpleVector)
         fname = method.name
     else
         mi = frame.framecode.src
