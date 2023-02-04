@@ -824,7 +824,11 @@ end
     end
     # this shouldn't throw "type DataType has no field hasfreetypevars"
     # even after https://github.com/JuliaLang/julia/pull/41018
-    @test Int === @interpret Core.Compiler.getfield_tfunc(m.Foo, Core.Compiler.Const(:foo))
+    @static if VERSION ≥ v"1.9.0-DEV.1556"
+        @test Int === @interpret Core.Compiler.getfield_tfunc(Core.Compiler.fallback_lattice, m.Foo, Core.Compiler.Const(:foo))
+    else
+        @test Int === @interpret Core.Compiler.getfield_tfunc(m.Foo, Core.Compiler.Const(:foo))
+    end
 end
 
 @testset "https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/488" begin
