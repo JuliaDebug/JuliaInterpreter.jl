@@ -735,10 +735,10 @@ function Base.StackTraces.StackFrame(frame::Frame)
     if scope isa Method
         method = scope
         method_args = [something(frame.framedata.locals[i]) for i in 1:method.nargs]
-        atypes = Tuple{mapany(_Typeof, method_args)...}
+        argt = Tuple{mapany(_Typeof, method_args)...}
         sig = method.sig
-        sparams = Core.svec(frame.framedata.sparams...)
-        mi = Core.Compiler.specialize_method(method, atypes, sparams)
+        atype, sparams = ccall(:jl_type_intersection_with_env, Any, (Any, Any), argt, sig)::SimpleVector
+        mi = Core.Compiler.specialize_method(method, atype, sparams::SimpleVector)
         fname = method.name
     else
         mi = frame.framecode.src
