@@ -99,7 +99,7 @@ function lookup_or_eval(@nospecialize(recurse), frame, @nospecialize(node))
             elseif f === Base.getproperty
                 return Base.getproperty(ex.args[2], ex.args[3])
             else
-                error("unknown call f ", f)
+                Base.invokelatest(error, "unknown call f ", f)
             end
         else
             error("unknown expr ", ex)
@@ -129,7 +129,7 @@ function resolvefc(frame, @nospecialize(expr))
         (isa(a, QuoteNode) && a.value === Core.tuple) || error("unexpected ccall to ", expr)
         return Expr(:call, GlobalRef(Core, :tuple), (expr::Expr).args[2:end]...)
     end
-    error("unexpected ccall to ", expr)
+    Base.invokelatest(error, "unexpected ccall to ", expr)
 end
 
 function collect_args(@nospecialize(recurse), frame::Frame, call_expr::Expr; isfc::Bool=false)
@@ -651,7 +651,7 @@ e.g., [`JuliaInterpreter.finish!`](@ref)).
 """
 function get_return(frame)
     node = pc_expr(frame)
-    is_return(node) || error("expected return statement, got ", node)
+    is_return(node) || Base.invokelatest(error, "expected return statement, got ", node)
     return lookup_return(frame, node)
 end
 get_return(t::Tuple{Module,Expr,Frame}) = get_return(t[end])
