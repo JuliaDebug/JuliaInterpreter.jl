@@ -369,7 +369,7 @@ function replace_coretypes!(src; rev::Bool=false)
     return src
 end
 
-function replace_coretypes_list!(list::AbstractVector; rev::Bool)
+function replace_coretypes_list!(list::AbstractVector; rev::Bool=false)
     function rep(@nospecialize(x), rev::Bool)
         if rev
             isa(x, SSAValue) && return Core.SSAValue(x.id)
@@ -379,9 +379,9 @@ function replace_coretypes_list!(list::AbstractVector; rev::Bool)
             isa(x, Core.SSAValue) && return SSAValue(x.id)
             isa(x, Core.SlotNumber) && return SlotNumber(x.id)
             @static if VERSION ≥ v"1.10.0-DEV.631"
-                isa(x, Core.TypedSlot) && return SlotNumber(x.id)
-            else
                 isa(x, Core.Compiler.TypedSlot) && return SlotNumber(x.id)
+            else
+                isa(x, Core.TypedSlot) && return SlotNumber(x.id)
             end
             return x
         end
