@@ -372,19 +372,19 @@ end
 function replace_coretypes_list!(list::AbstractVector; rev::Bool)
     function rep(@nospecialize(x), rev::Bool)
         if rev
-            if isa(x, SSAValue)
-                return Core.SSAValue(x.id)
-            elseif isa(x, SlotNumber)
-                return Core.SlotNumber(x.id)
+            isa(x, SSAValue) && return Core.SSAValue(x.id)
+            isa(x, SlotNumber) && return Core.SlotNumber(x.id)
+            return x
+        else
+            isa(x, Core.SSAValue) && return SSAValue(x.id)
+            isa(x, Core.SlotNumber) && return SlotNumber(x.id)
+            @static if VERSION ≥ v"1.10.0-DEV.631"
+                isa(x, Core.TypedSlot) && return SlotNumber(x.id)
+            else
+                isa(x, Core.Compiler.TypedSlot) && return SlotNumber(x.id)
             end
             return x
         end
-        if isa(x, Core.SSAValue)
-            return SSAValue(x.id)
-        elseif isa(x, Core.SlotNumber) || isa(x, Core.TypedSlot)
-            return SlotNumber(x.id)
-        end
-        return x
     end
 
     for (i, stmt) in enumerate(list)

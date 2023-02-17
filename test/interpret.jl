@@ -307,7 +307,7 @@ let TT = Union{UInt8, Int8}
 end
 
 # issue #92
-let x = Core.TypedSlot(1, Any)
+let x = Core.SlotNumber(1)
     f(x) = objectid(x)
     @test isa(@interpret(f(x)), UInt)
 end
