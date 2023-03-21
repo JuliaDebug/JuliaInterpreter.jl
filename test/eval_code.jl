@@ -77,10 +77,17 @@ eval_code(fr, "non_accessible_variable = 5.0")
 # Evaluating SSAValues
 f(x) = x^2
 frame = JuliaInterpreter.enter_call(f, 5)
-JuliaInterpreter.step_expr!(frame)
-JuliaInterpreter.step_expr!(frame)
+id = let
+    pc, n = frame.pc, length(frame.framecode.src.code)
+    while pc < n - 1
+        pc = JuliaInterpreter.step_expr!(frame)
+    end
+    # Extract the SSAValue that corresponds to the power
+    stmt = frame.framecode.src.code[pc]::Expr   # the `literal_pow` call
+    stmt.args[end].id
+end
 # This could change with changes to Julia lowering
-@test eval_code(frame, "var\"%2\"") == Val(2)
+@test eval_code(frame, "var\"%$(id)\"") == Val(2)
 @test eval_code(frame, "var\"@_1\"") == f
 
 function fun(;output=:sym)

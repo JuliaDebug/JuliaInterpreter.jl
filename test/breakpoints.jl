@@ -198,7 +198,7 @@ struct Squarer end
     if VERSION < v"1.9.0-DEV.846" # https://github.com/JuliaLang/julia/pull/45069
         LOC = " in $(@__MODULE__) at $(@__FILE__)"
     else
-        LOC = "\n     @ $(@__MODULE__) $(contractuser(@__FILE__))"
+        LOC = " @ $(@__MODULE__) $(contractuser(@__FILE__))"
     end
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 1)
     @test repr(bp) == "breakpoint(loop_radius2(n)$LOC:$(3-Δ), line 3)"
