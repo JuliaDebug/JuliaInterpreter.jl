@@ -213,8 +213,8 @@ that supply default positional arguments or handle keywords. `cframe` is the lea
 which execution should start.
 """
 function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
-    code = frame.framecode
-    stmts, scope = code.src.code, code.scope::Method
+    code, src = frame.framecode, code.src
+    stmts, scope = src.code, code.scope::Method
     length(stmts) < 2 && return frame
     last = stmts[end-1]
     isexpr(last, :(=)) && (last = last.args[2])
@@ -232,10 +232,7 @@ function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
     end
 
     has_selfarg = isexpr(last, :call) && any(@nospecialize(x) -> isa(x, SlotNumber) && x.id == 1, last.args) # isequal(SlotNumber(1)) vulnerable to invalidation
-    issplatcall, _callee = unpack_splatcall(last)
-    if isa(_callee, SSAValue)
-        _callee = stmts[_callee.id]
-    end
+    issplatcall, _callee = unpack_splatcall(last, src)
     if is_kw || has_selfarg || (issplatcall && is_bodyfunc(_callee))
         # If the last expr calls #self# or passes it to an implementation method,
         # this is a wrapper function that we might want to step through
@@ -311,7 +308,7 @@ function maybe_step_through_kwprep!(@nospecialize(recurse), frame::Frame, istopl
                     # No supplied kwargs
                     pcsplat = pc + 3
                     if pcsplat <= n
-                        issplatcall, callee = unpack_splatcall(src.code[pcsplat])
+                        issplatcall, callee = unpack_splatcall(src.code[pcsplat], src)
                         if issplatcall && is_bodyfunc(callee)
                             while pc < pcsplat
                                 pc = step_expr!(recurse, frame, istoplevel)

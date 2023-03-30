@@ -194,6 +194,13 @@ function unpack_splatcall(stmt)
     end
     return false, nothing
 end
+function unpack_splatcall(stmt, src::CodeInfo)
+    issplatcall, callee = unpack_splatcall(stmt)
+    if isa(callee, SSAValue)
+        callee = src.code[callee.id]
+    end
+    return issplatcall, callee
+end
 
 function is_bodyfunc(@nospecialize(arg))
     if isa(arg, QuoteNode)
