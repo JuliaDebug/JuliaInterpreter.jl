@@ -213,7 +213,8 @@ that supply default positional arguments or handle keywords. `cframe` is the lea
 which execution should start.
 """
 function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
-    code, src = frame.framecode, code.src
+    code = frame.framecode
+    src = code.src
     stmts, scope = src.code, code.scope::Method
     length(stmts) < 2 && return frame
     last = stmts[end-1]
