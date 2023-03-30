@@ -88,10 +88,18 @@ end
 
 get_source(meth::Method) = Base.uncompressed_ast(meth)
 
-function get_source(g::GeneratedFunctionStub, env)
-    b = g(env..., g.argnames...)
-    b isa CodeInfo && return b
-    return eval(b)
+if Base.VERSION < v"1.10.0-DEV.873"  # julia#48766
+    function get_source(g::GeneratedFunctionStub, env, file, line)
+        b = g(env..., g.argnames...)
+        b isa CodeInfo && return b
+        return eval(b)
+    end
+else
+    function get_source(g::GeneratedFunctionStub, env, file, line::Int)
+        b = g(Base.get_world_counter(), LineNumberNode(line, file), env..., g.argnames...)
+        b isa CodeInfo && return b
+        return eval(b)
+    end
 end
 
 """
@@ -148,12 +156,12 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
             # If we're stepping into a staged function, we need to use
             # the specialization, rather than stepping through the
             # unspecialized method.
-            code = Core.Compiler.get_staged(Core.Compiler.specialize_method(method, argtypes, lenv))
+            code = get_staged(Core.Compiler.specialize_method(method, argtypes, lenv))
             code === nothing && return nothing
             generator = false
         else
             if is_generated(method)
-                code = get_source(method.generator, lenv)
+                code = get_source(method.generator, lenv, method.file, Int(method.line))
                 generator = true
             else
                 code = get_source(method)
