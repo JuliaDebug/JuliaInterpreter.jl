@@ -25,15 +25,16 @@ function extract_inner_call!(stmt::Expr, idx, once::Bool=false)
     return nothing
 end
 
-function replace_ssa(@nospecialize(stmt), ssalookup)
-    isa(stmt, Expr) || return stmt
+function replace_ssa(stmt::Expr, ssalookup)
     return Expr(stmt.head, Any[
         if isa(a, SSAValue)
             SSAValue(ssalookup[a.id])
         elseif isa(a, NewSSAValue)
             SSAValue(a.id)
-        else
+        elseif isa(a, Expr)
             replace_ssa(a, ssalookup)
+        else
+            a
         end
         for a in stmt.args
     ]...)

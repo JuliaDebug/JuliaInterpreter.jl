@@ -194,6 +194,13 @@ function unpack_splatcall(stmt)
     end
     return false, nothing
 end
+function unpack_splatcall(stmt, src::CodeInfo)
+    issplatcall, callee = unpack_splatcall(stmt)
+    if isa(callee, SSAValue)
+        callee = src.code[callee.id]
+    end
+    return issplatcall, callee
+end
 
 function is_bodyfunc(@nospecialize(arg))
     if isa(arg, QuoteNode)
@@ -216,6 +223,12 @@ function is_wrapper_call(@nospecialize(expr))
 end
 
 is_generated(meth::Method) = isdefined(meth, :generator)
+
+if Base.VERSION < v"1.10.0-DEV.873"  # julia#48766
+    get_staged(mi::MethodInstance) = Core.Compiler.get_staged(mi)
+else
+    get_staged(mi::MethodInstance) = Core.Compiler.get_staged(mi, Base.get_world_counter())
+end
 
 """
     is_doc_expr(ex)

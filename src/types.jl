@@ -348,6 +348,7 @@ Base.show(io::IO, var::Variable) = (print(io, var.name, " = "); show(io,var.valu
 Base.isequal(var1::Variable, var2::Variable) =
     var1.value == var2.value && var1.name === var2.name && var1.isparam == var2.isparam &&
     var1.is_captured_closure == var2.is_captured_closure
+Base.:(==)(var1::Variable, var2::Variable) = isequal(var1, var2)
 
 # A type that is unique to this package for which there are no valid operations
 struct Unassigned end
