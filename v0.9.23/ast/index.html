@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Lowered representation · JuliaInterpreter.jl</title><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.045/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.24/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">JuliaInterpreter.jl</a></span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li class="is-active"><a class="tocitem" href>Lowered representation</a></li><li><a class="tocitem" href="../internals/">Internals</a></li><li><a class="tocitem" href="../dev_reference/">Function reference</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Lowered representation</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Lowered representation</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/JuliaDebug/JuliaInterpreter.jl/blob/master/docs/src/ast.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>This page and the next are designed to teach a little more about the internals. Depending on your interest, you may be able to skip them.</p></div></div><h1 id="Lowered-representation"><a class="docs-heading-anchor" href="#Lowered-representation">Lowered representation</a><a id="Lowered-representation-1"></a><a class="docs-heading-anchor-permalink" href="#Lowered-representation" title="Permalink"></a></h1><p>JuliaInterpreter uses the lowered representation of code. The key advantage of lowered representation is that it is fairly well circumscribed:</p><ul><li>There are only a limited number of legal statements that can appear in lowered code</li><li>Each statement is &quot;unpacked&quot; to essentially do one thing</li><li>Scoping of variables is simplified via the slot mechanism, described below</li><li>Names are fully resolved by module</li><li>Macros are expanded</li></ul><p><a href="https://docs.julialang.org/en/v1/devdocs/ast/">Julia AST</a> describes the kinds of objects that can appear in lowered code.</p><p>Let&#39;s start with a demonstration on a simple function:</p><pre><code class="language-julia hljs">function summer(A::AbstractArray{T}) where T
+    s = zero(T)
+    for a in A
+        s += a
+    end
+    return s
+end
+
+A = [1, 2, 5]</code></pre><p>To interpret lowered representation, it maybe be useful to rewrite the body of <code>summer</code> in the following ways. First let&#39;s use an intermediate representation that expands the <code>for a in A ... end</code> loop:</p><pre><code class="language-julia hljs">    s = zero(T)
+    temp = iterate(A)         # `for` loops get lowered to `iterate/while` loops
+    while temp !== nothing
+        a, state = temp
+        s += a
+        temp = iterate(A, state)
+    end
+    return s</code></pre><p>The lowered code takes the additional step of resolving the names by module and turning all the branching into <code>@goto/@label</code> equivalents:</p><pre><code class="language-julia hljs">    # Code starting at line 2 (the first line of the body)
+    s = Main.zero(T)       # T corresponds to the first parameter, i.e., $(Expr(:static_parameter, 1))
+
+    # Code starting at line 3
+    temp = Base.iterate(A) # here temp = @_4
+    if temp === nothing    # this comparison gets stored as %4, and %5 stores !(temp===nothing)
+        @goto block4
+    end
+
+    @label block2
+        ## BEGIN block2
+        a, state = temp[1], temp[2]  # these correspond to the `getfield` calls, state is %9
+
+        # Code starting at line 4
+        s = s + a
+
+        # Code starting at line 5
+        temp = iterate(A, state)     # A is also %2
+        if temp === nothing
+            @goto block4             # the `while` condition was false
+        end
+        ## END block2
+
+    @goto block2           # here the `while` condition is still true
+
+    # Code starting at line 6
+    @label block4
+        ## BEGIN block4
+        return s
+        ## END block4</code></pre><p>This has very close correspondence to the lowered representation:</p><pre><code class="language-julia hljs">julia&gt; code = @code_lowered debuginfo=:source summer(A)
+CodeInfo(
+    @ REPL[1]:2 within `summer&#39;
+1 ─       s = Main.zero($(Expr(:static_parameter, 1)))
+│   @ REPL[1]:3 within `summer&#39;
+│   %2  = A
+│         @_4 = Base.iterate(%2)
+│   %4  = @_4 === nothing
+│   %5  = Base.not_int(%4)
+└──       goto #4 if not %5
+2 ┄ %7  = @_4
+│         a = Core.getfield(%7, 1)
+│   %9  = Core.getfield(%7, 2)
+│   @ REPL[1]:4 within `summer&#39;
+│         s = s + a
+│         @_4 = Base.iterate(%2, %9)
+│   %12 = @_4 === nothing
+│   %13 = Base.not_int(%12)
+└──       goto #4 if not %13
+3 ─       goto #2
+    @ REPL[1]:6 within `summer&#39;
+4 ┄       return s
+)</code></pre><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>Not all Julia versions support <code>debuginfo</code>. If the command above fails for you, just omit the <code>debuginfo=:source</code> portion.</p></div></div><p>To understand this package&#39;s internals, you need to familiarize yourself with these <code>CodeInfo</code> objects. The lines that start with <code>@ REPL[1]:n</code> indicate the source line of the succeeding block of statements; here we defined this method in the REPL, so the source file is <code>REPL[1]</code>; the number after the colon is the line number.</p><p>The numbers on the left correspond to <a href="https://en.wikipedia.org/wiki/Basic_block">basic blocks</a>, as we annotated with <code>@label block2</code> above. When used in statements these are printed with a hash, e.g., in <code>goto #4 if not %5</code>, the <code>#4</code> refers to basic block 4. The numbers in the next column–e.g., <code>%2</code>, refer to <a href="https://en.wikipedia.org/wiki/Static_single_assignment_form">single static assignment (SSA) values</a>. Each statement (each line of this printout) corresponds to a single SSA value, but only those used later in the code are printed using assignment syntax. Wherever a previous SSA value is used, it&#39;s referenced by an <code>SSAValue</code> and printed as <code>%5</code>; for example, in <code>goto #4 if not %5</code>, the <code>%5</code> is the result of evaluating the 5th statement, which is <code>(Base.not_int)(%4)</code>, which in turn refers to the result of statement 4. Finally, temporary variables here are shown as <code>@_4</code>; the <code>_</code> indicates a <em>slot</em>, either one of the input arguments or a local variable, and the 4 means the 4th one. Together lines 4 and 5 correspond to <code>!(@_4 === nothing)</code>, where <code>@_4</code> has been assigned the result of the call to <code>iterate</code> occurring on line 3. (In some Julia versions, this may be printed as <code>#temp#</code>, similar to how we named it in our alternative implementation above.)</p><p>Let&#39;s look at a couple of the fields of the <code>CodeInfo</code>. First, the statements themselves:</p><pre><code class="language-julia hljs">julia&gt; code.code
+16-element Array{Any,1}:
+ :(_3 = Main.zero($(Expr(:static_parameter, 1))))
+ :(_2)
+ :(_4 = Base.iterate(%2))
+ :(_4 === nothing)
+ :(Base.not_int(%4))
+ :(unless %5 goto %16)
+ :(_4)
+ :(_5 = Core.getfield(%7, 1))
+ :(Core.getfield(%7, 2))
+ :(_3 = _3 + _5)
+ :(_4 = Base.iterate(%2, %9))
+ :(_4 === nothing)
+ :(Base.not_int(%12))
+ :(unless %13 goto %16)
+ :(goto %7)
+ :(return _3)</code></pre><p>You can see directly that the SSA assignments are implicit; they are not directly present in the statement list. The most noteworthy change here is the appearance of more objects like <code>_3</code>, which are references that index into local variable slots:</p><pre><code class="language-julia hljs">julia&gt; code.slotnames
+5-element Array{Any,1}:
+ Symbol(&quot;#self#&quot;)
+ :A
+ :s
+ Symbol(&quot;&quot;)
+ :a</code></pre><p>When printing the whole <code>CodeInfo</code> object, these <code>slotnames</code> are substituted in (unless they are empty, as was the case for <code>@_4</code> above).</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../internals/">Internals »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.23 on <span class="colophon-date" title="Friday 31 March 2023 11:00">Friday 31 March 2023</span>. Using Julia version 1.8.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
