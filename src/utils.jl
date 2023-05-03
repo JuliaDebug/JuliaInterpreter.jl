@@ -747,7 +747,7 @@ function Base.StackTraces.StackFrame(frame::Frame)
     scope = scopeof(frame)
     if scope isa Method
         method = scope
-        method_args = [something(frame.framedata.locals[i]) for i in 1:method.nargs]
+        method_args = Any[something(frame.framedata.locals[i]) for i in 1:method.nargs]
         argt = Tuple{mapany(_Typeof, method_args)...}
         sig = method.sig
         atype, sparams = ccall(:jl_type_intersection_with_env, Any, (Any, Any), argt, sig)::SimpleVector
