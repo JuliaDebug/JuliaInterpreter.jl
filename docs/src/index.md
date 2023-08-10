@@ -48,13 +48,13 @@ globally-available name (as used here with the `any` function).
 
 Now let's see what happens:
 
-```jldoctest demo1; filter = [r"in Base at .*$", r"[^\d]\d\d\d[^\d]"]
+```jldoctest demo1; filter = [r"in Base at .*$", r"[^\d]\d\d\d[^\d]", r"(c 1|d 1)"]
 julia> @interpret sum([1,2,3])  # no element bigger than 4, breakpoint should not trigger
 6
 
 julia> frame, bpref = @interpret sum([1,2,5])  # should trigger breakpoint
 (Frame for sum(a::AbstractArray; dims, kw...) @ Base reducedim.jl:994
-d 1* 994  1 ─      nothing
+c 1* 994  1 ─      nothing
   2  994  │   %2 = $(QuoteNode(Colon()))
   3  994  │   %3 = ($(QuoteNode(NamedTuple)))()
 ⋮
@@ -66,7 +66,7 @@ that the `c` in the leftmost column indicates the presence of a conditional brea
 upon entry to `sum`. `bpref` is a reference to the breakpoint of type [`BreakpointRef`](@ref).
 The breakpoint `bp` we created can be manipulated at the command line
 
-```jldoctest demo1; filter = [r"in Base at .*$", r"[^\d]\d\d\d[^\d]"]
+```jldoctest demo1; filter = [r"in Base at .*$", r"[^\d]\d\d\d[^\d]", r"(c 1|d 1)"]
 julia> disable(bp)
 
 julia> @interpret sum([1,2,5])
@@ -76,7 +76,7 @@ julia> enable(bp)
 
 julia> @interpret sum([1,2,5])
 (Frame for sum(a::AbstractArray; dims, kw...) @ Base reducedim.jl:994
-d 1* 994  1 ─      nothing
+c 1* 994  1 ─      nothing
   2  994  │   %2 = $(QuoteNode(Colon()))
   3  994  │   %3 = ($(QuoteNode(NamedTuple)))()
 ⋮
