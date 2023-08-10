@@ -48,17 +48,17 @@ globally-available name (as used here with the `any` function).
 
 Now let's see what happens:
 
-```jldoctest demo1; filter = [r"in Base at .*$", r"[^\d]\d\d\d[^\d]"]
+```jldoctest demo1; filter = [r"in Base at .*$", r"[^\d]\d\d\d[^\d]", r"(c 1|d 1)"]
 julia> @interpret sum([1,2,3])  # no element bigger than 4, breakpoint should not trigger
 6
 
 julia> frame, bpref = @interpret sum([1,2,5])  # should trigger breakpoint
-(Frame for sum(a::AbstractArray; dims, kw...) in Base at reducedim.jl:873
-c 1* 873  1 ─      nothing
-  2  873  │   %2 = ($(QuoteNode(NamedTuple)))()
-  3  873  │   %3 = Base.pairs(%2)
+(Frame for sum(a::AbstractArray; dims, kw...) @ Base reducedim.jl:994
+c 1* 994  1 ─      nothing
+  2  994  │   %2 = $(QuoteNode(Colon()))
+  3  994  │   %3 = ($(QuoteNode(NamedTuple)))()
 ⋮
-a = [1, 2, 5], breakpoint(sum(a::AbstractArray; dims, kw...) in Base at reducedim.jl:873, line 873))
+a = [1, 2, 5], breakpoint(sum(a::AbstractArray; dims, kw...) @ Base reducedim.jl:994, line 994))
 ```
 
 `frame` is described in more detail on the next page; for now, suffice it to say
@@ -66,7 +66,7 @@ that the `c` in the leftmost column indicates the presence of a conditional brea
 upon entry to `sum`. `bpref` is a reference to the breakpoint of type [`BreakpointRef`](@ref).
 The breakpoint `bp` we created can be manipulated at the command line
 
-```jldoctest demo1; filter = [r"in Base at .*$", r"[^\d]\d\d\d[^\d]"]
+```jldoctest demo1; filter = [r"in Base at .*$", r"[^\d]\d\d\d[^\d]", r"(c 1|d 1)"]
 julia> disable(bp)
 
 julia> @interpret sum([1,2,5])
@@ -75,12 +75,12 @@ julia> @interpret sum([1,2,5])
 julia> enable(bp)
 
 julia> @interpret sum([1,2,5])
-(Frame for sum(a::AbstractArray; dims, kw...) in Base at reducedim.jl:873
-c 1* 873  1 ─      nothing
-  2  873  │   %2 = ($(QuoteNode(NamedTuple)))()
-  3  873  │   %3 = Base.pairs(%2)
+(Frame for sum(a::AbstractArray; dims, kw...) @ Base reducedim.jl:994
+c 1* 994  1 ─      nothing
+  2  994  │   %2 = $(QuoteNode(Colon()))
+  3  994  │   %3 = ($(QuoteNode(NamedTuple)))()
 ⋮
-a = [1, 2, 5], breakpoint(sum(a::AbstractArray; dims, kw...) in Base at reducedim.jl:873, line 873))
+a = [1, 2, 5], breakpoint(sum(a::AbstractArray; dims, kw...) @ Base reducedim.jl:994, line 994))
 ```
 
 [`disable`](@ref) and [`enable`](@ref) allow you to turn breakpoints off and on without losing any
@@ -109,20 +109,20 @@ julia> break_on(:error)
 
 julia> fr, pc = @interpret f_outer()
 before error
-(Frame for f_outer() in Main at none:1
+(Frame for f_outer() @ Main none:1
   1  2  1 ─      Base.println("before error")
   2* 3  │        f_inner()
   3  4  │   %3 = Base.println("after error")
   4  4  └──      return %3
-callee: f_inner() in Main at none:1, breakpoint(error(s::AbstractString) in Base at error.jl:35, line 35, ErrorException("inner error")))
+callee: f_inner() @ Main none:1, breakpoint(error(s::AbstractString) @ Base error.jl:35, line 35, ErrorException("inner error")))
 
 julia> leaf(fr)
-Frame for error(s::AbstractString) in Base at error.jl:35
+Frame for error(s::AbstractString) @ Base error.jl:35
   1  35  1 ─ %1 = ($(QuoteNode(ErrorException)))(s)
   2* 35  │   %2 = Core.throw(%1)
   3  35  └──      return %2
 s = "inner error"
-caller: f_inner() in Main at none:1
+caller: f_inner() @ Main none:1
 
 julia> typeof(pc)
 BreakpointRef
@@ -154,7 +154,7 @@ julia> @interpret myfunction(1, 2)
 6
 
 julia> @interpret myfunction(5, 6)
-(Frame for myfunction(x, y) in Main at none:1
+(Frame for myfunction(x, y) @ Main none:1
 ⋮
   3  4  │   %3 = x > 3
   4  4  └──      goto #3 if not %3
@@ -165,7 +165,7 @@ b 5* 4  2 ─      nothing
 x = 5
 y = 6
 b = 2
-a = 1, breakpoint(myfunction(x, y) in Main at none:1, line 4))
+a = 1, breakpoint(myfunction(x, y) @ Main none:1, line 4))
 ```
 
 Here the breakpoint is marked with a `b` indicating that it is an unconditional breakpoint.

@@ -126,7 +126,7 @@ julia> JuliaInterpreter.prepare_args(mymethod, [mymethod, 15], ())
 (mymethod, Any[mymethod, 15])
 
 julia> JuliaInterpreter.prepare_args(mymethod, [mymethod, 1, 2], [:verbose=>true])
-(var"#mymethod##kw"(), Any[var"#mymethod##kw"(), (verbose = true,), mymethod, 1, 2])
+(Core.kwcall, Any[Core.kwcall, (verbose = true,), mymethod, 1, 2])
 ```
 """
 function prepare_args(@nospecialize(f), allargs, kwargs)
@@ -592,7 +592,7 @@ julia> mymethod(x) = x+1
 mymethod (generic function with 1 method)
 
 julia> JuliaInterpreter.enter_call_expr(:(\$mymethod(1)))
-Frame for mymethod(x) in Main at none:1
+Frame for mymethod(x) @ Main none:1
   1* 1  1 ─ %1 = x + 1
   2  1  └──      return %1
 x = 1
@@ -606,7 +606,7 @@ julia> a = [1.0, 2.0]
  2.0
 
 julia> JuliaInterpreter.enter_call_expr(:(\$mymethod(\$a)))
-Frame for mymethod(x::Vector{T}) where T in Main at none:1
+Frame for mymethod(x::Vector{T}) where T @ Main none:1
   1* 1  1 ─     return 1
 x = [1.0, 2.0]
 T = Float64
@@ -635,7 +635,7 @@ julia> mymethod(x) = x+1
 mymethod (generic function with 1 method)
 
 julia> JuliaInterpreter.enter_call(mymethod, 1)
-Frame for mymethod(x) in Main at none:1
+Frame for mymethod(x) @ Main none:1
   1* 1  1 ─ %1 = x + 1
   2  1  └──      return %1
 x = 1
@@ -644,7 +644,7 @@ julia> mymethod(x::Vector{T}) where T = 1
 mymethod (generic function with 2 methods)
 
 julia> JuliaInterpreter.enter_call(mymethod, [1.0, 2.0])
-Frame for mymethod(x::Vector{T}) where T in Main at none:1
+Frame for mymethod(x::Vector{T}) where T @ Main none:1
   1* 1  1 ─     return 1
 x = [1.0, 2.0]
 T = Float64
