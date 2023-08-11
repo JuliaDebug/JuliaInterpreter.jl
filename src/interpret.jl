@@ -401,7 +401,8 @@ function eval_rhs(@nospecialize(recurse), frame, node::Expr)
     elseif head === :boundscheck
         return true
     elseif head === :meta || head === :inbounds || head === :loopinfo ||
-           head === :gc_preserve_begin || head === :gc_preserve_end
+           head === :gc_preserve_begin || head === :gc_preserve_end ||
+           head === :aliasscope || head === :popaliasscope
         return nothing
     elseif head === :method && length(node.args) == 1
         return evaluate_methoddef(frame, node)
