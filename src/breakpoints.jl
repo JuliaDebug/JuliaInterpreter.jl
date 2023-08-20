@@ -14,7 +14,7 @@ const breakpoint_update_hooks = []
 """
     on_breakpoints_updated(f)
 
-Register a one-argument function to be called after any update to the set of all
+Register a two-argument function to be called after any update to the set of all
 breakpoints. This includes their creation, deletion, enabling and disabling.
 
 The function `f` should take two inputs:
