@@ -86,7 +86,7 @@ module EvalLimited end
     end
     modexs = collect(ExprSplitter(EvalLimited, ex))
     @static if isdefined(Core, :get_binding_type)
-        nstmts = 10*12 + 20 # 10 * 12 statements per iteration + α
+        nstmts = 10*15 + 20 # 10 * 15 statements per iteration + α
     else
         nstmts = 9*12 + 20 # 10 * 9 statements per iteration + α
     end
