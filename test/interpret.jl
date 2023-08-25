@@ -770,15 +770,10 @@ end
 end
 
 @testset "#476 isdefined QuoteNode" begin
-    f() = !true
-
-    @generated function g()
-        ci = @code_lowered f()
-        ci.code[1] = Expr(:isdefined, QuoteNode(Float64))
-        return ci
+    @eval function issue476()
+        return $(Expr(:isdefined, QuoteNode(Float64)))
     end
-
-    @test @interpret(g()) === true
+    @test (true === @interpret issue476())
 end
 
 const override_world = typemax(Csize_t) - 1
@@ -883,7 +878,11 @@ end
     end
 
     ci = code_typed(foo, NTuple{2, Int}; optimize=false)[][1]
-    mi = Core.Compiler.method_instances(foo, NTuple{2, Int})[]
+    @static if VERSION ≥ v"1.10.0-DEV.873"
+        mi = Core.Compiler.method_instances(foo, NTuple{2, Int}, Base.get_world_counter())[]
+    else
+        mi = Core.Compiler.method_instances(foo, NTuple{2, Int})[]
+    end
 
     frameargs = Any[foo, 1, 2]
     framecode = JuliaInterpreter.FrameCode(mi.def, ci)
