@@ -12,6 +12,25 @@
 ]add JuliaInterpreter
 ```
 
+## Usage 
+```jl
+julia> using JuliaInterpreter
+
+julia> list = [1, 2, 5]
+3-element Vector{Int64}:
+ 1
+ 2
+ 5
+
+julia> sum(list)
+8
+
+julia> @interpret sum(list)
+8
+```
+
+
+
 [docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
 [docs-stable-url]: https://JuliaDebug.github.io/JuliaInterpreter.jl/stable
 
