@@ -12,6 +12,10 @@
 ]add JuliaInterpreter
 ```
 
+## Usage
+
+See the [documentation][docs-stable-url].
+
 [docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
 [docs-stable-url]: https://JuliaDebug.github.io/JuliaInterpreter.jl/stable
 
