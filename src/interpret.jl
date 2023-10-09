@@ -483,12 +483,22 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                 rhs = node.args[1]::Int
                 push!(data.exception_frames, rhs)
             elseif node.head === :leave
-                for _ = 1:node.args[1]::Int
-                    pop!(data.exception_frames)
+                if length(node.args) == 1 && isa(node.args[1], Int)
+                    arg = node.args[1]::Int
+                    for _ = 1:arg
+                        pop!(data.exception_frames)
+                    end
+                else
+                    for i = 1:length(node.args)
+                        targ = node.args[i]
+                        targ === nothing && continue
+                        frame.framecode.src.code[(targ::SSAValue).id] === nothing && continue
+                        pop!(data.exception_frames)
+                    end
                 end
             elseif node.head === :pop_exception
-                n = lookup_var(frame, node.args[1]::SSAValue)::Int
-                deleteat!(data.exception_frames, n+1:length(data.exception_frames))
+                # TODO: This needs to handle the exception stack properly
+                # (https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/591)
             elseif node.head === :return
                 return nothing
             elseif istoplevel
