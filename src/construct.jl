@@ -241,7 +241,11 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     end
     argtypesv = Any[_Typeof(a) for a in allargs]
     argtypes = Tuple{argtypesv...}
-    method = f isa Core.OpaqueClosure ? f.source : whichtt(argtypes)
+    if @static isdefined(Core, :OpaqueClosure) && f isa Core.OpaqueClosure
+        method = f.source
+    else
+        method = whichtt(argtypes)
+    end
     if method === nothing
         # Call it to generate the exact error
         return f(allargs[2:end]...)
