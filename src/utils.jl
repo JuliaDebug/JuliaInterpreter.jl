@@ -40,14 +40,14 @@ function whichtt(@nospecialize(tt))
         match === nothing && return nothing
         return match.method
     else
-        m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), tt, get_world_counter())
+        m = ccall(:jl_gf_invoke_lookup, Any, (Any, Csize_t), tt, get_world_counter())
         m === nothing && return nothing
         isa(m, Method) && return m
         return m.func::Method
     end
 end
 
-instantiate_type_in_env(arg, spsig, spvals) =
+instantiate_type_in_env(arg, spsig::UnionAll, spvals::Vector{Any}) =
     ccall(:jl_instantiate_type_in_env, Any, (Any, Any, Ptr{Any}), arg, spsig, spvals)
 
 function sparam_syms(meth::Method)

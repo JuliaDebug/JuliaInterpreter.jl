@@ -295,12 +295,12 @@ function evaluate_methoddef(frame, node)
     end
     length(node.args) == 1 && return f
     sig = @lookup(frame, node.args[2])::SimpleVector
-    body = @lookup(frame, node.args[3])
+    body = @lookup(frame, node.args[3])::CodeInfo
     # branching on https://github.com/JuliaLang/julia/pull/41137
     @static if isdefined(Core.Compiler, :OverlayMethodTable)
-        ccall(:jl_method_def, Cvoid, (Any, Ptr{Cvoid}, Any, Any), sig, C_NULL, body, moduleof(frame))
+        ccall(:jl_method_def, Cvoid, (Any, Ptr{Cvoid}, Any, Any), sig, C_NULL, body, moduleof(frame)::Module)
     else
-        ccall(:jl_method_def, Cvoid, (Any, Any, Any), sig, body, moduleof(frame))
+        ccall(:jl_method_def, Cvoid, (Any, Any, Any), sig, body, moduleof(frame)::Module)
     end
     return f
 end
@@ -318,8 +318,8 @@ function structname(frame, node)
 end
 
 function set_structtype_const(mod::Module, name::Symbol)
-    dt = Base.unwrap_unionall(getfield(mod, name))
-    ccall(:jl_set_const, Cvoid, (Any, Any, Any), mod, dt.name.name, dt.name.wrapper)
+    dt = Base.unwrap_unionall(getfield(mod, name))::DataType
+    ccall(:jl_set_const, Cvoid, (Any, Any, Any), mod, dt.name.name::Symbol, dt.name.wrapper)
 end
 
 function inplace_lookup!(ex, i, frame)
@@ -378,12 +378,14 @@ function eval_rhs(@nospecialize(recurse), frame, node::Expr)
         args = let mod=mod
             Any[@lookup(mod, frame, arg) for arg in node.args]
         end
-        T = popfirst!(args)
+        T = popfirst!(args)::DataType
         rhs = ccall(:jl_new_structv, Any, (Any, Ptr{Any}, UInt32), T, args, length(args))
         return rhs
     elseif head === :splatnew  # Julia 1.2+
         mod = moduleof(frame)
-        rhs = ccall(:jl_new_structt, Any, (Any, Any), @lookup(mod, frame, node.args[1]), @lookup(mod, frame, node.args[2]))
+        T = @lookup(mod, frame, node.args[1])::DataType
+        args = @lookup(mod, frame, node.args[2])::Tuple
+        rhs = ccall(:jl_new_structt, Any, (Any, Any), T, args)
         return rhs
     elseif head === :isdefined
         return check_isdefined(frame, node.args[1])
