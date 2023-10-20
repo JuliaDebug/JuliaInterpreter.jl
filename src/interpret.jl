@@ -295,7 +295,7 @@ function evaluate_methoddef(frame, node)
     end
     length(node.args) == 1 && return f
     sig = @lookup(frame, node.args[2])::SimpleVector
-    body = @lookup(frame, node.args[3])::CodeInfo
+    body = @lookup(frame, node.args[3])::Union{CodeInfo, Expr}
     # branching on https://github.com/JuliaLang/julia/pull/41137
     @static if isdefined(Core.Compiler, :OverlayMethodTable)
         ccall(:jl_method_def, Cvoid, (Any, Ptr{Cvoid}, Any, Any), sig, C_NULL, body, moduleof(frame)::Module)
