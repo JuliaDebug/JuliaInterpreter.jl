@@ -243,6 +243,11 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     argtypes = Tuple{argtypesv...}
     if @static isdefined(Core, :OpaqueClosure) && f isa Core.OpaqueClosure
         method = f.source
+        # don't try to interpret optimized ir
+        if Core.Compiler.uncompressed_ir(method).inferred
+            @debug "not interpreting opaque closure $f since it contains inferred code"
+            return nothing
+        end
     else
         method = whichtt(argtypes)
     end

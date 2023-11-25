@@ -39,10 +39,14 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     end
 
     if @static isdefined(Core, :OpaqueClosure) && f isa Core.OpaqueClosure
-        if !expand
-            return Some{Any}(f(args...))
+        if expand
+            if !Core.Compiler.uncompressed_ir(f.source).inferred
+                return Expr(:call, f, args[2:end]...)
+            else
+                @debug "not interpreting opaque closure $f since it contains inferred code"
+            end
         end
-        return Expr(:call, f, args[2:end]...)
+        return Some{Any}(f(args...))
     end
     if !(isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction))
         return call_expr
