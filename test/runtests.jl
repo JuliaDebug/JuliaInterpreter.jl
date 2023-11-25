@@ -22,4 +22,5 @@ Core.eval(JuliaInterpreter, :(debug_mode() = true))
     @static VERSION >= v"1.8.0-DEV.370" && include("code_coverage/code_coverage.jl")
     remove()
     include("debug.jl")
+    include("opaque_diffractor.jl")
 end

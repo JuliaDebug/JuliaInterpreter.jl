@@ -38,10 +38,15 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         f = @lookup(frame, fex)
     end
 
-    @static if isdefined(Core, :OpaqueClosure)
-        if f isa Core.OpaqueClosure
-            return Some{Any}(f(args...))
+    if @static isdefined(Core, :OpaqueClosure) && f isa Core.OpaqueClosure
+        if expand
+            if !Core.Compiler.uncompressed_ir(f.source).inferred
+                return Expr(:call, f, args[2:end]...)
+            else
+                @debug "not interpreting opaque closure $f since it contains inferred code"
+            end
         end
+        return Some{Any}(f(args...))
     end
     if !(isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction))
         return call_expr
@@ -120,40 +125,12 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         end
     elseif f === Core.apply_type
         return Some{Any}(Core.apply_type(getargs(args, frame)...))
-    elseif f === Core.arrayref
-        if nargs == 3
-            return Some{Any}(Core.arrayref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
-        elseif nargs == 4
-            return Some{Any}(Core.arrayref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
-        elseif nargs == 5
-            return Some{Any}(Core.arrayref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
-        else
-            return Some{Any}(Core.arrayref(getargs(args, frame)...))
-        end
-    elseif f === Core.arrayset
-        if nargs == 4
-            return Some{Any}(Core.arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
-        elseif nargs == 5
-            return Some{Any}(Core.arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
-        elseif nargs == 6
-            return Some{Any}(Core.arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6]), @lookup(frame, args[7])))
-        else
-            return Some{Any}(Core.arrayset(getargs(args, frame)...))
-        end
-    elseif f === Core.arraysize
-        if nargs == 2
-            return Some{Any}(Core.arraysize(@lookup(frame, args[2]), @lookup(frame, args[3])))
-        else
-            return Some{Any}(Core.arraysize(getargs(args, frame)...))
-        end
     elseif @static isdefined(Core, :compilerbarrier) && f === Core.compilerbarrier
         if nargs == 2
             return Some{Any}(Core.compilerbarrier(@lookup(frame, args[2]), @lookup(frame, args[3])))
         else
             return Some{Any}(Core.compilerbarrier(getargs(args, frame)...))
         end
-    elseif f === Core.const_arrayref
-        return Some{Any}(Core.const_arrayref(getargs(args, frame)...))
     elseif @static isdefined(Core, :donotdelete) && f === Core.donotdelete
         return Some{Any}(Core.donotdelete(getargs(args, frame)...))
     elseif @static isdefined(Core, :finalizer) && f === Core.finalizer
@@ -177,6 +154,44 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             return Some{Any}(Core.ifelse(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
         else
             return Some{Any}(Core.ifelse(getargs(args, frame)...))
+        end
+    elseif @static isdefined(Core, :memoryref) && f === Core.memoryref
+        if nargs == 1
+            return Some{Any}(Core.memoryref(@lookup(frame, args[2])))
+        elseif nargs == 2
+            return Some{Any}(Core.memoryref(@lookup(frame, args[2]), @lookup(frame, args[3])))
+        elseif nargs == 3
+            return Some{Any}(Core.memoryref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+        elseif nargs == 4
+            return Some{Any}(Core.memoryref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+        elseif nargs == 5
+            return Some{Any}(Core.memoryref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+        else
+            return Some{Any}(Core.memoryref(getargs(args, frame)...))
+        end
+    elseif @static isdefined(Core, :memoryref_isassigned) && f === Core.memoryref_isassigned
+        if nargs == 3
+            return Some{Any}(Core.memoryref_isassigned(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+        else
+            return Some{Any}(Core.memoryref_isassigned(getargs(args, frame)...))
+        end
+    elseif @static isdefined(Core, :memoryrefget) && f === Core.memoryrefget
+        if nargs == 3
+            return Some{Any}(Core.memoryrefget(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+        else
+            return Some{Any}(Core.memoryrefget(getargs(args, frame)...))
+        end
+    elseif @static isdefined(Core, :memoryrefoffset) && f === Core.memoryrefoffset
+        if nargs == 1
+            return Some{Any}(Core.memoryrefoffset(@lookup(frame, args[2])))
+        else
+            return Some{Any}(Core.memoryrefoffset(getargs(args, frame)...))
+        end
+    elseif @static isdefined(Core, :memoryrefset!) && f === Core.memoryrefset!
+        if nargs == 4
+            return Some{Any}(Core.memoryrefset!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+        else
+            return Some{Any}(Core.memoryrefset!(getargs(args, frame)...))
         end
     elseif @static isdefined(Core, :set_binding_type!) && f === Core.set_binding_type!
         return Some{Any}(Core.set_binding_type!(getargs(args, frame)...))
@@ -319,6 +334,66 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             call_expr.args[2] = isa(args2, QuoteNode) ? args2 : @lookup(frame, args2)
             call_expr.args[3] = @lookup(frame, args[3])
             return Some{Any}(Core.eval(moduleof(frame), call_expr))
+        end
+    elseif @static isdefined(Core, :arrayref) && f === :arrayref
+        if nargs == 1
+            return Some{Any}(arrayref(@lookup(frame, args[2])))
+        elseif nargs == 2
+            return Some{Any}(arrayref(@lookup(frame, args[2]), @lookup(frame, args[3])))
+        elseif nargs == 3
+            return Some{Any}(arrayref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+        elseif nargs == 4
+            return Some{Any}(arrayref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+        elseif nargs == 5
+            return Some{Any}(arrayref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+        else
+            return Some{Any}(arrayref(getargs(args, frame)...))
+        end
+    elseif @static isdefined(Core, :arrayset) && f === :arrayset
+        if nargs == 1
+            return Some{Any}(arrayset(@lookup(frame, args[2])))
+        elseif nargs == 2
+            return Some{Any}(arrayset(@lookup(frame, args[2]), @lookup(frame, args[3])))
+        elseif nargs == 3
+            return Some{Any}(arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+        elseif nargs == 4
+            return Some{Any}(arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+        elseif nargs == 5
+            return Some{Any}(arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+        elseif nargs == 6
+            return Some{Any}(arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6]), @lookup(frame, args[7])))
+        else
+            return Some{Any}(arrayset(getargs(args, frame)...))
+        end
+    elseif @static isdefined(Core, :arrayset) && f === :arrayset
+        if nargs == 1
+            return Some{Any}(arrayset(@lookup(frame, args[2])))
+        elseif nargs == 2
+            return Some{Any}(arrayset(@lookup(frame, args[2]), @lookup(frame, args[3])))
+        elseif nargs == 3
+            return Some{Any}(arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+        elseif nargs == 4
+            return Some{Any}(arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+        elseif nargs == 5
+            return Some{Any}(arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+        elseif nargs == 6
+            return Some{Any}(arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6]), @lookup(frame, args[7])))
+        else
+            return Some{Any}(arrayset(getargs(args, frame)...))
+        end
+    elseif @static isdefined(Core, :const_arrayref) && f === :const_arrayref
+        if nargs == 1
+            return Some{Any}(const_arrayref(@lookup(frame, args[2])))
+        elseif nargs == 2
+            return Some{Any}(const_arrayref(@lookup(frame, args[2]), @lookup(frame, args[3])))
+        elseif nargs == 3
+            return Some{Any}(const_arrayref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+        elseif nargs == 4
+            return Some{Any}(const_arrayref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+        elseif nargs == 5
+            return Some{Any}(const_arrayref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+        else
+            return Some{Any}(const_arrayref(getargs(args, frame)...))
         end
     elseif f === Core.Intrinsics.llvmcall
         return Some{Any}(Core.Intrinsics.llvmcall(getargs(args, frame)...))
