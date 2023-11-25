@@ -9,6 +9,7 @@ jobs:
   Documenter:
     name: Documentation
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: julia-actions/setup-julia@v1
         with:
