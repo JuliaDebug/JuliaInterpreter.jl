@@ -9,8 +9,13 @@ const RECENTLY_ADDED = Core.Builtin[
     Core.getglobal, Core.setglobal!,
     Core.modifyfield!, Core.replacefield!, Core.swapfield!,
     Core.finalizer, Core._compute_sparams, Core._svec_ref,
-    Core.compilerbarrier
+    Core.compilerbarrier,
+    Core.memoryref, Core.memoryref_isassigned, Core.memoryrefget, Core.memoryrefoffset, Core.memoryrefset!,
 ]
+# Builtins present in 1.6, not builtins (potentially still normal functions) anymore
+const RECENTLY_REMOVED = GlobalRef.(Ref(Core), [
+    :arrayref, :arrayset, :arrayset, :const_arrayref,
+])
 const kwinvoke = Core.kwfunc(Core.invoke)
 
 function scopedname(f)
@@ -33,11 +38,10 @@ function nargs(f, table, id)
         minarg = 0
         maxarg = typemax(Int)
     end
-    # Specialize arrayref and arrayset for small numbers of arguments
-    if f == Core.arrayref
+    # Specialize ~arrayref and arrayset~ memoryref for small numbers of arguments
+    # TODO: how about other memory intrinsics?
+    if f == Core.memoryref
         maxarg = 5
-    elseif f == Core.arrayset
-        maxarg = 6
     end
     return minarg, maxarg
 end
@@ -246,6 +250,24 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             return Some{Any}(Core.eval(moduleof(frame), call_expr))
         end
 """)
+    # recently removed builtins
+    for (; mod, name) in RECENTLY_REMOVED
+        minarg = 1
+        if name in (:arrayref, :const_arrayref)
+            maxarg = 5
+        elseif name === :arrayset
+            maxarg = 6
+        elseif name === :arraysize
+            maxarg = 2
+        end
+        fcall = generate_fcall_nargs(name, minarg, maxarg)
+        rname = repr(name)
+        print(io,
+"""
+    elseif @static isdefined($mod, $rname) && f === $name
+        $fcall
+""")
+    end
     # Extract any intrinsics that support varargs
     fva = []
     minmin, maxmax = typemax(Int), 0
