@@ -54,12 +54,10 @@ function renumber_ssa!(stmts::Vector{Any}, ssalookup)
             stmts[i] = SSAValue(ssalookup[stmt.id])
         elseif isa(stmt, NewSSAValue)
             stmts[i] = SSAValue(stmt.id)
+        elseif isexpr(stmt, :enter)
+            stmt.args[end] = jumplookup(ssalookup, stmt.args[1]::Int)
         elseif isa(stmt, Expr)
-            stmt = replace_ssa(stmt, ssalookup)
-            if stmt.head === :enter
-                stmt.args[end] = jumplookup(ssalookup, stmt.args[1]::Int)
-            end
-            stmts[i] = stmt
+            stmts[i] = replace_ssa(stmt, ssalookup)
         elseif isa(stmt, GotoIfNot)
             cond = stmt.cond
             if isa(cond, SSAValue)
@@ -71,6 +69,8 @@ function renumber_ssa!(stmts::Vector{Any}, ssalookup)
             if isa(val, SSAValue)
                 stmts[i] = ReturnNode(SSAValue(ssalookup[val.id]))
             end
+        elseif @static (isdefined(Core.IR, :EnterNode) && true) && isa(stmt, Core.IR.EnterNode)
+            stmts[i] = Core.IR.EnterNode(jumplookup(ssalookup, stmt.catch_dest))
         end
     end
     return stmts

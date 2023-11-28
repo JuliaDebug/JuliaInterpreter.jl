@@ -370,7 +370,6 @@ function maybe_assign!(frame, @nospecialize(stmt), @nospecialize(val))
 end
 maybe_assign!(frame, @nospecialize(val)) = maybe_assign!(frame, pc_expr(frame), val)
 
-
 function eval_rhs(@nospecialize(recurse), frame, node::Expr)
     head = node.head
     if head === :new
@@ -399,6 +398,7 @@ function eval_rhs(@nospecialize(recurse), frame, node::Expr)
         val = (node.args[1]::QuoteNode).value
         return isa(val, Expr) ? copy(val) : val
     elseif head === :enter
+        # XXX This seems to be dead code
         return length(frame.framedata.exception_frames)
     elseif head === :boundscheck
         return true
@@ -565,6 +565,9 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
         elseif istoplevel && isa(node, LineNumberNode)
         elseif istoplevel && isa(node, Symbol)
             rhs = getfield(moduleof(frame), node)
+        elseif @static (isdefined(Core.IR, :EnterNode) && true) && isa(node, Core.IR.EnterNode)
+            rhs = node.catch_dest
+            push!(data.exception_frames, rhs)
         else
             rhs = @lookup(frame, node)
         end
