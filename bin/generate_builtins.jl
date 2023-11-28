@@ -261,10 +261,10 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             maxarg = 2
         end
         fcall = generate_fcall_nargs(name, minarg, maxarg)
-        name = repr(name)
+        rname = repr(name)
         print(io,
 """
-    elseif @static isdefined($mod, $name) && f === $name
+    elseif @static isdefined($mod, $rname) && f === $name
         $fcall
 """)
     end
