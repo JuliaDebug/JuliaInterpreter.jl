@@ -119,7 +119,7 @@ maybe_next_until!(@nospecialize(predicate), frame::Frame, istoplevel::Bool=false
     pc = next_call!(frame, istoplevel=false)
 
 Execute the current statement. Continue stepping through `frame` until the next
-`:return` or `:call` expression.
+`ReturnNode` or `:call` expression.
 """
 next_call!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false) =
     next_until!(frame -> is_call_or_return(pc_expr(frame)), recurse, frame, istoplevel)
@@ -129,8 +129,8 @@ next_call!(frame::Frame, istoplevel::Bool=false) = next_call!(finish_and_return!
     pc = maybe_next_call!(recurse, frame, istoplevel=false)
     pc = maybe_next_call!(frame, istoplevel=false)
 
-Return the current program counter of `frame` if it is a `:return` or `:call` expression.
-Otherwise, step through the statements of `frame` until the next `:return` or `:call` expression.
+Return the current program counter of `frame` if it is a `ReturnNode` or `:call` expression.
+Otherwise, step through the statements of `frame` until the next `ReturnNode` or `:call` expression.
 """
 maybe_next_call!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false) =
     maybe_next_until!(frame -> is_call_or_return(pc_expr(frame)), recurse, frame, istoplevel)

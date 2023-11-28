@@ -1,6 +1,6 @@
 using Base.Meta
 import Base: +, -, convert, isless, get_world_counter
-using Core: CodeInfo, SimpleVector, LineInfoNode, GotoNode,
+using Core: CodeInfo, SimpleVector, LineInfoNode, GotoNode, GotoIfNot, ReturnNode,
             GeneratedFunctionStub, MethodInstance, NewvarNode, TypeName
 
 using UUIDs

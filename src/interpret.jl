@@ -471,14 +471,6 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                 end
                 isa(rhs, BreakpointRef) && return rhs
                 do_assignment!(frame, lhs, rhs)
-            elseif node.head === :gotoifnot
-                arg = @lookup(frame, node.args[1])
-                if !isa(arg, Bool)
-                    throw(TypeError(nameof(frame), "if", Bool, arg))
-                end
-                if !arg
-                    return (frame.pc = node.args[2]::Int)
-                end
             elseif node.head === :enter
                 rhs = node.args[1]::Int
                 push!(data.exception_frames, rhs)
@@ -499,8 +491,6 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
             elseif node.head === :pop_exception
                 # TODO: This needs to handle the exception stack properly
                 # (https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/591)
-            elseif node.head === :return
-                return nothing
             elseif istoplevel
                 if node.head === :method && length(node.args) > 1
                     evaluate_methoddef(frame, node)
@@ -558,8 +548,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
             end
         elseif isa(node, GotoNode)
             return (frame.pc = node.label)
-        elseif is_GotoIfNot(node)
-            node = node::Core.GotoIfNot
+        elseif isa(node, GotoIfNot)
             arg = @lookup(frame, node.cond)
             if !isa(arg, Bool)
                 throw(TypeError(nameof(frame), "if", Bool, arg))
@@ -567,7 +556,7 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
             if !arg
                 return (frame.pc = node.dest)
             end
-        elseif is_ReturnNode(node)
+        elseif isa(node, ReturnNode)
             return nothing
         elseif isa(node, NewvarNode)
             # FIXME: undefine the slot?
@@ -647,11 +636,7 @@ function handle_err(@nospecialize(recurse), frame, err)
     return (frame.pc = data.exception_frames[end])
 end
 
-if isdefined(Core, :ReturnNode)
-    lookup_return(frame, node::Core.ReturnNode) = @lookup(frame, node.val)
-else
-    lookup_return(frame, node::Expr) = @lookup(frame, node.args[1])
-end
+lookup_return(frame, node::ReturnNode) = @lookup(frame, node.val)
 
 """
     ret = get_return(frame)
