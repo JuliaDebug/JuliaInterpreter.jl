@@ -260,11 +260,12 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         elseif name === :arraysize
             maxarg = 2
         end
-        fcall = generate_fcall_nargs(name, minarg, maxarg)
+        _scopedname = "$mod.$name"
+        fcall = generate_fcall_nargs(_scopedname, minarg, maxarg)
         rname = repr(name)
         print(io,
 """
-    elseif @static isdefined($mod, $rname) && f === $name
+    elseif @static (isdefined($mod, $rname) && $_scopedname isa Core.Builtin) && f === $_scopedname
         $fcall
 """)
     end

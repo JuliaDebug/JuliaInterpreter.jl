@@ -993,3 +993,7 @@ end
     @test (@interpret string("", "pcre_h.jl")) == string("", "pcre_h.jl")
     @test (@interpret Base.strcat("", "build_h.jl")) ==  Base.strcat("", "build_h.jl")
 end
+
+# test for using generic functions that were previously builtin
+func_arrayref(a, i) = Core.arrayref(true, a, i)
+@test 2 == @interpret func_arrayref([1,2,3], 2)
