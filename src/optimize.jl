@@ -56,20 +56,20 @@ function renumber_ssa!(stmts::Vector{Any}, ssalookup)
             stmts[i] = SSAValue(stmt.id)
         elseif isa(stmt, Expr)
             stmt = replace_ssa(stmt, ssalookup)
-            if (stmt.head === :gotoifnot || stmt.head === :enter) && isa(stmt.args[end], Int)
-                stmt.args[end] = jumplookup(ssalookup, stmt.args[end])
+            if stmt.head === :enter
+                stmt.args[end] = jumplookup(ssalookup, stmt.args[1]::Int)
             end
             stmts[i] = stmt
-        elseif is_GotoIfNot(stmt)
-            cond = (stmt::Core.GotoIfNot).cond
+        elseif isa(stmt, GotoIfNot)
+            cond = stmt.cond
             if isa(cond, SSAValue)
                 cond = SSAValue(ssalookup[cond.id])
             end
-            stmts[i] = Core.GotoIfNot(cond, jumplookup(ssalookup, stmt.dest))
-        elseif is_ReturnNode(stmt)
-            val = (stmt::Core.ReturnNode).val
+            stmts[i] = GotoIfNot(cond, jumplookup(ssalookup, stmt.dest))
+        elseif isa(stmt, ReturnNode)
+            val = stmt.val
             if isa(val, SSAValue)
-                stmts[i] = Core.ReturnNode(SSAValue(ssalookup[val.id]))
+                stmts[i] = ReturnNode(SSAValue(ssalookup[val.id]))
             end
         end
     end
@@ -394,19 +394,17 @@ function replace_coretypes_list!(list::AbstractVector; rev::Bool=false)
         rstmt = rep(stmt, rev)
         if rstmt !== stmt
             list[i] = rstmt
-        elseif is_GotoIfNot(stmt)
-            stmt = stmt::Core.GotoIfNot
+        elseif isa(stmt, GotoIfNot)
             cond = stmt.cond
             rcond = rep(cond, rev)
             if rcond !== cond
-                list[i] = Core.GotoIfNot(rcond, stmt.dest)
+                list[i] = GotoIfNot(rcond, stmt.dest)
             end
-        elseif is_ReturnNode(stmt)
-            stmt = stmt::Core.ReturnNode
+        elseif isa(stmt, ReturnNode)
             val = stmt.val
             rval = rep(val, rev)
             if rval !== val
-                list[i] = Core.ReturnNode(rval)
+                list[i] = ReturnNode(rval)
             end
         elseif isa(stmt, Expr)
             replace_coretypes!(stmt; rev=rev)

@@ -25,8 +25,8 @@ using Test
     end
 
     thunk = Meta.lower(Main, :(return 1+2))
-    stmt = thunk.args[1].code[end]   # the return
-    @test JuliaInterpreter.get_return_node(stmt) isa Core.SSAValue
+    stmt = thunk.args[1].code[end]::Core.ReturnNode   # the return
+    @test stmt.val isa Core.SSAValue
 
     @test string(JuliaInterpreter.parametric_type_to_expr(Base.Iterators.Stateful{String})) ∈
         ("Base.Iterators.Stateful{String, VS}", "(Base.Iterators).Stateful{String, VS}", "Base.Iterators.Stateful{String, VS, N}")

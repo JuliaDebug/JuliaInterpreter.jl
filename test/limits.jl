@@ -38,7 +38,7 @@ end
     @test Aborted(frame, i).at.line == 6
     # Check conditional
     frame = Frame(modexs[4]...)
-    i = findfirst(stmt->JuliaInterpreter.is_gotoifnot(stmt), frame.framecode.src.code) + 1
+    i = findfirst(stmt->isa(stmt, Core.GotoIfNot), frame.framecode.src.code) + 1
     @test Aborted(frame, i).at.line == 9
     # Check macro
     frame = Frame(modexs[5]...)
