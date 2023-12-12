@@ -2,93 +2,6 @@ const calllike = (:call, :foreigncall)
 
 const compiled_calls = Dict{Any,Any}()
 
-function extract_inner_call!(stmt::Expr, idx, once::Bool=false)
-    (stmt.head === :toplevel || stmt.head === :thunk) && return nothing
-    once |= stmt.head ∈ calllike
-    for (i, a) in enumerate(stmt.args)
-        isa(a, Expr) || continue
-        # Make sure we don't "damage" special syntax that requires literals
-        if i == 1 && stmt.head === :foreigncall
-            continue
-        end
-        if i == 2 && stmt.head === :call && stmt.args[1] === :cglobal
-            continue
-        end
-        ret = extract_inner_call!(a, idx, once) # doing this first extracts innermost calls
-        ret !== nothing && return ret
-        iscalllike = a.head ∈ calllike
-        if once && iscalllike
-            stmt.args[i] = NewSSAValue(idx)
-            return a
-        end
-    end
-    return nothing
-end
-
-function replace_ssa(stmt::Expr, ssalookup)
-    return Expr(stmt.head, Any[
-        if isa(a, SSAValue)
-            SSAValue(ssalookup[a.id])
-        elseif isa(a, NewSSAValue)
-            SSAValue(a.id)
-        elseif isa(a, Expr)
-            replace_ssa(a, ssalookup)
-        else
-            a
-        end
-        for a in stmt.args
-    ]...)
-end
-
-function renumber_ssa!(stmts::Vector{Any}, ssalookup)
-    # When updating jumps, when lines get split into multiple lines
-    # (see "Un-nest :call expressions" below), we need to jump to the first of them.
-    # Consequently we use the previous "old-code" offset and add one.
-    # Fixes #455.
-    jumplookup(l, idx) = idx > 1 ? l[idx-1] + 1 : idx
-
-    for (i, stmt) in enumerate(stmts)
-        if isa(stmt, GotoNode)
-            stmts[i] = GotoNode(jumplookup(ssalookup, stmt.label))
-        elseif isa(stmt, SSAValue)
-            stmts[i] = SSAValue(ssalookup[stmt.id])
-        elseif isa(stmt, NewSSAValue)
-            stmts[i] = SSAValue(stmt.id)
-        elseif isexpr(stmt, :enter)
-            stmt.args[end] = jumplookup(ssalookup, stmt.args[1]::Int)
-        elseif isa(stmt, Expr)
-            stmts[i] = replace_ssa(stmt, ssalookup)
-        elseif isa(stmt, GotoIfNot)
-            cond = stmt.cond
-            if isa(cond, SSAValue)
-                cond = SSAValue(ssalookup[cond.id])
-            end
-            stmts[i] = GotoIfNot(cond, jumplookup(ssalookup, stmt.dest))
-        elseif isa(stmt, ReturnNode)
-            val = stmt.val
-            if isa(val, SSAValue)
-                stmts[i] = ReturnNode(SSAValue(ssalookup[val.id]))
-            end
-        elseif @static (isdefined(Core.IR, :EnterNode) && true) && isa(stmt, Core.IR.EnterNode)
-            stmts[i] = Core.IR.EnterNode(jumplookup(ssalookup, stmt.catch_dest))
-        end
-    end
-    return stmts
-end
-
-function compute_ssa_mapping_delete_statements!(code::CodeInfo, stmts::Vector{Int})
-    stmts = unique!(sort!(stmts))
-    ssalookup = collect(1:length(codelocs(code)))
-    cnt = 1
-    for i in 1:length(stmts)
-        start = stmts[i] + 1
-        stop = i == length(stmts) ? length(codelocs(code)) : stmts[i+1]
-        ssalookup[start:stop] .-= cnt
-        cnt += 1
-    end
-    return ssalookup
-end
-
 # Pre-frame-construction lookup
 function lookup_stmt(stmts, arg)
     if isa(arg, SSAValue)
@@ -202,35 +115,10 @@ function optimize!(code::CodeInfo, scope)
         end
     end
 
-    ## Un-nest :call expressions (so that there will be only one :call per line)
-    # This will allow us to re-use args-buffers rather than having to allocate new ones each time.
-    old_code, old_codelocs = code.code, codelocs(code)
-    code.code = new_code = eltype(old_code)[]
-    code.codelocs = new_codelocs = Int32[]
-    ssainc = fill(1, length(old_code))
-    for (i, stmt) in enumerate(old_code)
-        loc = old_codelocs[i]
-        if isa(stmt, Expr)
-            inner = extract_inner_call!(stmt, length(new_code)+1)
-            while inner !== nothing
-                push!(new_code, inner)
-                push!(new_codelocs, loc)
-                ssainc[i] += 1
-                inner = extract_inner_call!(stmt, length(new_code)+1)
-            end
-        end
-        push!(new_code, stmt)
-        push!(new_codelocs, loc)
-    end
-    # Fix all the SSAValues and GotoNodes
-    ssalookup = cumsum(ssainc)
-    renumber_ssa!(new_code, ssalookup)
-    code.ssavaluetypes = length(new_code)
-
     # Insert the foreigncall wrappers at the updated idxs
     methodtables = Vector{Union{Compiled,DispatchableMethod}}(undef, length(code.code))
     for idx in foreigncalls_idx
-        methodtables[ssalookup[idx]] = Compiled()
+        methodtables[idx] = Compiled()
     end
 
     return code, methodtables
