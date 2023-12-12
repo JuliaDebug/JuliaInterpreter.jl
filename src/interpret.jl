@@ -65,9 +65,12 @@ function lookup_expr(frame, e::Expr)
     end
     head === :boundscheck && length(e.args) == 0 && return true
     if head === :call
-        # work around for a linearization bug in Julia (https://github.com/JuliaLang/julia/pull/52497)
         f = @lookup frame e.args[1]
         if f === Core.svec
+            # work around for a linearization bug in Julia (https://github.com/JuliaLang/julia/pull/52497)
+            return f(Any[@lookup(frame, e.args[i]) for i in 2:length(e.args)]...)
+        elseif f === Core.tuple
+            # handling for ccall literal syntax
             return f(Any[@lookup(frame, e.args[i]) for i in 2:length(e.args)]...)
         end
     end
@@ -99,9 +102,11 @@ function lookup_or_eval(@nospecialize(recurse), frame, @nospecialize(node))
         if ex.head === :call
             f = ex.args[1]
             if f === Core.svec
-                return f(popfirst!(ex.args)...)
+                popfirst!(ex.args)
+                return f(ex.args...)
             elseif f === Core.apply_type
-                return f(popfirst!(ex.args)...)
+                popfirst!(ex.args)
+                return f(ex.args...)
             elseif f === Core.typeof && length(ex.args) == 2
                 return f(ex.args[2])
             elseif f === Base.getproperty && length(ex.args) == 3
