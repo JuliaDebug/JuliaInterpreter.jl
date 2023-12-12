@@ -147,9 +147,24 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
 
     lt = linetable(src)
     unique_files = Set{Symbol}()
+    @static if VERSION ≥ v"1.12.0-DEV.173"
+    function pushuniquefiles!(unique_files::Set{Symbol}, lt)
+        for edge in lt.edges
+            pushuniquefiles!(unique_files, edge)
+        end
+        linetable = lt.linetable
+        if linetable === nothing
+            push!(unique_files, Base.IRShow.debuginfo_file1(lt))
+        else
+            pushuniquefiles!(unique_files, linetable)
+        end
+    end
+    pushuniquefiles!(unique_files, lt)
+    else # VERSION < v"1.12.0-DEV.173"
     for entry in lt
         push!(unique_files, entry.file)
     end
+    end # @static if
 
     framecode = FrameCode(scope, src, methodtables, breakpoints, slotnamelists, used, generator, report_coverage, unique_files)
     if scope isa Method
@@ -237,7 +252,7 @@ mutable struct Frame
     assignment_counter::Int64
     caller::Union{Frame,Nothing}
     callee::Union{Frame,Nothing}
-    last_codeloc::Int32
+    last_codeloc::Int
 end
 function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing)
     if length(junk_frames) > 0

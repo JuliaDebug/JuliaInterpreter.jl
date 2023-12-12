@@ -36,8 +36,7 @@ struct Aborted    # for signaling that some statement or test blocks were interr
 end
 
 function Aborted(frame::Frame, pc)
-    src = frame.framecode.src
-    lineidx = src.codelocs[pc]
+    lineidx = JuliaInterpreter.codelocs(frame, pc)
     lineinfo = JuliaInterpreter.linetable(frame, lineidx; macro_caller=true)
     return Aborted(lineinfo)
 end

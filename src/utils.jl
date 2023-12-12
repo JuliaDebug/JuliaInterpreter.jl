@@ -258,7 +258,11 @@ end
 
 # These getters improve inference since fieldtype(CodeInfo, :linetable)
 # and fieldtype(CodeInfo, :codelocs) are both Any
-const LineTypes = Union{LineNumberNode,Core.LineInfoNode}
+@static if VERSION ≥ v"1.12.0-DEV.173"
+    const LineTypes = Union{LineNumberNode,Base.IRShow.LineInfoNode}
+else
+    const LineTypes = Union{LineNumberNode,Core.LineInfoNode}
+end
 function linetable(arg)
     if isa(arg, Frame)
         arg = arg.framecode
@@ -266,20 +270,63 @@ function linetable(arg)
     if isa(arg, FrameCode)
         arg = arg.src
     end
-    return (arg::CodeInfo).linetable::Union{Vector{Core.LineInfoNode},Vector{Any}}  # issue #264
+    ci = arg::CodeInfo
+    @static if VERSION ≥ v"1.12.0-DEV.173"
+    return ci.debuginfo
+    else # VERSION < v"1.12.0-DEV.173"
+    return ci.linetable::Union{Vector{Core.LineInfoNode},Vector{Any}} # issue #264
+    end # @static if
 end
-_linetable(list::Vector, i::Integer) = list[i]::Union{Expr,LineTypes}
 function linetable(arg, i::Integer; macro_caller::Bool=false)::Union{Expr,LineTypes}
     lt = linetable(arg)
-    lineinfo = _linetable(lt, i)
+    @static if VERSION ≥ v"1.12.0-DEV.173"
+    # TODO: decode the linetable at this frame efficiently by reimplementing this here
+    # TODO: get the contextual name from the parent, rather than returning "n/a" (which breaks Cthulhu)
+    return Base.IRShow.buildLineInfoNode(lt, :var"n/a", i)[1] # ignore all inlining / macro expansion / etc :(
+    else # VERSION < v"1.12.0-DEV.173"
+    lin = lt[i]::Union{Expr,LineTypes}
     if macro_caller
-        while lineinfo isa Core.LineInfoNode && lineinfo.method === Symbol("macro expansion") && lineinfo.inlined_at != 0
-            lineinfo = _linetable(lt, lineinfo.inlined_at)
+        while lin isa Core.LineInfoNode && lin.method === Symbol("macro expansion") && lin.inlined_at != 0
+            lin = lt[lin.inlined_at]::Union{Expr,LineTypes}
         end
     end
-    return lineinfo
+    return lin
+    end # @static if
 end
 
+@static if VERSION ≥ v"1.12.0-DEV.173"
+
+function getlastline(arg)
+    debuginfo = linetable(arg)
+    while true
+        ltnext = debuginfo.linetable
+        ltnext === nothing && break
+        debuginfo = ltnext
+    end
+    lastline = 0
+    for k = 0:typemax(Int)
+        codeloc = Core.Compiler.getdebugidx(debuginfo, k)
+        line::Int = codeloc[1]
+        line < 0 && break
+        lastline = max(lastline, line)
+    end
+    return lastline
+end
+function codelocs(arg, i::Integer)
+    debuginfo = linetable(arg)
+    codeloc = Core.Compiler.getdebugidx(debuginfo, i)
+    line::Int = codeloc[1]
+    line < 0 && return 0# broken or disabled debug info?
+    if line == 0 && codeloc[2] == 0
+        return 0 # no line number update
+    end
+    return i
+end
+
+else # VERSION < v"1.12.0-DEV.173"
+
+getfirstline(arg) = getline(linetable(arg)[begin])
+getlastline(arg) = getline(linetable(arg)[end])
 function codelocs(arg)
     if isa(arg, Frame)
         arg = arg.framecode
@@ -287,9 +334,12 @@ function codelocs(arg)
     if isa(arg, FrameCode)
         arg = arg.src
     end
-    return (arg::CodeInfo).codelocs::Vector{Int32}
+    ci = arg::CodeInfo
+    return ci.codelocs
 end
-codelocs(arg, i::Integer) = codelocs(arg)[i]  # for consistency with linetable (but no extra benefit here)
+codelocs(arg, i::Integer) = codelocs(arg)[i]
+
+end # @static if
 
 function lineoffset(framecode::FrameCode)
     offset = 0
@@ -302,9 +352,9 @@ function lineoffset(framecode::FrameCode)
 end
 
 function getline(ln::Union{LineTypes,Expr})
-    _getline(ln::LineTypes) = ln.line
-    _getline(ln::Expr)      = ln.args[1] # assuming ln.head === :line
-    return Int(_getline(ln))::Int
+    _getline(ln::LineTypes) = Int(ln.line)
+    _getline(ln::Expr)      = ln.args[1]::Int # assuming ln.head === :line
+    return _getline(ln)
 end
 function getfile(ln::Union{LineTypes,Expr})
     _getfile(ln::LineTypes) = ln.file::Symbol
@@ -367,7 +417,7 @@ function codelocation(code::CodeInfo, idx::Int)
     idx′ = idx
     # look ahead if we are on a meta line
     while idx′ < length(code.code)
-        codeloc = codelocs(code)[idx′]
+        codeloc = codelocs(code, idx′)
         codeloc == 0 || return codeloc
         ex = code.code[idx′]
         ex === nothing || isexpr(ex, :meta) || break
@@ -377,7 +427,7 @@ function codelocation(code::CodeInfo, idx::Int)
     # if zero, look behind until we find where we last might have had a line
     while idx′ > 0
         ex = code.code[idx′]
-        codeloc = codelocs(code)[idx′]
+        codeloc = codelocs(code, idx′)
         codeloc == 0 || return codeloc
         idx′ -= 1
     end
@@ -390,13 +440,11 @@ function compute_corrected_linerange(method::Method)
     offset = line1 - method.line
     @assert !is_generated(method)
     src = JuliaInterpreter.get_source(method)
-    lastline = linetable(src)[end]::LineTypes
-    return line1:getline(lastline) + offset
+    lastline = getlastline(src)
+    return line1:lastline + offset
 end
 
-function compute_linerange(framecode)
-    getline(linetable(framecode, 1)):getline(last(linetable(framecode)))
-end
+compute_linerange(framecode) = getfirstline(framecode):getlastline(framecode)
 
 function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
     # Check to see if this framecode really contains that line. Methods that fill in a default positional argument,
@@ -433,7 +481,6 @@ function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
         end
         return stmtidxs
     end
-
 
     # If the exact line number does not exist in the line table, take the one that is closest after that line
     # restricted to the line range of the current scope.
@@ -506,9 +553,7 @@ breakpointchar(framecode, stmtidx) =
 function print_framecode(io::IO, framecode::FrameCode; pc=0, range=1:nstatements(framecode), kwargs...)
     iscolor = get(io, :color, false)
     ndstmt = ndigits(nstatements(framecode))
-    lt = linetable(framecode)
-    offset = lineoffset(framecode)
-    ndline = isempty(lt) ? 0 : ndigits(getline(lt[end]) + offset)
+    ndline = ndigits(getlastline(framecode) + lineoffset(framecode))
     nullline = " "^ndline
     src = copy(framecode.src)
     replace_coretypes!(src; rev=true)
@@ -759,12 +804,11 @@ function Base.StackTraces.StackFrame(frame::Frame)
     Base.StackFrame(
         fname,
         Symbol(getfile(frame)),
-        @something(linenumber(frame), getline(linetable(frame, 1))),
+        @something(linenumber(frame), getfirstline(frame)),
         mi,
         false,
         false,
-        C_NULL
-    )
+        C_NULL)
 end
 
 function Base.show_backtrace(io::IO, frame::Frame)
