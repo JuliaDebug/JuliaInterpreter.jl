@@ -997,3 +997,12 @@ end
 # test for using generic functions that were previously builtin
 func_arrayref(a, i) = Core.arrayref(true, a, i)
 @test 2 == @interpret func_arrayref([1,2,3], 2)
+
+@static if isdefined(Base, :ScopedValues)
+const sval = ScopedValue(1)
+sval_func() = @with sval => 2 begin
+    return sval[]
+end
+@test 2 == @interpret sval_func()
+@test 1 == @interpret getindex(sval)
+end

@@ -415,9 +415,6 @@ function eval_rhs(@nospecialize(recurse), frame, node::Expr)
     elseif head === :copyast
         val = (node.args[1]::QuoteNode).value
         return isa(val, Expr) ? copy(val) : val
-    elseif head === :enter
-        # XXX This seems to be dead code
-        return length(frame.framedata.exception_frames)
     elseif head === :boundscheck
         return true
     elseif head === :meta || head === :inbounds || head === :loopinfo ||
@@ -504,8 +501,12 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                     for i = 1:length(node.args)
                         targ = node.args[i]
                         targ === nothing && continue
-                        frame.framecode.src.code[(targ::SSAValue).id] === nothing && continue
+                        enterstmt = frame.framecode.src.code[(targ::SSAValue).id]
+                        enterstmt === nothing && continue
                         pop!(data.exception_frames)
+                        if isdefined(enterstmt, :scope)
+                            pop!(data.current_scopes)
+                        end
                     end
                 end
             elseif node.head === :pop_exception
@@ -586,6 +587,9 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
         elseif @static (isdefined(Core.IR, :EnterNode) && true) && isa(node, Core.IR.EnterNode)
             rhs = node.catch_dest
             push!(data.exception_frames, rhs)
+            if isdefined(node, :scope)
+                push!(data.current_scopes, @lookup(frame, node.scope))
+            end
         else
             rhs = @lookup(frame, node)
         end

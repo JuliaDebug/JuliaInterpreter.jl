@@ -94,8 +94,6 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             push!(new_expr.args, QuoteNode(x))
         end
         return maybe_recurse_expanded_builtin(frame, new_expr)
-    elseif f === Core._call_latest
-        return Some{Any}(Core._call_latest(getargs(args, frame)...))
     elseif @static isdefined(Core, :_compute_sparams) && f === Core._compute_sparams
         return Some{Any}(Core._compute_sparams(getargs(args, frame)...))
     elseif f === Core._equiv_typedef
@@ -125,6 +123,16 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             return Some{Any}(Core.compilerbarrier(@lookup(frame, args[2]), @lookup(frame, args[3])))
         else
             return Some{Any}(Core.compilerbarrier(getargs(args, frame)...))
+        end
+    elseif @static isdefined(Core, :current_scope) && f === Core.current_scope
+        if nargs == 0
+            if isempty(frame.framedata.current_scopes)
+                return Some{Any}(nothing)
+            else
+                return Some{Any}(frame.framedata.current_scopes[end])
+            end
+        else
+            return Some{Any}(Core.current_scope(getargs(args, frame)...))
         end
     elseif @static isdefined(Core, :donotdelete) && f === Core.donotdelete
         return Some{Any}(Core.donotdelete(getargs(args, frame)...))
@@ -227,13 +235,13 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             return Some{Any}(getglobal(getargs(args, frame)...))
         end
     elseif f === invoke
-            if !expand
-                argswrapped = getargs(args, frame)
-                return Some{Any}(invoke(argswrapped...))
-            end
-            # This uses the original arguments to avoid looking them up twice
-            # See #442
-            return Expr(:call, invoke, args[2:end]...)
+        if !expand
+            argswrapped = getargs(args, frame)
+            return Some{Any}(invoke(argswrapped...))
+        end
+        # This uses the original arguments to avoid looking them up twice
+        # See #442
+        return Expr(:call, invoke, args[2:end]...)
     elseif f === isa
         if nargs == 2
             return Some{Any}(isa(@lookup(frame, args[2]), @lookup(frame, args[3])))

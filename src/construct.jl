@@ -269,7 +269,7 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
     if length(junk_framedata) > 0
         olddata = pop!(junk_framedata)
         locals, ssavalues, sparams = olddata.locals, olddata.ssavalues, olddata.sparams
-        exception_frames, last_reference = olddata.exception_frames, olddata.last_reference
+        exception_frames, current_scopes, last_reference = olddata.exception_frames, olddata.current_scopes, olddata.last_reference
         last_exception = olddata.last_exception
         callargs = olddata.callargs
         resize!(locals, ns)
@@ -279,6 +279,7 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         # for check_isdefined to work properly, we need sparams to start out unassigned
         resize!(sparams, 0)
         empty!(exception_frames)
+        empty!(current_scopes)
         resize!(last_reference, ns)
         last_exception[] = _INACTIVE_EXCEPTION.instance
     else
@@ -286,6 +287,7 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         ssavalues = Vector{Any}(undef, ng)
         sparams = Vector{Any}(undef, 0)
         exception_frames = Int[]
+        current_scopes = Any[]
         last_reference = Vector{Int}(undef, ns)
         callargs = Any[]
         last_exception = Ref{Any}(_INACTIVE_EXCEPTION.instance)
@@ -314,7 +316,8 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         isa(T, TypeVar) && continue  # only fill concrete types
         sparams[i] = T
     end
-    FrameData(locals, ssavalues, sparams, exception_frames, last_exception, caller_will_catch_err, last_reference, callargs)
+    return FrameData(locals, ssavalues, sparams, exception_frames, current_scopes,
+                     last_exception, caller_will_catch_err, last_reference, callargs)
 end
 
 """
@@ -331,6 +334,7 @@ end
 function prepare_frame_caller(caller::Frame, framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector)
     caller_will_catch_err = !isempty(caller.framedata.exception_frames) || caller.framedata.caller_will_catch_err
     caller.callee = frame = prepare_frame(framecode, args, lenv, caller_will_catch_err)
+    copy!(frame.framedata.current_scopes, caller.framedata.current_scopes)
     frame.caller = caller
     return frame
 end
