@@ -66,7 +66,7 @@ function lookup_expr(frame, e::Expr)
     head === :boundscheck && length(e.args) == 0 && return true
     if head === :call
         f = @lookup frame e.args[1]
-        if f === Core.svec
+        if (@static VERSION < v"1.11.0-DEV.1180" && true) && f === Core.svec
             # work around for a linearization bug in Julia (https://github.com/JuliaLang/julia/pull/52497)
             return f(Any[@lookup(frame, e.args[i]) for i in 2:length(e.args)]...)
         elseif f === Core.tuple
@@ -76,7 +76,6 @@ function lookup_expr(frame, e::Expr)
     end
     error("invalid lookup expr ", e)
 end
-
 
 # This is used only for new struct/abstract/primitive nodes.
 # The most important issue is that in these expressions, :call Exprs can be nested,
@@ -103,18 +102,20 @@ function lookup_or_eval(@nospecialize(recurse), frame, @nospecialize(node))
             f = ex.args[1]
             if f === Core.svec
                 popfirst!(ex.args)
-                return f(ex.args...)
+                return Core.svec(ex.args...)
             elseif f === Core.apply_type
                 popfirst!(ex.args)
-                return f(ex.args...)
-            elseif f === Core.typeof && length(ex.args) == 2
-                return f(ex.args[2])
+                return Core.apply_type(ex.args...)
+            elseif f === typeof && length(ex.args) == 2
+                return typeof(ex.args[2])
+            elseif f === typeassert && length(ex.args) == 3
+                return typeassert(ex.args[2], ex.args[3])
             elseif f === Base.getproperty && length(ex.args) == 3
-                return f(ex.args[2], ex.args[3])
+                return Base.getproperty(ex.args[2], ex.args[3])
             elseif f === Core.Compiler.Val && length(ex.args) == 2
-                return f(ex.args[2])
+                return Core.Compiler.Val(ex.args[2])
             elseif f === Val && length(ex.args) == 2
-                return f(ex.args[2])
+                return Val(ex.args[2])
             else
                 Base.invokelatest(error, "unknown call f introduced by ccall lowering ", f)
             end

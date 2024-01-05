@@ -1,5 +1,3 @@
-const calllike = (:call, :foreigncall)
-
 const compiled_calls = Dict{Any,Any}()
 
 # Pre-frame-construction lookup
@@ -92,7 +90,8 @@ function optimize!(code::CodeInfo, scope)
 
     # Replace :llvmcall and :foreigncall with compiled variants. See
     # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/13#issuecomment-464880123
-    foreigncalls_idx = Int[]
+    # Insert the foreigncall wrappers at the updated idxs
+    methodtables = Vector{Union{Compiled,DispatchableMethod}}(undef, length(code.code))
     for (idx, stmt) in enumerate(code.code)
         # Foregincalls can be rhs of assignments
         if isexpr(stmt, :(=))
@@ -105,20 +104,14 @@ function optimize!(code::CodeInfo, scope)
                 if (arg1 === :llvmcall || lookup_stmt(code.code, arg1) === Base.llvmcall) && isempty(sparams) && scope isa Method
                     # Call via `invokelatest` to avoid compiling it until we need it
                     Base.invokelatest(build_compiled_llvmcall!, stmt, code, idx, evalmod)
-                    push!(foreigncalls_idx, idx)
+                    methodtables[idx] = Compiled()
                 end
             elseif stmt.head === :foreigncall && scope isa Method
                 # Call via `invokelatest` to avoid compiling it until we need it
                 Base.invokelatest(build_compiled_foreigncall!, stmt, code, sparams, evalmod)
-                push!(foreigncalls_idx, idx)
+                methodtables[idx] = Compiled()
             end
         end
-    end
-
-    # Insert the foreigncall wrappers at the updated idxs
-    methodtables = Vector{Union{Compiled,DispatchableMethod}}(undef, length(code.code))
-    for idx in foreigncalls_idx
-        methodtables[idx] = Compiled()
     end
 
     return code, methodtables
@@ -143,7 +136,7 @@ function parametric_type_to_expr(@nospecialize(t::Type))
     return t
 end
 
-function build_compiled_llvmcall!(stmt::Expr, code, idx, evalmod)
+function build_compiled_llvmcall!(stmt::Expr, code::CodeInfo, idx::Int, evalmod::Module)
     # Run a mini-interpreter to extract the types
     framecode = FrameCode(CompiledCalls, code; optimize=false)
     frame = Frame(framecode, prepare_framedata(framecode, []))
@@ -180,9 +173,8 @@ function build_compiled_llvmcall!(stmt::Expr, code, idx, evalmod)
     append!(stmt.args, args)
 end
 
-
 # Handle :llvmcall & :foreigncall (issue #28)
-function build_compiled_foreigncall!(stmt::Expr, code, sparams::Vector{Symbol}, evalmod)
+function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector{Symbol}, evalmod::Module)
     TVal = evalmod == Core.Compiler ? Core.Compiler.Val : Val
     cfunc, RetType, ArgType = lookup_stmt(code.code, stmt.args[1]), stmt.args[2], stmt.args[3]::SimpleVector
 
