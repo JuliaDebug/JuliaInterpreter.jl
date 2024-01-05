@@ -116,11 +116,9 @@ keyword-sorter function for `fcall`.
 # Example
 
 ```jldoctest
-julia> mymethod(x) = 1
-mymethod (generic function with 1 method)
+julia> mymethod(x) = 1;
 
-julia> mymethod(x, y; verbose=false) = nothing
-mymethod (generic function with 2 methods)
+julia> mymethod(x, y; verbose=false) = nothing;
 
 julia> JuliaInterpreter.prepare_args(mymethod, [mymethod, 15], ())
 (mymethod, Any[mymethod, 15])
@@ -215,8 +213,7 @@ this will be the types of `allargs`);
 # Example
 
 ```jldoctest
-julia> mymethod(x::Vector{T}) where T = 1
-mymethod (generic function with 1 method)
+julia> mymethod(x::Vector{T}) where T = 1;
 
 julia> framecode, frameargs, lenv, argtypes = JuliaInterpreter.prepare_call(mymethod, [mymethod, [1.0,2.0]]);
 
@@ -588,8 +585,7 @@ would be created by the generator.
 # Example
 
 ```jldoctest
-julia> mymethod(x) = x+1
-mymethod (generic function with 1 method)
+julia> mymethod(x) = x+1;
 
 julia> JuliaInterpreter.enter_call_expr(:(\$mymethod(1)))
 Frame for mymethod(x) @ Main none:1
@@ -597,8 +593,7 @@ Frame for mymethod(x) @ Main none:1
   2  1  └──      return %1
 x = 1
 
-julia> mymethod(x::Vector{T}) where T = 1
-mymethod (generic function with 2 methods)
+julia> mymethod(x::Vector{T}) where T = 1;
 
 julia> a = [1.0, 2.0]
 2-element Vector{Float64}:
@@ -631,8 +626,7 @@ Build a `Frame` ready to execute `f` with the specified positional and keyword a
 # Example
 
 ```jldoctest
-julia> mymethod(x) = x+1
-mymethod (generic function with 1 method)
+julia> mymethod(x) = x+1;
 
 julia> JuliaInterpreter.enter_call(mymethod, 1)
 Frame for mymethod(x) @ Main none:1
@@ -640,8 +634,7 @@ Frame for mymethod(x) @ Main none:1
   2  1  └──      return %1
 x = 1
 
-julia> mymethod(x::Vector{T}) where T = 1
-mymethod (generic function with 2 methods)
+julia> mymethod(x::Vector{T}) where T = 1;
 
 julia> JuliaInterpreter.enter_call(mymethod, [1.0, 2.0])
 Frame for mymethod(x::Vector{T}) where T @ Main none:1
@@ -729,10 +722,7 @@ Evaluate `f` on the specified arguments using the interpreter.
 # Example
 
 ```jldoctest
-julia> a = [1, 7]
-2-element Vector{Int64}:
- 1
- 7
+julia> a = [1, 7];
 
 julia> sum(a)
 8
