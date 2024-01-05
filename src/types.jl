@@ -56,10 +56,17 @@ function breakpointchar(bps::BreakpointState)
     return bps.condition === falsecondition ? ' ' : 'd'     # no breakpoint : disabled
 end
 
-abstract type AbstractFrameInstance end
-mutable struct DispatchableMethod
-    next::Union{Nothing,DispatchableMethod}  # linked-list representation
-    frameinstance::Union{Compiled, AbstractFrameInstance} # really a Union{Compiled, FrameInstance} but we have a cyclic dependency
+struct _FrameInstance{FrameCode}
+    framecode::FrameCode
+    sparam_vals::SimpleVector
+    enter_generated::Bool
+end
+Base.show(io::IO, instance::_FrameInstance) =
+    print(io, "FrameInstance(", scopeof(instance.framecode), ", ", instance.sparam_vals, ", ", instance.enter_generated, ')')
+
+mutable struct _DispatchableMethod{FrameCode}
+    next::Union{Nothing,_DispatchableMethod{FrameCode}}  # linked-list representation
+    frameinstance::Union{Compiled,_FrameInstance{FrameCode}} # really a Union{Compiled, FrameInstance} but we have a cyclic dependency
     sig::Type # for speed of matching, this is a *concrete* signature. `sig <: frameinstance.framecode.scope.sig`
 end
 
@@ -91,7 +98,7 @@ Important fields:
 struct FrameCode
     scope::Union{Method,Module}
     src::CodeInfo
-    methodtables::Vector{Union{Compiled,DispatchableMethod}} # line-by-line method tables for generic-function :call Exprs
+    methodtables::Vector{Union{Compiled,_DispatchableMethod{FrameCode}}} # line-by-line method tables for generic-function :call Exprs
     breakpoints::Vector{BreakpointState}
     slotnamelists::Dict{Symbol,Vector{Int}}
     used::BitSet
@@ -99,6 +106,16 @@ struct FrameCode
     report_coverage::Bool
     unique_files::Set{Symbol}
 end
+
+"""
+`FrameInstance` represents a method specialized for particular argument types.
+
+Fields:
+- `framecode`: the [`FrameCode`](@ref) for the method.
+- `sparam_vals`: the static parameter values for the method.
+"""
+const FrameInstance = _FrameInstance{FrameCode}
+const DispatchableMethod = _DispatchableMethod{FrameCode}
 
 const BREAKPOINT_EXPR = :($(QuoteNode(getproperty))($JuliaInterpreter, :__BREAKPOINT_MARKER__))
 function is_breakpoint_expr(ex::Expr)
@@ -165,22 +182,6 @@ end
 nstatements(framecode::FrameCode) = length(framecode.src.code)
 
 Base.show(io::IO, framecode::FrameCode) = print_framecode(io, framecode)
-
-"""
-`FrameInstance` represents a method specialized for particular argument types.
-
-Fields:
-- `framecode`: the [`FrameCode`](@ref) for the method.
-- `sparam_vals`: the static parameter values for the method.
-"""
-struct FrameInstance <: AbstractFrameInstance
-    framecode::FrameCode
-    sparam_vals::SimpleVector
-    enter_generated::Bool
-end
-
-Base.show(io::IO, instance::FrameInstance) =
-    print(io, "FrameInstance(", scopeof(instance.framecode), ", ", instance.sparam_vals, ", ", instance.enter_generated, ')')
 
 """
 `FrameData` holds the arguments, local variables, and intermediate execution state
