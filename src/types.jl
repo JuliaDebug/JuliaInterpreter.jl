@@ -6,11 +6,6 @@ which will cause all calls to be evaluated via the interpreter.
 struct Compiled end
 Base.similar(::Compiled, sz) = Compiled()  # to support similar(stack, 0)
 
-# A type used transiently in renumbering CodeInfo SSAValues (to distinguish a new SSAValue from an old one)
-struct NewSSAValue
-    id::Int
-end
-
 # Our own replacements for Core types. We need to do this to ensure we can tell the difference
 # between "data" (Core types) and "code" (our types) if we step into Core.Compiler
 struct SSAValue

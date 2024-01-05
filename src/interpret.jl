@@ -9,22 +9,6 @@ function lookup_var(frame, slot::SlotNumber)
     throw(UndefVarError(frame.framecode.src.slotnames[slot.id]))
 end
 
-function lookup_expr(frame, e::Expr)
-    head = e.head
-    head === :the_exception && return frame.framedata.last_exception[]
-    if head === :static_parameter
-        arg = e.args[1]::Int
-        if isassigned(frame.framedata.sparams, arg)
-            return frame.framedata.sparams[arg]
-        else
-            syms = sparam_syms(frame.framecode.scope::Method)
-            throw(UndefVarError(syms[arg]))
-        end
-    end
-    head === :boundscheck && length(e.args) == 0 && return true
-    error("invalid lookup expr ", e)
-end
-
 """
     rhs = @lookup(frame, node)
     rhs = @lookup(mod, frame, node)
@@ -67,6 +51,32 @@ macro lookup(args...)
     end
 end
 
+function lookup_expr(frame, e::Expr)
+    head = e.head
+    head === :the_exception && return frame.framedata.last_exception[]
+    if head === :static_parameter
+        arg = e.args[1]::Int
+        if isassigned(frame.framedata.sparams, arg)
+            return frame.framedata.sparams[arg]
+        else
+            syms = sparam_syms(frame.framecode.scope::Method)
+            throw(UndefVarError(syms[arg]))
+        end
+    end
+    head === :boundscheck && length(e.args) == 0 && return true
+    if head === :call
+        f = @lookup frame e.args[1]
+        if (@static VERSION < v"1.11.0-DEV.1180" && true) && f === Core.svec
+            # work around for a linearization bug in Julia (https://github.com/JuliaLang/julia/pull/52497)
+            return f(Any[@lookup(frame, e.args[i]) for i in 2:length(e.args)]...)
+        elseif f === Core.tuple
+            # handling for ccall literal syntax
+            return f(Any[@lookup(frame, e.args[i]) for i in 2:length(e.args)]...)
+        end
+    end
+    error("invalid lookup expr ", e)
+end
+
 # This is used only for new struct/abstract/primitive nodes.
 # The most important issue is that in these expressions, :call Exprs can be nested,
 # and hence our re-use of the `callargs` field of Frame would introduce
@@ -91,18 +101,26 @@ function lookup_or_eval(@nospecialize(recurse), frame, @nospecialize(node))
         if ex.head === :call
             f = ex.args[1]
             if f === Core.svec
-                return Core.svec(ex.args[2:end]...)
+                popfirst!(ex.args)
+                return Core.svec(ex.args...)
             elseif f === Core.apply_type
-                return Core.apply_type(ex.args[2:end]...)
-            elseif f === Core.typeof
-                return Core.typeof(ex.args[2])
-            elseif f === Base.getproperty
+                popfirst!(ex.args)
+                return Core.apply_type(ex.args...)
+            elseif f === typeof && length(ex.args) == 2
+                return typeof(ex.args[2])
+            elseif f === typeassert && length(ex.args) == 3
+                return typeassert(ex.args[2], ex.args[3])
+            elseif f === Base.getproperty && length(ex.args) == 3
                 return Base.getproperty(ex.args[2], ex.args[3])
+            elseif f === Core.Compiler.Val && length(ex.args) == 2
+                return Core.Compiler.Val(ex.args[2])
+            elseif f === Val && length(ex.args) == 2
+                return Val(ex.args[2])
             else
-                Base.invokelatest(error, "unknown call f ", f)
+                Base.invokelatest(error, "unknown call f introduced by ccall lowering ", f)
             end
         else
-            error("unknown expr ", ex)
+            return lookup_expr(frame, ex)
         end
     elseif isa(node, Int) || isa(node, Number)   # Number is slow, requires subtyping
         return node

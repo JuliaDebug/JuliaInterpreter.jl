@@ -85,6 +85,10 @@ function scan_ssa_use!(used::BitSet, @nospecialize(stmt))
     while iterval !== nothing
         useref, state = iterval
         val = Core.Compiler.getindex(useref)
+        if (@static VERSION < v"1.11.0-DEV.1180" && true) && isexpr(val, :call)
+            # work around for a linearization bug in Julia (https://github.com/JuliaLang/julia/pull/52497)
+            scan_ssa_use!(used, val)
+        end
         if isa(val, SSAValue)
             push!(used, val.id)
         end
