@@ -10,7 +10,6 @@ DocMeta.setdocmeta!(JuliaInterpreter, :DocTestSetup, :(
 makedocs(
     modules = [JuliaInterpreter],
     clean = false,
-    strict = true,
     format = Documenter.HTML(prettyurls = get(ENV, "CI", nothing) == "true"),
     sitename = "JuliaInterpreter.jl",
     authors = "Keno Fischer, Tim Holy, Kristoffer Carlsson, and others",
