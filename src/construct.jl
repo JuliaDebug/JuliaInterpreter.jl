@@ -338,10 +338,13 @@ end
 """
     ExprSplitter(mod::Module, ex::Expr; lnn=nothing)
 
-Create an iterable that returns individual expressions together with their module of evaluation.
+Given a module `mod` and a top-level expression `ex` in `mod`, create an iterable that returns
+individual expressions together with their module of evaluation.
 Optionally supply an initial `LineNumberNode` `lnn`.
 
 # Example
+
+In a fresh session,
 
 ```
 julia> expr = quote
@@ -375,13 +378,13 @@ mod = Main
 ex = :($(Expr(:toplevel, :(#= REPL[7]:6 =#), :(const threshold = 0.1))))
 ```
 
-Note that `Main.Private` was created for you so that its internal expressions could be evaluated.
+`ExprSplitter` created `Main.Private` was created for you so that its internal expressions could be evaluated.
 `ExprSplitter` will check to see whether the module already exists and if so return it rather than
 try to create a new module with the same name.
 
 In general each returned expression is a block with two parts: a `LineNumberNode` followed by a single expression.
 In some cases the returned expression may be `:toplevel`, as shown in the `const` declaration,
-but otherwise it will be a `:block`.
+but otherwise it will preserve its parent's `head` (e.g., `expr.head`).
 
 # World age, frame creation, and evaluation
 
@@ -441,7 +444,7 @@ function push_modex!(iter::ExprSplitter, mod::Module, ex::Expr)
         modifies_scope = false
         if ex.head === :block
             for a in ex.args
-                if isa(a, Expr) && a.head ∈ (:local, :global)
+                if isa(a, Expr) && a.head === :local
                     modifies_scope = true
                     break
                 end
