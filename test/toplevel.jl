@@ -29,13 +29,26 @@ end
         end
         end
     end
-    modexs = collect(ExprSplitter(Main, ex))
-    m, ex = first(modexs)
+    modexs = collect(ExprSplitter(JIVisible, ex))
+    m, ex = first(modexs)        # FIXME don't use index in tests
     @test JuliaInterpreter.is_doc_expr(ex.args[2])
     Core.eval(m, ex)
     io = IOBuffer()
-    show(io, @doc(Main.DocStringTest))
+    show(io, @doc(JIVisible.DocStringTest))
     @test occursin("Special", String(take!(io)))
+
+    ex = Base.parse_input_line("""
+        "docstring"
+        module OuterModDocstring
+            "docstring for InnerModDocstring"
+            module InnerModDocstring
+            end
+        end
+        """)
+    modexs = collect(ExprSplitter(JIVisible, ex))
+    @test isdefined(JIVisible, :OuterModDocstring)
+    @test isdefined(JIVisible.OuterModDocstring, :InnerModDocstring)
+
     # issue #538
     @test !JuliaInterpreter.is_doc_expr(:(Core.@doc "string"))
     ex = quote
@@ -44,11 +57,11 @@ end
         sum
     end
     modexs = collect(ExprSplitter(Main, ex))
-    m, ex = first(modexs)
+    m, ex = first(modexs)       # FIXME don't use index in tests
     @test !JuliaInterpreter.is_doc_expr(ex.args[2])
 
     @test !isdefined(Main, :JIInvisible)
-    collect(ExprSplitter(JIVisible, :(module JIInvisible f() = 1 end)))
+    collect(ExprSplitter(JIVisible, :(module JIInvisible f() = 1 end)))  # this looks up JIInvisible rather than create it
     @test !isdefined(Main, :JIInvisible)
     @test  isdefined(JIVisible, :JIInvisible)
     mktempdir() do path
@@ -71,14 +84,32 @@ end
         # Every package is technically parented in Main but the name may not be visible in Main
         @test isdefined(@__MODULE__, :TmpPkg1)
         @test !isdefined(@__MODULE__, :TmpPkg2)
-        collect(ExprSplitter(Main, quote
-                                                     module TmpPkg2
-                                                     f() = 2
-                                                     end
-                                                 end))
+        collect(ExprSplitter(@__MODULE__, quote
+                module TmpPkg2
+                f() = 2
+                end
+            end))
         @test isdefined(@__MODULE__, :TmpPkg1)
         @test !isdefined(@__MODULE__, :TmpPkg2)
     end
+
+    # Revise issue #718
+    ex = Base.parse_input_line("""
+        module TestPkg718
+
+        module TestModule718
+            export _VARIABLE_UNASSIGNED
+            global _VARIABLE_UNASSIGNED = -84.0
+        end
+
+        using .TestModule718
+
+        end
+        """)
+    for (mod, ex) in ExprSplitter(JIVisible, ex)
+        @test JuliaInterpreter.finish!(Frame(mod, ex), true) === nothing
+    end
+    @test JIVisible.TestPkg718._VARIABLE_UNASSIGNED == -84.0
 end
 
 module Toplevel end
@@ -495,6 +526,7 @@ end
 
 @testset "Recursive type definitions" begin
     # See https://github.com/timholy/Revise.jl/issues/417
+    # See also the `Node` test above
     ex = :(struct RecursiveType x::Vector{RecursiveType} end)
     frame = Frame(Toplevel, ex)
     JuliaInterpreter.finish!(frame, true)
@@ -523,9 +555,9 @@ end
         sin(foo)
     end)
     for (mod, ex) in ExprSplitter(@__MODULE__, ex)
-        @test JuliaInterpreter.finish!(Frame(mod, ex), true) === nothing
+        @test JuliaInterpreter.finish_and_return!(Frame(mod, ex), true) == sin(10)
     end
-    @test length(collect(ExprSplitter(@__MODULE__, ex))) == 1
+
     ex = :(begin
         3 + 7
         module Local
@@ -534,7 +566,7 @@ end
         end
     end)
     modexs = collect(ExprSplitter(@__MODULE__, ex))
-    @test length(modexs) == 2
+    @test length(modexs) == 2   # FIXME don't use index in tests
     @test modexs[2][1] == getfield(@__MODULE__, :Local)
     for (mod, ex) in modexs
         @test JuliaInterpreter.finish!(Frame(mod, ex), true) === nothing
@@ -560,7 +592,7 @@ end
     for (mod, ex) in modexs
         @test JuliaInterpreter.finish!(Frame(mod, ex), true) === nothing
     end
-    @test length(modexs) == 2
+    @test length(modexs) == 2    # FIXME don't use index in tests
 
     ex = Base.parse_input_line("""
     local foo = 10
@@ -570,5 +602,5 @@ end
     for (mod, ex) in modexs
         @test JuliaInterpreter.finish!(Frame(mod, ex), true) === nothing
     end
-    @test length(modexs) == 2
+    @test length(modexs) == 2     # FIXME don't use index in tests
 end
