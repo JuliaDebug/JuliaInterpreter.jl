@@ -387,7 +387,7 @@ maybe_reset_frame!(frame::Frame, @nospecialize(pc), rootistoplevel::Bool) =
 # Unwind the stack until an exc is eventually caught, thereby
 # returning the frame that caught the exception at the pc of the catch
 # or rethrow the error
-function unwind_exception(frame::Frame, exc)
+function unwind_exception(frame::Frame, @nospecialize(exc))
     while frame !== nothing
         if !isempty(frame.framedata.exception_frames)
             # Exception caught

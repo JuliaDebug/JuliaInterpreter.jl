@@ -224,7 +224,7 @@ end
 
 function native_call(fargs::Vector{Any}, frame::Frame)
     f = popfirst!(fargs) # now it's really just `args`
-    if !isempty(frame.framedata.current_scopes)
+    if (@static isdefined(Core.IR, :EnterNode) && true) && !isempty(frame.framedata.current_scopes)
         newscope = Core.current_scope()
         for scope in frame.framedata.current_scopes
             newscope = Scope(newscope, scope.values...)
