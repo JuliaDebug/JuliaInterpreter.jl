@@ -520,7 +520,7 @@ end
     end
 # end
 
-module Foo
+module InterpretedModuleTest
     using ..JuliaInterpreter
     function f(x)
         x
@@ -529,15 +529,17 @@ module Foo
     end
 end
 @testset "interpreted methods" begin
-    g(x) = Foo.f(x)
-
-    push!(JuliaInterpreter.compiled_modules, Foo)
-    frame = JuliaInterpreter.enter_call(g, 5)
+    push!(JuliaInterpreter.compiled_modules, InterpretedModuleTest)
+    frame = JuliaInterpreter.enter_call(5) do x
+        InterpretedModuleTest.f(5)
+    end
     frame, pc = JuliaInterpreter.debug_command(frame, :n)
     @test !(pc isa BreakpointRef)
 
-    push!(JuliaInterpreter.interpreted_methods, first(methods(Foo.f)))
-    frame = JuliaInterpreter.enter_call(g, 5)
+    push!(JuliaInterpreter.interpreted_methods, first(methods(InterpretedModuleTest.f)))
+    frame = JuliaInterpreter.enter_call(5) do x
+        InterpretedModuleTest.f(5)
+    end
     frame, pc = JuliaInterpreter.debug_command(frame, :n)
     @test pc isa BreakpointRef
 end

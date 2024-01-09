@@ -1,5 +1,4 @@
 using JuliaInterpreter
-using JuliaInterpreter: enter_call_expr
 using Test, InteractiveUtils, CodeTracking
 using Mmap
 using LinearAlgebra
@@ -1021,7 +1020,7 @@ let m = only(methods(_sval_func2))
         delete!(JuliaInterpreter.compiled_methods, m)
     end
 end
-let frame = Frame(@__MODULE__, only(code_lowered(sval_func2)))
+let frame = JuliaInterpreter.enter_call(sval_func2)
     @test 2 == JuliaInterpreter.finish_and_return!(Compiled(), frame)
 end
 end
