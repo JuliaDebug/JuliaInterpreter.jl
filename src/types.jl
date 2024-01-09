@@ -200,6 +200,7 @@ struct FrameData
     ssavalues::Vector{Any}
     sparams::Vector{Any}
     exception_frames::Vector{Int}
+    current_scopes::Vector{Scope}
     last_exception::Base.RefValue{Any}
     caller_will_catch_err::Bool
     last_reference::Vector{Int}

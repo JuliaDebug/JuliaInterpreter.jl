@@ -43,6 +43,12 @@ if !isdefined(Base, Symbol("@something"))
     end
 end
 
+if isdefined(Base, :ScopedValues)
+    using Base: ScopedValues.Scope
+else
+    const Scope = Any
+end
+
 include("types.jl")
 include("utils.jl")
 include("construct.jl")

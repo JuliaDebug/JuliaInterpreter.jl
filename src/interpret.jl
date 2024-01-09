@@ -222,6 +222,19 @@ function bypass_builtins(@nospecialize(recurse), frame, call_expr, pc)
     return nothing
 end
 
+function native_call(fargs::Vector{Any}, frame::Frame)
+    f = popfirst!(fargs) # now it's really just `args`
+    if !isempty(frame.framedata.current_scopes)
+        newscope = Core.current_scope()
+        for scope in frame.framedata.current_scopes
+            newscope = Scope(newscope, scope.values...)
+        end
+        ex = Expr(:tryfinally, :($f($fargs...)), nothing, newscope)
+        return Core.eval(moduleof(frame), ex)
+    end
+    return Base.invokelatest(f, fargs...)
+end
+
 function evaluate_call_compiled!(::Compiled, frame::Frame, call_expr::Expr; enter_generated::Bool=false)
     # @assert !enter_generated
     pc = frame.pc
@@ -230,9 +243,7 @@ function evaluate_call_compiled!(::Compiled, frame::Frame, call_expr::Expr; ente
     ret = maybe_evaluate_builtin(frame, call_expr, false)
     isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(Compiled(), frame, call_expr)
-    f = fargs[1]
-    popfirst!(fargs)  # now it's really just `args`
-    return f(fargs...)
+    return native_call(fargs, frame)
 end
 
 function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr::Expr; enter_generated::Bool=false)
@@ -263,8 +274,7 @@ function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr:
         framecode, lenv = get_call_framecode(fargs, frame.framecode, frame.pc; enter_generated=enter_generated)
         if lenv === nothing
             if isa(framecode, Compiled)
-                f = popfirst!(fargs)  # now it's really just `args`
-                return Base.invokelatest(f, fargs...)
+                return native_call(fargs, frame)
             end
             return framecode  # this was a Builtin
         end
@@ -415,9 +425,6 @@ function eval_rhs(@nospecialize(recurse), frame, node::Expr)
     elseif head === :copyast
         val = (node.args[1]::QuoteNode).value
         return isa(val, Expr) ? copy(val) : val
-    elseif head === :enter
-        # XXX This seems to be dead code
-        return length(frame.framedata.exception_frames)
     elseif head === :boundscheck
         return true
     elseif head === :meta || head === :inbounds || head === :loopinfo ||
@@ -504,8 +511,12 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                     for i = 1:length(node.args)
                         targ = node.args[i]
                         targ === nothing && continue
-                        frame.framecode.src.code[(targ::SSAValue).id] === nothing && continue
+                        enterstmt = frame.framecode.src.code[(targ::SSAValue).id]
+                        enterstmt === nothing && continue
                         pop!(data.exception_frames)
+                        if isdefined(enterstmt, :scope)
+                            pop!(data.current_scopes)
+                        end
                     end
                 end
             elseif node.head === :pop_exception
@@ -586,6 +597,9 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
         elseif @static (isdefined(Core.IR, :EnterNode) && true) && isa(node, Core.IR.EnterNode)
             rhs = node.catch_dest
             push!(data.exception_frames, rhs)
+            if isdefined(node, :scope)
+                push!(data.current_scopes, @lookup(frame, node.scope))
+            end
         else
             rhs = @lookup(frame, node)
         end

@@ -11,6 +11,7 @@ const RECENTLY_ADDED = Core.Builtin[
     Core.finalizer, Core._compute_sparams, Core._svec_ref,
     Core.compilerbarrier,
     Core.memoryref, Core.memoryref_isassigned, Core.memoryrefget, Core.memoryrefoffset, Core.memoryrefset!,
+    #=Core.current_scope=#
 ]
 # Builtins present in 1.6, not builtins (potentially still normal functions) anymore
 const RECENTLY_REMOVED = GlobalRef.(Ref(Core), [
@@ -187,13 +188,13 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             print(io,
 """
     $head f === $fstr
-            if !expand
-                argswrapped = getargs(args, frame)
-                return Some{Any}($fstr(argswrapped...))
-            end
-            # This uses the original arguments to avoid looking them up twice
-            # See #442
-            return Expr(:call, invoke, args[2:end]...)
+        if !expand
+            argswrapped = getargs(args, frame)
+            return Some{Any}($fstr(argswrapped...))
+        end
+        # This uses the original arguments to avoid looking them up twice
+        # See #442
+        return Expr(:call, invoke, args[2:end]...)
 """)
             continue
         elseif f === Core._call_latest
@@ -211,6 +212,22 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         end
         return maybe_recurse_expanded_builtin(frame, new_expr)
 """)
+            continue
+        elseif f === Core.current_scope
+            print(io,
+"""
+    elseif @static isdefined(Core, :current_scope) && f === Core.current_scope
+        if nargs == 0
+            if isempty(frame.framedata.current_scopes)
+                return Some{Any}(nothing)
+            else
+                return Some{Any}(frame.framedata.current_scopes[end])
+            end
+        else
+            return Some{Any}(Core.current_scope(getargs(args, frame)...))
+        end
+""")
+            continue
         end
 
         id = findfirst(isequal(f), Core.Compiler.T_FFUNC_KEY)

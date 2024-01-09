@@ -241,7 +241,7 @@ function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector
     return nothing
 end
 
-function replace_coretypes!(src; rev::Bool=false)
+function replace_coretypes!(@nospecialize(src); rev::Bool=false)
     if isa(src, CodeInfo)
         replace_coretypes_list!(src.code; rev=rev)
     elseif isa(src, Expr)
@@ -285,6 +285,13 @@ function replace_coretypes_list!(list::AbstractVector; rev::Bool=false)
             rval = rep(val, rev)
             if rval !== val
                 list[i] = ReturnNode(rval)
+            end
+        elseif @static (isdefined(Core.IR, :EnterNode) && true) && isa(stmt, Core.IR.EnterNode)
+            if isdefined(stmt, :scope)
+                rscope = rep(stmt.scope, rev)
+                if rscope !== stmt.scope
+                    list[i] = Core.IR.EnterNode(stmt.catch_dest, rscope)
+                end
             end
         elseif isa(stmt, Expr)
             replace_coretypes!(stmt; rev=rev)
