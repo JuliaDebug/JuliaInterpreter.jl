@@ -68,7 +68,6 @@ function optimize!(code::CodeInfo, scope)
     mod = moduleof(scope)
     evalmod = mod == Core.Compiler ? Core.Compiler : CompiledCalls
     sparams = scope isa Method ? sparam_syms(scope) : Symbol[]
-    code.inferred && error("optimization of inferred code not implemented")
     replace_coretypes!(code)
     # TODO: because of builtins.jl, for CodeInfos like
     #   %1 = Core.apply_type
