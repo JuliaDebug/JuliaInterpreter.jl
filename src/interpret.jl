@@ -670,7 +670,9 @@ function handle_err(@nospecialize(recurse), frame, err)
         rethrow(err)
     end
     data.last_exception[] = err
-    return (frame.pc = data.exception_frames[end])
+    pc = VERSION >= v"1.11-" ? pop!(data.exception_frames) : data.exception_frames[end] # implicit :leave after https://github.com/JuliaLang/julia/pull/52245
+    frame.pc = pc
+    return pc
 end
 
 lookup_return(frame, node::ReturnNode) = @lookup(frame, node.val)
