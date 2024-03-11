@@ -27,7 +27,7 @@ f3(x::T, y::U...) where {T<:Integer,U} = U
 f3(x::Array{Float64,K}, y::Vararg{Symbol,K}) where K = K
 # Default args
 f4(x, y=0) = 1
-f4(x, y::Int=0) = 2
+f4(x, y::Int) = 2
 f4(x::UInt, y="hello", z::Int=0) = 3
 f4(x::Array{Float64,K}, y::Int=0) where K = K
 # Keyword args

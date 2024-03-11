@@ -81,7 +81,7 @@ end
                 oframe = frame = enter_call(func, args...; kwargs...)
                 frame = JuliaInterpreter.maybe_step_through_kwprep!(frame, false)
                 frame = JuliaInterpreter.maybe_step_through_wrapper!(frame)
-                @test any(stmt->isa(stmt, Expr) && JuliaInterpreter.hasarg(isequal(QuoteNode(==)), stmt.args), frame.framecode.src.code)
+                @test JuliaInterpreter.hasarg(JuliaInterpreter.isidentical(QuoteNode(==)), frame.framecode.src.code)
                 f, pc = debug_command(frame, :n)
                 @test f === frame
                 @test isa(pc, Int)
@@ -145,9 +145,9 @@ end
         # This time, step into the generated function itself
         frame = enter_call_expr(:($(callgenerated)()))
         f, pc = debug_command(frame, :sg)
-            # Aside: generators can have `Expr(:line, ...)` in their line tables, test that this is OK
-            lt = JuliaInterpreter.linetable(f, 2)
-            @test isexpr(lt, :line) || isa(lt, Core.LineInfoNode)
+        # Aside: generators can have `Expr(:line, ...)` in their line tables, test that this is OK
+        lt = JuliaInterpreter.linetable(f, 2)
+        @test isexpr(lt, :line) || isa(lt, Core.LineInfoNode)
         @test isa(pc, BreakpointRef)
         @test JuliaInterpreter.scopeof(f).name === :generatedfoo
         stmt = JuliaInterpreter.pc_expr(f)
@@ -472,7 +472,7 @@ end
     @testset "si should not step through wrappers or kwprep" begin
         frame = JuliaInterpreter.enter_call(h_1, 2, 1)
         frame, pc = debug_command(frame, :si)
-        @test frame.pc == 1
+        @test frame.pc == (VERSION >= v"1.11-" ? 2 : 1)
     end
 
     @testset "breakpoints hit during wrapper step through" begin

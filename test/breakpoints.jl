@@ -219,7 +219,7 @@ struct Squarer end
     end
     fr, bp = @interpret f_outer_bp(3)
     @test leaf(fr).framecode.scope.name === :g_inner_bp
-    @test bp.stmtidx == 3
+    @test bp.stmtidx == (VERSION >= v"1.11-" ? 4 : 3)
 
     # Breakpoints on types
     remove()

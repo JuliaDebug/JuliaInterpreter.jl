@@ -364,12 +364,25 @@ end
 getfile(frame::Frame, pc=frame.pc) = getfile(frame.framecode, pc)
 
 function codelocation(code::CodeInfo, idx::Int)
-    codeloc = codelocs(code)[idx]
-    while codeloc == 0 && (code.code[idx] === nothing || isexpr(code.code[idx], :meta)) && idx < length(code.code)
-        idx += 1
-        codeloc = codelocs(code)[idx]
+    idx′ = idx
+    # look ahead if we are on a meta line
+    while idx′ < length(code.code)
+        codeloc = codelocs(code)[idx′]
+        codeloc == 0 || return codeloc
+        ex = code.code[idx′]
+        ex === nothing || isexpr(ex, :meta) || break
+        idx′ += 1
     end
-    return codeloc
+    idx′ = idx - 1
+    # if zero, look behind until we find where we last might have had a line
+    while idx′ > 0
+        ex = code.code[idx′]
+        codeloc = codelocs(code)[idx′]
+        codeloc == 0 || return codeloc
+        idx′ -= 1
+    end
+    # for the start of the function, return index 1
+    return 1
 end
 
 function compute_corrected_linerange(method::Method)
