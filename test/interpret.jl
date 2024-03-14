@@ -790,7 +790,7 @@ function run_foobar()
     return @interpret(foobar()), foobar()
 end
 @testset "unreachable worlds" begin
-    @test run_foobar()
+    @test ==(run_foobar()...)
 end
 
 @testset "issue #479" begin
