@@ -787,11 +787,10 @@ end
 @noinline foobar() = (GC.safepoint(); 42)
 function run_foobar()
     @eval foobar() = "nope"
-    @test_broken @interpret(foobar()) == foobar() == 42
-    nothing
+    return @interpret(foobar()), foobar()
 end
 @testset "unreachable worlds" begin
-    run_foobar()
+    @test run_foobar()
 end
 
 @testset "issue #479" begin
@@ -945,7 +944,7 @@ end
     @test @interpret (Base.Experimental.@opaque x->3*x)(4) == 12
 end
 
-## CassetteOverlay, issue #552
+# CassetteOverlay, issue #552
 @static if VERSION >= v"1.8"
 using CassetteOverlay
 end
