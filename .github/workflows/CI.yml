@@ -23,9 +23,6 @@ jobs:
           - version: '~1.11.0-0' # next release
             os: ubuntu-latest
             arch: x64
-          - version: '1.6' # old LTS
-            os: ubuntu-latest
-            arch: x64
           - version: 'nightly' # dev
             os: ubuntu-latest
             arch: x64
