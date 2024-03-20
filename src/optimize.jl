@@ -48,8 +48,8 @@ end
 function lookup_getproperties(code::Vector{Any}, @nospecialize a)
     isexpr(a, :call) || return a
     length(a.args) == 3 || return a
-    arg1 = a.args[1]
-    (arg1 isa QuoteNode && arg1.value === Base.getproperty) || return a
+    arg1 = lookup_stmt(code, a.args[1])
+    arg1 === Base.getproperty || return a
     arg2 = lookup_stmt(code, a.args[2])
     arg2 isa Module || return a
     arg3 = lookup_stmt(code, a.args[3])

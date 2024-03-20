@@ -132,7 +132,7 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
     end
     breakpoints = Vector{BreakpointState}(undef, length(src.code))
     for (i, pc_expr) in enumerate(src.code)
-        if isa(pc_expr, Expr) && is_breakpoint_expr(pc_expr)
+        if lookup_stmt(src.code, pc_expr) === __BREAK_POINT_MARKER__
             breakpoints[i] = BreakpointState()
             src.code[i] = nothing
         end

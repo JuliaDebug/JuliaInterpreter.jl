@@ -1,4 +1,4 @@
-import JuliaInterpreter.eval_code
+using JuliaInterpreter: eval_code
 
 # Simple evaling of function argument
 function evalfoo1(x,y)
