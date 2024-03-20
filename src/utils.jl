@@ -210,7 +210,7 @@ end
 
 is_generated(meth::Method) = isdefined(meth, :generator)
 
-if Base.VERSION < v"1.10.0-DEV.873"  # julia#48766
+@static if VERSION < v"1.10.0-DEV.873"  # julia#48766
     get_staged(mi::MethodInstance) = Core.Compiler.get_staged(mi)
 else
     get_staged(mi::MethodInstance) = Core.Compiler.get_staged(mi, Base.get_world_counter())

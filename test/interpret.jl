@@ -373,7 +373,7 @@ f113(;x) = x
     @test JuliaInterpreter.Variable(1, :x, false) in locals
     JuliaInterpreter.step_expr!(stack, frame)
     JuliaInterpreter.step_expr!(stack, frame)
-    if VERSION >= v"1.11-"
+    @static if VERSION >= v"1.11-"
         locals = JuliaInterpreter.locals(frame)
         @test length(locals) == 2
         JuliaInterpreter.step_expr!(stack, frame)
@@ -472,7 +472,7 @@ fr = JuliaInterpreter.enter_call(Test.eval, 1)
 file, line = JuliaInterpreter.whereis(fr)
 @test isfile(file)
 @test isfile(JuliaInterpreter.getfile(fr.framecode.src.linetable[1]))
-if VERSION < v"1.9.0-DEV.846" # https://github.com/JuliaLang/julia/pull/45069
+@static if VERSION < v"1.9.0-DEV.846" # https://github.com/JuliaLang/julia/pull/45069
     @test occursin(Sys.STDLIB, repr(fr))
 else
     @test occursin(contractuser(Sys.STDLIB), repr(fr))
@@ -596,7 +596,7 @@ end
 @test @interpret(hash220((Ptr{UInt8}(0),0), UInt(1))) == hash220((Ptr{UInt8}(0),0), UInt(1))
 
 # ccall with type parameters
-if VERSION < v"1.11-"
+@static if VERSION < v"1.11-"
     # TODO: in v1.11+ this function does not have a ccall
     @test (@interpret Base.unsafe_convert(Ptr{Int}, [1,2])) isa Ptr{Int}
 end

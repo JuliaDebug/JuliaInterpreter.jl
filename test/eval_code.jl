@@ -51,7 +51,7 @@ end
 frame = JuliaInterpreter.enter_call(f)
 JuliaInterpreter.step_expr!(frame)
 JuliaInterpreter.step_expr!(frame)
-if VERSION >= v"1.11-"
+@static if VERSION >= v"1.11-"
     JuliaInterpreter.step_expr!(frame)
 end
 @test eval_code(frame, "x") == 1
