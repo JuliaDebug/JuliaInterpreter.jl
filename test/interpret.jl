@@ -844,13 +844,13 @@ end
 end
 
 @testset "issue #385" begin
-    using FunctionWrappers:FunctionWrapper
+    using FunctionWrappers: FunctionWrapper
     fw = @interpret FunctionWrapper{Int,Tuple{}}(()->42)
     @test 42 === @interpret fw()
 end
 
 @testset "issue #550" begin
-    using FunctionWrappers:FunctionWrapper
+    using FunctionWrappers: FunctionWrapper
     f    = (obs) -> (obs[1] = obs[3] * obs[4]; obs)
     Tout = Vector{Int}
     Tin  = Tuple{Vector{Int}}
