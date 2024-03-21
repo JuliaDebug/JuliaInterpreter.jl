@@ -271,6 +271,11 @@ If `frame.pc` points to the beginning of preparatory work for calling a keyword-
 function, advance forward until the actual call.
 """
 function maybe_step_through_kwprep!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false)
+    # XXX This code just does pattern-matching based on the current state of the compiler
+    # internals, which means this is very fragile against any future changes to those
+    # internals. We really need a more general and robust solution, but achieving that
+    # would mean simplifying and unifying how "keyword function" is represented and
+    # implemented. For the time being, our best bet is to keep tweaking it as best as we can.
     pc, src = frame.pc, frame.framecode.src
     n = length(src.code)
     stmt = pc_expr(frame, pc)

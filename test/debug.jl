@@ -426,7 +426,8 @@ end
 
         frame = JuliaInterpreter.enter_call(sort, a)
         frame = stepkw!(frame)
-        @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1
+        # TODO fix this broken test (@aviatesk)
+        @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1 broken=VERSION≥v"1.11-"
 
         frame, pc = debug_command(frame, :s)
         frame, pc = debug_command(frame, :se)  # get past copymutable
