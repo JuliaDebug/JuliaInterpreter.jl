@@ -16,6 +16,7 @@ jobs:
         version:
           - '1.6'     # LTS
           - '1'       # current stable
+          - '1.11-nightly' # next stable
           - 'nightly'
         os:
           - ubuntu-latest

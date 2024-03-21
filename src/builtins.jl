@@ -126,11 +126,11 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         end
     elseif @static isdefined(Core, :current_scope) && f === Core.current_scope
         if nargs == 0
-            if isempty(frame.framedata.current_scopes)
-                return Some{Any}(nothing)
-            else
-                return Some{Any}(frame.framedata.current_scopes[end])
+            currscope = Core.current_scope()
+            for scope in frame.framedata.current_scopes
+                currscope = Scope(currscope, scope.values...)
             end
+            return Some{Any}(currscope)
         else
             return Some{Any}(Core.current_scope(getargs(args, frame)...))
         end
