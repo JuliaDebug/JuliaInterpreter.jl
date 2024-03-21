@@ -1,7 +1,7 @@
 const compiled_calls = Dict{Any,Any}()
 
 # Pre-frame-construction lookup
-function lookup_stmt(stmts, arg)
+function lookup_stmt(stmts::Vector{Any}, @nospecialize arg)
     if isa(arg, SSAValue)
         arg = stmts[arg.id]
     end
@@ -45,15 +45,19 @@ function lookup_global_refs!(ex::Expr)
     return nothing
 end
 
-function lookup_getproperties(a::Expr)
-    if a.head === :call && length(a.args) == 3 &&
-        a.args[1] isa QuoteNode && a.args[1].value === Base.getproperty &&
-        a.args[2] isa QuoteNode && a.args[2].value isa Module           &&
-        a.args[3] isa QuoteNode && a.args[3].value isa Symbol
-        return lookup_global_ref(Core.GlobalRef(a.args[2].value, a.args[3].value))
-    end
-    return a
+function lookup_getproperties(code::Vector{Any}, @nospecialize a)
+    isexpr(a, :call) || return a
+    length(a.args) == 3 || return a
+    arg1 = lookup_stmt(code, a.args[1])
+    arg1 === Base.getproperty || return a
+    arg2 = lookup_stmt(code, a.args[2])
+    arg2 isa Module || return a
+    arg3 = lookup_stmt(code, a.args[3])
+    arg3 isa Symbol || return a
+    return lookup_global_ref(GlobalRef(arg2, arg3))
 end
+
+# TODO This isn't optimization really, but necessary to bypass llvmcall and foreigncall
 
 """
     optimize!(code::CodeInfo, mod::Module)
@@ -82,7 +86,7 @@ function optimize!(code::CodeInfo, scope)
                 continue
             else
                 lookup_global_refs!(stmt)
-                code.code[i] = lookup_getproperties(stmt)
+                code.code[i] = lookup_getproperties(code.code, stmt)
             end
         end
     end

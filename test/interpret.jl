@@ -245,8 +245,8 @@ function f(x)
 end
 frame = JuliaInterpreter.enter_call(f, 3)
 @test whereis(frame, 1)[2] == defline + 1
-@test whereis(frame, 3)[2] == defline + 4
-@test whereis(frame, 5)[2] == defline + 6
+@test whereis(frame, (length(frame.framecode.src.code) + 1) ÷ 2)[2] == defline + 4
+@test whereis(frame, length(frame.framecode.src.code) - 1)[2] == defline + 6
 m = which(iterate, Tuple{Dict}) # this method has `nothing` as its first statement and codeloc == 0
 framecode = JuliaInterpreter.get_framecode(m)
 @test JuliaInterpreter.linenumber(framecode, 1) == m.line + CodeTracking.line_is_decl
@@ -373,6 +373,11 @@ f113(;x) = x
     @test JuliaInterpreter.Variable(1, :x, false) in locals
     JuliaInterpreter.step_expr!(stack, frame)
     JuliaInterpreter.step_expr!(stack, frame)
+    @static if VERSION >= v"1.11-"
+        locals = JuliaInterpreter.locals(frame)
+        @test length(locals) == 2
+        JuliaInterpreter.step_expr!(stack, frame)
+    end
     locals = JuliaInterpreter.locals(frame)
     @test length(locals) == 3
     @test JuliaInterpreter.Variable(1, :c, false) in locals
@@ -456,8 +461,8 @@ end
 @test @interpret get(ENV, "THIS_IS_NOT_DEFINED_1234", "24") == "24"
 
 # Test return value of whereis
-f() = nothing
-fr = JuliaInterpreter.enter_call(f)
+fnone() = nothing
+fr = JuliaInterpreter.enter_call(fnone)
 file, line = JuliaInterpreter.whereis(fr)
 @test file == @__FILE__
 @test line == (@__LINE__() - 4)
@@ -467,7 +472,7 @@ fr = JuliaInterpreter.enter_call(Test.eval, 1)
 file, line = JuliaInterpreter.whereis(fr)
 @test isfile(file)
 @test isfile(JuliaInterpreter.getfile(fr.framecode.src.linetable[1]))
-if VERSION < v"1.9.0-DEV.846" # https://github.com/JuliaLang/julia/pull/45069
+@static if VERSION < v"1.9.0-DEV.846" # https://github.com/JuliaLang/julia/pull/45069
     @test occursin(Sys.STDLIB, repr(fr))
 else
     @test occursin(contractuser(Sys.STDLIB), repr(fr))
@@ -570,7 +575,7 @@ try
     local frame, bp = @interpret f_562(nothing)
 
     stacktrace_lines = split(sprint(Base.display_error, bp.err, leaf(frame)), '\n')
-    @test stacktrace_lines[1] == "ERROR: MethodError: no method matching +(::Nothing, ::Int64)"
+    @test stacktrace_lines[1] == "ERROR: MethodError: no method matching +(::Nothing, ::$Int)"
 finally
     break_off(:error)
 end
@@ -591,7 +596,10 @@ end
 @test @interpret(hash220((Ptr{UInt8}(0),0), UInt(1))) == hash220((Ptr{UInt8}(0),0), UInt(1))
 
 # ccall with type parameters
-@test (@interpret Base.unsafe_convert(Ptr{Int}, [1,2])) isa Ptr{Int}
+@static if VERSION < v"1.11-"
+    # TODO: in v1.11+ this function does not have a ccall
+    @test (@interpret Base.unsafe_convert(Ptr{Int}, [1,2])) isa Ptr{Int}
+end
 
 # ccall with call to get the pointer
 cf = [@cfunction(fcfun, Int, (Int, Int))]
@@ -609,20 +617,20 @@ end
 f_N() =  Array{Float64, 4}(undef, 1, 3, 2, 1)
 @test (@interpret f_N()) isa Array{Float64, 4}
 
-f() = ccall((:clock, "libc"), Int32, ())
+f_clock() = ccall((:clock, "libc"), Int32, ())
 # See that the method gets compiled
-try @interpret f()
+try @interpret f_clock()
 catch
 end
-let mt = JuliaInterpreter.enter_call(f).framecode.methodtables
+let mt = JuliaInterpreter.enter_call(f_clock).framecode.methodtables
     @test any(1:length(mt)) do i
         isassigned(mt, i) && mt[i] === Compiled()
     end
 end
 
 # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/194
-f() =  Meta.lower(Main, Meta.parse("(a=1,0)"))
-@test @interpret f() == f()
+f_parse() =  Meta.lower(Main, Meta.parse("(a=1,0)"))
+@test @interpret f_parse() == f_parse()
 
 # Test for vararg ccalls (used by mmap)
 function f_mmap()
@@ -677,15 +685,15 @@ end
 @test @interpret(VecTest.f()) == [1 0 0; 0 1 0; 0 0 1]
 
 # Test exception type for undefined variables
-f() = s = s + 1
-@test_throws UndefVarError @interpret f()
+f_undefvar() = s = s + 1
+@test_throws UndefVarError @interpret f_undefvar()
 
 # Handling of SSAValues
-function f()
+function f_ssaval()
     z = [Core.SSAValue(5),]
     repr(z[1])
 end
-@test @interpret f() == f()
+@test @interpret f_ssaval() == f_ssaval()
 
 # Test JuliaInterpreter version of #265
 f(x) = x
@@ -776,29 +784,14 @@ end
     @test (true === @interpret issue476())
 end
 
-const override_world = typemax(Csize_t) - 1
-macro unreachable(ex)
-    quote
-        world_counter = cglobal(:jl_world_counter, Csize_t)
-        regular_world = unsafe_load(world_counter)
-
-        $(Expr(:tryfinally, # don't introduce scope
-            quote
-                unsafe_store!(world_counter, $(override_world-1))
-                $(esc(ex))
-            end,
-            quote
-                unsafe_store!(world_counter, regular_world)
-            end
-        ))
-    end
+@noinline foobar() = (GC.safepoint(); 42)
+function run_foobar()
+    @eval foobar() = "nope"
+    return @interpret(foobar()), foobar()
 end
-
 @testset "unreachable worlds" begin
-    foobar() = 42
-    @unreachable foobar() = "nope"
-
-    @test @interpret(foobar()) == foobar()
+    interpret, compiled = run_foobar()
+    @test_broken interpret == compiled == 42
 end
 
 @testset "issue #479" begin
@@ -843,7 +836,7 @@ end
 @static if VERSION >= v"1.7.0"
     @testset "issue #432" begin
         function f()
-            t = @ccall time()::Cint
+            t = @ccall time(C_NULL::Ptr{Cvoid})::Cint
         end
         @test @interpret(f()) !== 0
         @test @interpret(f()) !== 0
@@ -851,12 +844,13 @@ end
 end
 
 @testset "issue #385" begin
-    using FunctionWrappers:FunctionWrapper
-    @interpret FunctionWrapper{Int,Tuple{}}(()->42)
+    using FunctionWrappers: FunctionWrapper
+    fw = @interpret FunctionWrapper{Int,Tuple{}}(()->42)
+    @test 42 === @interpret fw()
 end
 
 @testset "issue #550" begin
-    using FunctionWrappers:FunctionWrapper
+    using FunctionWrappers: FunctionWrapper
     f    = (obs) -> (obs[1] = obs[3] * obs[4]; obs)
     Tout = Vector{Int}
     Tin  = Tuple{Vector{Int}}
@@ -892,7 +886,6 @@ end
 
 @testset "interpretation of unoptimized frame" begin
     let # should be able to interprete nested calls within `:foreigncall` expressions
-        # even if `JuliaInterpreter.optimize!` doesn't flatten them
         M = Module()
         lwr = Meta.@lower M begin
             global foo = @ccall strlen("foo"::Cstring)::Csize_t

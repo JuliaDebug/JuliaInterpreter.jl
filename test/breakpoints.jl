@@ -195,7 +195,7 @@ struct Squarer end
     # Breakpoint display
     io = IOBuffer()
     frame = JuliaInterpreter.enter_call(loop_radius2, 2)
-    if VERSION < v"1.9.0-DEV.846" # https://github.com/JuliaLang/julia/pull/45069
+    @static if VERSION < v"1.9.0-DEV.846" # https://github.com/JuliaLang/julia/pull/45069
         LOC = " in $(@__MODULE__) at $(@__FILE__)"
     else
         LOC = " @ $(@__MODULE__) $(contractuser(@__FILE__))"
@@ -219,7 +219,7 @@ struct Squarer end
     end
     fr, bp = @interpret f_outer_bp(3)
     @test leaf(fr).framecode.scope.name === :g_inner_bp
-    @test bp.stmtidx == 3
+    @test bp.stmtidx == (@static VERSION >= v"1.11-" ? 4 : 3)
 
     # Breakpoints on types
     remove()

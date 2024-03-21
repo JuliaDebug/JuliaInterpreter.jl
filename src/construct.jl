@@ -88,7 +88,7 @@ end
 
 get_source(meth::Method) = Base.uncompressed_ast(meth)
 
-if Base.VERSION < v"1.10.0-DEV.873"  # julia#48766
+@static if VERSION < v"1.10.0-DEV.873"  # julia#48766
     function get_source(g::GeneratedFunctionStub, env, file, line)
         b = g(env..., g.argnames...)
         b isa CodeInfo && return b

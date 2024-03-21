@@ -1,4 +1,4 @@
-import JuliaInterpreter.eval_code
+using JuliaInterpreter: eval_code
 
 # Simple evaling of function argument
 function evalfoo1(x,y)
@@ -51,6 +51,9 @@ end
 frame = JuliaInterpreter.enter_call(f)
 JuliaInterpreter.step_expr!(frame)
 JuliaInterpreter.step_expr!(frame)
+@static if VERSION >= v"1.11-"
+    JuliaInterpreter.step_expr!(frame)
+end
 @test eval_code(frame, "x") == 1
 eval_code(frame, "x = 3")
 @test eval_code(frame, "x") == 3
@@ -103,9 +106,13 @@ eval_code(fr, "output = :foo")
 @test eval_code(fr, "output") === :foo
 
 let f() = GlobalRef(Main, :doesnotexist)
-    fr = JuliaInterpreter.enter_call(f)
-    JuliaInterpreter.step_expr!(fr)
-    @test eval_code(fr, "var\"%1\"") == GlobalRef(Main, :doesnotexist)
+    frame = JuliaInterpreter.enter_call(f)
+    retidx = findfirst(frame.framecode.src.code) do x
+        x isa Core.ReturnNode && x.val isa JuliaInterpreter.SSAValue
+    end
+    ssaidx = ((frame.framecode.src.code[retidx]::Core.ReturnNode).val::JuliaInterpreter.SSAValue).id
+    for _ = 1:ssaidx; JuliaInterpreter.step_expr!(frame); end
+    @test eval_code(frame, "var\"%$ssaidx\"") == GlobalRef(Main, :doesnotexist)
 end
 
 # Don't error on empty input string

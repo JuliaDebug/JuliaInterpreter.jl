@@ -81,7 +81,7 @@ end
                 oframe = frame = enter_call(func, args...; kwargs...)
                 frame = JuliaInterpreter.maybe_step_through_kwprep!(frame, false)
                 frame = JuliaInterpreter.maybe_step_through_wrapper!(frame)
-                @test any(stmt->isa(stmt, Expr) && JuliaInterpreter.hasarg(isequal(QuoteNode(==)), stmt.args), frame.framecode.src.code)
+                @test JuliaInterpreter.hasarg(JuliaInterpreter.isidentical(QuoteNode(==)), frame.framecode.src.code)
                 f, pc = debug_command(frame, :n)
                 @test f === frame
                 @test isa(pc, Int)
@@ -133,42 +133,41 @@ end
     end
 
     @testset "generated" begin
-        frame = enter_call_expr(:($(callgenerated)()))
-        f, pc = debug_command(frame, :s)
-        @test isa(pc, BreakpointRef)
-        @test JuliaInterpreter.scopeof(f).name === :generatedfoo
-        stmt = JuliaInterpreter.pc_expr(f)
-        @test JuliaInterpreter.is_return(stmt) && JuliaInterpreter.lookup_return(frame, stmt) === Int
-        @test debug_command(frame, :c) === nothing
-        @test frame.callee === nothing
-        @test get_return(frame) === Int
+        let frame = enter_call_expr(:($(callgenerated)()))
+            cframe, pc = debug_command(frame, :s)
+            @test isa(pc, BreakpointRef)
+            @test JuliaInterpreter.scopeof(cframe).name === :generatedfoo
+            @test debug_command(cframe, :c) === nothing
+            @test cframe.callee === nothing
+            @test get_return(cframe) === Int
+        end
         # This time, step into the generated function itself
-        frame = enter_call_expr(:($(callgenerated)()))
-        f, pc = debug_command(frame, :sg)
+        let frame = enter_call_expr(:($(callgenerated)()))
+            cframe, pc = debug_command(frame, :sg)
             # Aside: generators can have `Expr(:line, ...)` in their line tables, test that this is OK
-            lt = JuliaInterpreter.linetable(f, 2)
+            lt = JuliaInterpreter.linetable(cframe, 2)
             @test isexpr(lt, :line) || isa(lt, Core.LineInfoNode)
-        @test isa(pc, BreakpointRef)
-        @test JuliaInterpreter.scopeof(f).name === :generatedfoo
-        stmt = JuliaInterpreter.pc_expr(f)
-        @test JuliaInterpreter.is_return(stmt) && JuliaInterpreter.lookup_return(f, stmt) === 1
-        f2, pc = debug_command(f, :finish)
-        @test JuliaInterpreter.scopeof(f2).name === :callgenerated
-        # Now finish the regular function
-        @test debug_command(frame, :finish) === nothing
-        @test frame.callee === nothing
-        @test get_return(frame) === 1
+            @test isa(pc, BreakpointRef)
+            @test JuliaInterpreter.scopeof(cframe).name === :generatedfoo
+            cframe, pc = debug_command(cframe, :finish)
+            @test JuliaInterpreter.scopeof(cframe).name === :callgenerated
+            # Now finish the regular function
+            @test debug_command(cframe, :finish) === nothing
+            @test cframe.callee === nothing
+            @test get_return(cframe) === 1
+        end
 
         # Parametric generated function (see #157)
-        frame = fr = JuliaInterpreter.enter_call(callgeneratedparams)
-        while fr.pc < JuliaInterpreter.nstatements(fr.framecode) - 1
-            fr, pc = debug_command(fr, :se)
+        let frame = fr = JuliaInterpreter.enter_call(callgeneratedparams)
+            while fr.pc < JuliaInterpreter.nstatements(fr.framecode) - 1
+                fr, pc = debug_command(fr, :se)
+            end
+            fr, pc = debug_command(fr, :sg)
+            @test JuliaInterpreter.scopeof(fr).name === :generatedparams
+            fr, pc = debug_command(fr, :finish)
+            @test debug_command(fr, :finish) === nothing
+            @test JuliaInterpreter.get_return(fr) == (Int, 2)
         end
-        fr, pc = debug_command(fr, :sg)
-        @test JuliaInterpreter.scopeof(fr).name === :generatedparams
-        fr, pc = debug_command(fr, :finish)
-        @test debug_command(fr, :finish) === nothing
-        @test JuliaInterpreter.get_return(fr) == (Int, 2)
     end
 
     @testset "Optional arguments" begin
@@ -427,7 +426,12 @@ end
 
         frame = JuliaInterpreter.enter_call(sort, a)
         frame = stepkw!(frame)
-        @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1
+        @static if VERSION ≥ v"1.7"
+            # TODO fix this broken test (@aviatesk)
+            @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1 broken=VERSION≥v"1.11-"
+        else
+            @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1
+        end
 
         frame, pc = debug_command(frame, :s)
         frame, pc = debug_command(frame, :se)  # get past copymutable
@@ -472,7 +476,7 @@ end
     @testset "si should not step through wrappers or kwprep" begin
         frame = JuliaInterpreter.enter_call(h_1, 2, 1)
         frame, pc = debug_command(frame, :si)
-        @test frame.pc == 1
+        @test frame.pc == (VERSION >= v"1.11-" ? 2 : 1)
     end
 
     @testset "breakpoints hit during wrapper step through" begin

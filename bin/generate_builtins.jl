@@ -2,16 +2,14 @@
 # Should be run on the latest Julia nightly
 using InteractiveUtils
 
-# All bultins added since 1.6. Needs to be updated whenever a new builtin is added
-const RECENTLY_ADDED = Core.Builtin[
-    Core._call_in_world_total, Core.donotdelete,
-    Core.get_binding_type, Core.set_binding_type!,
-    Core.getglobal, Core.setglobal!,
-    Core.modifyfield!, Core.replacefield!, Core.swapfield!,
-    Core.finalizer, Core._compute_sparams, Core._svec_ref,
-    Core.compilerbarrier,
-    Core.memoryref, Core.memoryref_isassigned, Core.memoryrefget, Core.memoryrefoffset, Core.memoryrefset!,
-    #=Core.current_scope=#
+# All builtins present in 1.6
+const ALWAYS_PRESENT = Core.Builtin[
+    (<:), (===), Core._abstracttype, Core._apply_iterate, Core._apply_pure,
+    Core._call_in_world, Core._call_latest, Core._equiv_typedef, Core._expr,
+    Core._primitivetype, Core._setsuper!, Core._structtype, Core._typebody!,
+    Core._typevar, Core.apply_type, Core.ifelse, Core.sizeof, Core.svec,
+    applicable, fieldtype, getfield, invoke, isa, isdefined, nfields,
+    setfield!, throw, tuple, typeassert, typeof
 ]
 # Builtins present in 1.6, not builtins (potentially still normal functions) anymore
 const RECENTLY_REMOVED = GlobalRef.(Ref(Core), [
@@ -232,7 +230,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
 
         id = findfirst(isequal(f), Core.Compiler.T_FFUNC_KEY)
         fcall = generate_fcall(f, Core.Compiler.T_FFUNC_VAL, id)
-        if f in RECENTLY_ADDED
+        if !(f in ALWAYS_PRESENT)
             print(io,
 """
     $head @static isdefined($(ft.name.module), $(repr(nameof(f)))) && f === $fname

@@ -461,7 +461,7 @@ function coverage_visit_line!(frame::Frame)
     code.report_coverage || return
     src = code.src
     codeloc = src.codelocs[pc]
-    if codeloc != frame.last_codeloc
+    if codeloc != frame.last_codeloc && codeloc != 0
         linetable = src.linetable::Vector{Any}
         lineinfo = linetable[codeloc]::Core.LineInfoNode
         file, line = String(lineinfo.file), lineinfo.line
@@ -672,7 +672,7 @@ function handle_err(@nospecialize(recurse), frame, err)
         rethrow(err)
     end
     data.last_exception[] = err
-    pc = VERSION >= v"1.11-" ? pop!(data.exception_frames) : data.exception_frames[end] # implicit :leave after https://github.com/JuliaLang/julia/pull/52245
+    pc = @static VERSION >= v"1.11-" ? pop!(data.exception_frames) : data.exception_frames[end] # implicit :leave after https://github.com/JuliaLang/julia/pull/52245
     frame.pc = pc
     return pc
 end

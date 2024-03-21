@@ -247,7 +247,7 @@ function breakpoint!(framecode::FrameCode, pc, condition::Condition=nothing, ena
         framecode.breakpoints[stmtidx] = BreakpointState(enabled, Core.eval(mod, fex))
     end
 end
-breakpoint!(framecode::FrameCode, pcs::AbstractArray, condition::Condition=nothing, enabled=true) = 
+breakpoint!(framecode::FrameCode, pcs::AbstractArray, condition::Condition=nothing, enabled=true) =
     foreach(pc -> breakpoint!(framecode, pc, condition, enabled), pcs)
 breakpoint!(frame::Frame, pc=frame.pc, condition::Condition=nothing) =
     breakpoint!(frame.framecode, pc, condition)
@@ -426,7 +426,8 @@ macro breakpoint(call_expr, args...)
     end
 end
 
-const __BREAKPOINT_MARKER__ = nothing
+struct BreakPointMarker end
+const __BREAK_POINT_MARKER__ = BreakPointMarker()
 
 """
     @bp
@@ -434,5 +435,5 @@ const __BREAKPOINT_MARKER__ = nothing
 Insert a breakpoint at a location in the source code.
 """
 macro bp()
-    return esc(:($(JuliaInterpreter).__BREAKPOINT_MARKER__))
+    return :(__BREAK_POINT_MARKER__)
 end

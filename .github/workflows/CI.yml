@@ -13,17 +13,31 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version:
-          - '1.6'     # LTS
-          - '1'       # current stable
-          - '1.11-nightly' # next stable
-          - 'nightly'
-        os:
-          - ubuntu-latest
-          - macOS-latest
-          - windows-latest
-        arch:
-          - x64
+        include:
+          - version: '1.6' # old LTS
+            os: ubuntu-latest
+            arch: x64
+          - version: '1.10' # current stable
+            os: ubuntu-latest
+            arch: x64
+          - version: '~1.11.0-0' # next release
+            os: ubuntu-latest
+            arch: x64
+          - version: 'nightly' # dev
+            os: ubuntu-latest
+            arch: x64
+          #- version: '1' # x86 ubuntu -- disabled since PyCall/conda is broken on this platform
+          #  os: ubuntu-latest
+          #  arch: x86
+          - version: '1' # x86 windows
+            os: windows-latest
+            arch: x86
+          - version: '1' # x64 windows
+            os: windows-latest
+            arch: x64
+          - version: '1' # x64 macOS
+            os: macos-latest
+            arch: x64
     env:
       PYTHON: ""
     steps:
