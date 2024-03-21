@@ -742,11 +742,12 @@ end
     @test @interpret(f(D)) === f(D)
 
     # issue #441 & #535
-    flog() = @info "logging macros"
-    @test_logs (:info, "logging macros") @test @interpret flog() === nothing
-    flog2() = @error "this error is ok"
-    frame = JuliaInterpreter.enter_call(flog2)
-    @test_logs (:error, "this error is ok") @test debug_command(frame, :c) === nothing
+    f_log1() = @info "logging macros"
+    @test (@test_logs (:info, "logging macros") (@interpret f_log1())) === nothing
+    f_log2() = @error "this error is ok"
+    let frame = JuliaInterpreter.enter_call(f_log2)
+        @test (@test_logs (:error, "this error is ok") debug_command(frame, :c)) === nothing
+    end
 end
 
 struct A396
