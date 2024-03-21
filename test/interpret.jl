@@ -742,11 +742,12 @@ end
     @test @interpret(f(D)) === f(D)
 
     # issue #441 & #535
-    flog() = @info "logging macros"
-    @test_logs (:info, "logging macros") @test @interpret flog() === nothing
-    flog2() = @error "this error is ok"
-    frame = JuliaInterpreter.enter_call(flog2)
-    @test_logs (:error, "this error is ok") @test debug_command(frame, :c) === nothing
+    f_log1() = @info "logging macros"
+    @test (@test_logs (:info, "logging macros") (@interpret f_log1())) === nothing
+    f_log2() = @error "this error is ok"
+    let frame = JuliaInterpreter.enter_call(f_log2)
+        @test (@test_logs (:error, "this error is ok") debug_command(frame, :c)) === nothing
+    end
 end
 
 struct A396
@@ -998,29 +999,5 @@ func_arrayref(a, i) = Core.arrayref(true, a, i)
 @test 2 == @interpret func_arrayref([1,2,3], 2)
 
 @static if isdefined(Base, :ScopedValues)
-const sval = ScopedValue(1)
-@test 1 == @interpret getindex(sval)
-
-# current_scope support for interpretation
-sval_func1() = @with sval => 2 begin
-    return sval[]
-end
-@test 2 == @interpret sval_func1()
-
-# current_scope support for compiled calls
-_sval_func2() = sval[]
-sval_func2() = @with sval => 2 begin
-    return _sval_func2()
-end
-let m = only(methods(_sval_func2))
-    push!(JuliaInterpreter.compiled_methods, m)
-    try
-        @test 2 == @interpret sval_func2()
-    finally
-        delete!(JuliaInterpreter.compiled_methods, m)
-    end
-end
-let frame = JuliaInterpreter.enter_call(sval_func2)
-    @test 2 == JuliaInterpreter.finish_and_return!(Compiled(), frame)
-end
+@testset "interpret_scopedvalues.jl" include("interpret_scopedvalues.jl")
 end
