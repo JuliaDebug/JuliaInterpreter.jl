@@ -146,7 +146,8 @@ end
             cframe, pc = debug_command(frame, :sg)
             # Aside: generators can have `Expr(:line, ...)` in their line tables, test that this is OK
             lt = JuliaInterpreter.linetable(cframe, 2)
-            @test isexpr(lt, :line) || isa(lt, Core.LineInfoNode)
+            @test isexpr(lt, :line) || isa(lt, Core.LineInfoNode) ||
+                (isdefined(Base.IRShow, :LineInfoNode) && isa(lt, Base.IRShow.LineInfoNode))
             @test isa(pc, BreakpointRef)
             @test JuliaInterpreter.scopeof(cframe).name === :generatedfoo
             cframe, pc = debug_command(cframe, :finish)
