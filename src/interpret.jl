@@ -460,14 +460,25 @@ function coverage_visit_line!(frame::Frame)
     pc, code = frame.pc, frame.framecode
     code.report_coverage || return
     src = code.src
+    @static if VERSION ≥ v"1.12.0-DEV.173"
+    lineinfo = linetable(src, pc)
+    file, line = lineinfo.file, lineinfo.line
+    if line != frame.last_codeloc
+        file isa Symbol || (file = Symbol(file)::Symbol)
+        @ccall jl_coverage_visit_line(file::Cstring, sizeof(file)::Csize_t, line::Cint)::Cvoid
+        frame.last_codeloc = line
+    end
+    else # VERSION < v"1.12.0-DEV.173"
     codeloc = src.codelocs[pc]
     if codeloc != frame.last_codeloc && codeloc != 0
         linetable = src.linetable::Vector{Any}
         lineinfo = linetable[codeloc]::Core.LineInfoNode
-        file, line = String(lineinfo.file), lineinfo.line
-        ccall(:jl_coverage_visit_line, Cvoid, (Cstring, Csize_t, Cint), file, sizeof(file), line)
+        file, line = lineinfo.file, lineinfo.line
+        file isa Symbol || (file = Symbol(file)::Symbol)
+        @ccall jl_coverage_visit_line(file::Cstring, sizeof(file)::Csize_t, line::Cint)::Cvoid
         frame.last_codeloc = codeloc
     end
+    end # @static if
 end
 
 # For "profiling" where JuliaInterpreter spends its time. See the commented-out block
