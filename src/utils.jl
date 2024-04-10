@@ -296,8 +296,8 @@ end
 
 @static if VERSION ≥ v"1.12.0-DEV.173"
 
-function getlastline(arg)
-    debuginfo = linetable(arg)
+getlastline(arg) = getlastline(linetable(arg))
+function getlastline(debuginfo::Core.DebugInfo)
     while true
         ltnext = debuginfo.linetable
         ltnext === nothing && break
