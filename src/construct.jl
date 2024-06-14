@@ -352,7 +352,7 @@ In a fresh session,
 
 ```
 julia> expr = quote
-           public(x::Integer) = true
+           public_fn(x::Integer) = true
            module Private
            private(y::String) = false
            end
@@ -365,7 +365,7 @@ julia> for (mod, ex) in ExprSplitter(Main, expr)
 mod = Main
 ex = quote
     #= REPL[7]:2 =#
-    public(x::Integer) = begin
+    public_fn(x::Integer) = begin
             #= REPL[7]:2 =#
             true
         end
@@ -415,7 +415,7 @@ julia> for (mod, ex) in ExprSplitter(Main, expr)
 julia> threshold
 0.1
 
-julia> public(3)
+julia> public_fn(3)
 true
 ```
 
