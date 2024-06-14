@@ -372,17 +372,14 @@ function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
         counter = (frame.assignment_counter += 1)
         data.locals[lhs.id] = Some{Any}(rhs)
         data.last_reference[lhs.id] = counter
-    elseif isa(lhs, GlobalRef)
+    elseif isa(lhs, Symbol) || isa(lhs, GlobalRef)
+        mod = lhs isa Symbol ? moduleof(frame) : lhs.mod
+        name = lhs isa Symbol ? lhs : lhs.name
+        Core.eval(mod, Expr(:global, name))
         @static if @isdefined setglobal!
-            setglobal!(lhs.mod, lhs.name, rhs)
+            setglobal!(mod, name, rhs)
         else
-            ccall(:jl_set_global, Cvoid, (Any, Any, Any), lhs.mod, lhs.name, rhs)
-        end
-    elseif isa(lhs, Symbol)
-        @static if @isdefined setglobal!
-            setglobal!(moduleof(code), lhs, rhs)
-        else
-            ccall(:jl_set_global, Cvoid, (Any, Any, Any), moduleof(code), lhs, rhs)
+            ccall(:jl_set_global, Cvoid, (Any, Any, Any), mod, name, rhs)
         end
     end
 end
