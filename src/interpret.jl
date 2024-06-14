@@ -313,15 +313,14 @@ evaluate_call!(frame::Frame, call_expr::Expr; kwargs...) = evaluate_call!(finish
 # The following come up only when evaluating toplevel code
 function evaluate_methoddef(frame, node)
     f = node.args[1]
-    if isa(f, Symbol)
-        mod = moduleof(frame)
-        if Base.isbindingresolved(mod, f) && isdefined(mod, f)  # `isdefined` accesses the binding, making it impossible to create a new one
-            f = getfield(mod, f)
+    if f isa Symbol || f isa GlobalRef
+        mod = f isa Symbol ? moduleof(frame) : f.mod
+        name = f isa Symbol ? f : f.name
+        if Base.isbindingresolved(mod, name) && isdefined(mod, name)  # `isdefined` accesses the binding, making it impossible to create a new one
+            f = getfield(mod, name)
         else
-            f = Core.eval(moduleof(frame), Expr(:function, f))  # create a new function
+            f = Core.eval(mod, Expr(:function, name))  # create a new function
         end
-    elseif isa(f, GlobalRef)
-        f = getfield(f.mod, f.name)
     end
     length(node.args) == 1 && return f
     sig = @lookup(frame, node.args[2])::SimpleVector

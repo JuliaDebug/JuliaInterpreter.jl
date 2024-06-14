@@ -6,7 +6,7 @@ function lookup_stmt(stmts::Vector{Any}, @nospecialize arg)
         arg = stmts[arg.id]
     end
     if isa(arg, QuoteNode)
-        arg = arg.value
+        return arg.value
     end
     return arg
 end
@@ -24,16 +24,16 @@ function smallest_ref(stmts, arg, idmin)
 end
 
 function lookup_global_ref(a::GlobalRef)
-    if isdefined(a.mod, a.name) && isconst(a.mod, a.name)
-        r = getfield(a.mod, a.name)
-        return QuoteNode(r)
-    else
-        return a
+    if Base.isbindingresolved(a.mod, a.name) && isdefined(a.mod, a.name)
+        return QuoteNode(getfield(a.mod, a.name))
     end
+    return a
 end
 
 function lookup_global_refs!(ex::Expr)
-    (ex.head === :isdefined || ex.head === :thunk || ex.head === :toplevel) && return nothing
+    if isexpr(ex, (:isdefined, :thunk, :toplevel, :method, :global, :const))
+        return nothing
+    end
     for (i, a) in enumerate(ex.args)
         ex.head === :(=) && i == 1 && continue # Don't look up globalrefs on the LHS of an assignment (issue #98)
         if isa(a, GlobalRef)
@@ -57,7 +57,14 @@ function lookup_getproperties(code::Vector{Any}, @nospecialize a)
     return lookup_global_ref(GlobalRef(arg2, arg3))
 end
 
-# TODO This isn't optimization really, but necessary to bypass llvmcall and foreigncall
+# HACK This isn't optimization really, but necessary to bypass llvmcall and foreigncall
+# TODO This "optimization" should be refactored into a "minimum compilation" necessary to
+# execute `llvmcall` and `foreigncall` and pure optimizations on the lowered code representation.
+# In particular, the optimization that replaces `GlobalRef` with `QuoteNode` is invalid and
+# should be removed: This is because it is not possible to know when and where the binding
+# will be resolved without executing the code.
+# Since the current `build_compiled_[llvmcall|foreigncall]!` relies on this replacement,
+# they also need to be reimplemented.
 
 """
     optimize!(code::CodeInfo, mod::Module)
@@ -73,6 +80,7 @@ function optimize!(code::CodeInfo, scope)
     evalmod = mod == Core.Compiler ? Core.Compiler : CompiledCalls
     sparams = scope isa Method ? sparam_syms(scope) : Symbol[]
     replace_coretypes!(code)
+
     # TODO: because of builtins.jl, for CodeInfos like
     #   %1 = Core.apply_type
     #   %2 = (%1)(args...)
