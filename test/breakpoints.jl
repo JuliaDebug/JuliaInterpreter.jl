@@ -520,7 +520,7 @@ end
         return 2
     end
     frame = JuliaInterpreter.enter_call(f_macro)
-    file_logging = "logging.jl"
+    file_logging = String(only(methods(var"@info")).file)
     line_logging = 0
     for entry in frame.framecode.src.linetable
         if entry.file === Symbol(file_logging)
@@ -534,7 +534,7 @@ end
         @test bp isa BreakpointRef
         file, ln = JuliaInterpreter.whereis(frame)
         @test ln == line_logging
-        @test basename(file) == file_logging
+        @test basename(file) == basename(file_logging)
         bp = JuliaInterpreter.finish_stack!(frame)
         @test bp isa BreakpointRef
         frame = leaf(frame)
