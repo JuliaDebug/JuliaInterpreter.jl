@@ -158,20 +158,6 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(Core.ifelse(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :memoryref) && f === Core.memoryref
-        if nargs == 1
-            return Some{Any}(Core.memoryref(@lookup(frame, args[2])))
-        elseif nargs == 2
-            return Some{Any}(Core.memoryref(@lookup(frame, args[2]), @lookup(frame, args[3])))
-        elseif nargs == 3
-            return Some{Any}(Core.memoryref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
-        elseif nargs == 4
-            return Some{Any}(Core.memoryref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
-        elseif nargs == 5
-            return Some{Any}(Core.memoryref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
-        else
-            return Some{Any}(Core.memoryref(getargs(args, frame)...))
-        end
     elseif @static isdefined(Core, :memoryref_isassigned) && f === Core.memoryref_isassigned
         if nargs == 3
             return Some{Any}(Core.memoryref_isassigned(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
@@ -189,6 +175,20 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             return Some{Any}(Core.memoryrefmodify!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
         else
             return Some{Any}(Core.memoryrefmodify!(getargs(args, frame)...))
+        end
+    elseif @static isdefined(Core, :memoryrefnew) && f === Core.memoryrefnew
+        if nargs == 1
+            return Some{Any}(Core.memoryrefnew(@lookup(frame, args[2])))
+        elseif nargs == 2
+            return Some{Any}(Core.memoryrefnew(@lookup(frame, args[2]), @lookup(frame, args[3])))
+        elseif nargs == 3
+            return Some{Any}(Core.memoryrefnew(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+        elseif nargs == 4
+            return Some{Any}(Core.memoryrefnew(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+        elseif nargs == 5
+            return Some{Any}(Core.memoryrefnew(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+        else
+            return Some{Any}(Core.memoryrefnew(getargs(args, frame)...))
         end
     elseif @static isdefined(Core, :memoryrefoffset) && f === Core.memoryrefoffset
         if nargs == 1
@@ -467,6 +467,20 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             return Some{Any}(Core.const_arrayref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
         else
             return Some{Any}(Core.const_arrayref(getargs(args, frame)...))
+        end
+    elseif @static (isdefined(Core, :memoryref) && Core.memoryref isa Core.Builtin) && f === Core.memoryref
+        if nargs == 1
+            return Some{Any}(Core.memoryref(@lookup(frame, args[2])))
+        elseif nargs == 2
+            return Some{Any}(Core.memoryref(@lookup(frame, args[2]), @lookup(frame, args[3])))
+        elseif nargs == 3
+            return Some{Any}(Core.memoryref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+        elseif nargs == 4
+            return Some{Any}(Core.memoryref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+        elseif nargs == 5
+            return Some{Any}(Core.memoryref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+        else
+            return Some{Any}(Core.memoryref(getargs(args, frame)...))
         end
     elseif f === Core.Intrinsics.llvmcall
         return Some{Any}(Core.Intrinsics.llvmcall(getargs(args, frame)...))
