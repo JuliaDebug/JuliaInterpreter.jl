@@ -11,9 +11,9 @@ const ALWAYS_PRESENT = Core.Builtin[
     applicable, fieldtype, getfield, invoke, isa, isdefined, nfields,
     setfield!, throw, tuple, typeassert, typeof
 ]
-# Builtins present in 1.6, not builtins (potentially still normal functions) anymore
+# Builtins present from 1.6, not builtins (potentially still normal functions) anymore
 const RECENTLY_REMOVED = GlobalRef.(Ref(Core), [
-    :arrayref, :arrayset, :arrayset, :const_arrayref,
+    :arrayref, :arrayset, :arrayset, :const_arrayref, :memoryref,
 ])
 const kwinvoke = Core.kwfunc(Core.invoke)
 
@@ -37,9 +37,9 @@ function nargs(f, table, id)
         minarg = 0
         maxarg = typemax(Int)
     end
-    # Specialize ~arrayref and arrayset~ memoryref for small numbers of arguments
+    # Specialize ~arrayref and arrayset~ memoryrefnew for small numbers of arguments
     # TODO: how about other memory intrinsics?
-    if f == Core.memoryref
+    if (@static isdefined(Core, :memoryrefnew) ? f == Core.memoryrefnew : f == Core.memoryref)
         maxarg = 5
     end
     return minarg, maxarg
@@ -268,7 +268,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     # recently removed builtins
     for (; mod, name) in RECENTLY_REMOVED
         minarg = 1
-        if name in (:arrayref, :const_arrayref)
+        if name in (:arrayref, :const_arrayref, :memoryref)
             maxarg = 5
         elseif name === :arrayset
             maxarg = 6
