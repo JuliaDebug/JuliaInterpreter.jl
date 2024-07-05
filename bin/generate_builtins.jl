@@ -13,7 +13,7 @@ const ALWAYS_PRESENT = Core.Builtin[
 ]
 # Builtins present from 1.6, not builtins (potentially still normal functions) anymore
 const RECENTLY_REMOVED = GlobalRef.(Ref(Core), [
-    :arrayref, :arrayset, :arrayset, :const_arrayref, :memoryref,
+    :arrayref, :arrayset, :arrayset, :const_arrayref, :memoryref, :set_binding_type!
 ])
 const kwinvoke = Core.kwfunc(Core.invoke)
 
@@ -274,6 +274,9 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             maxarg = 6
         elseif name === :arraysize
             maxarg = 2
+        elseif name === :set_binding_type!
+            minarg = 2
+            maxarg = 3
         end
         _scopedname = "$mod.$name"
         fcall = generate_fcall_nargs(_scopedname, minarg, maxarg)

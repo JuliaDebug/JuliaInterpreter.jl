@@ -24,14 +24,14 @@ function smallest_ref(stmts, arg, idmin)
 end
 
 function lookup_global_ref(a::GlobalRef)
-    if Base.isbindingresolved(a.mod, a.name) && isdefined(a.mod, a.name)
+    if Base.isbindingresolved(a.mod, a.name) && isdefined(a.mod, a.name) && isconst(a.mod, a.name)
         return QuoteNode(getfield(a.mod, a.name))
     end
     return a
 end
 
 function lookup_global_refs!(ex::Expr)
-    if isexpr(ex, (:isdefined, :thunk, :toplevel, :method, :global, :const))
+    if isexpr(ex, (:isdefined, :thunk, :toplevel, :method, :global, :const, :globaldecl))
         return nothing
     end
     for (i, a) in enumerate(ex.args)
