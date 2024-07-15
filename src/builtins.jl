@@ -220,8 +220,6 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(Core.memoryrefswap!(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :set_binding_type!) && f === Core.set_binding_type!
-        return Some{Any}(Core.set_binding_type!(getargs(args, frame)...))
     elseif f === Core.sizeof
         if nargs == 1
             return Some{Any}(Core.sizeof(@lookup(frame, args[2])))
@@ -481,6 +479,14 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             return Some{Any}(Core.memoryref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
         else
             return Some{Any}(Core.memoryref(getargs(args, frame)...))
+        end
+    elseif @static (isdefined(Core, :set_binding_type!) && Core.set_binding_type! isa Core.Builtin) && f === Core.set_binding_type!
+        if nargs == 2
+            return Some{Any}(Core.set_binding_type!(@lookup(frame, args[2]), @lookup(frame, args[3])))
+        elseif nargs == 3
+            return Some{Any}(Core.set_binding_type!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+        else
+            return Some{Any}(Core.set_binding_type!(getargs(args, frame)...))
         end
     elseif f === Core.Intrinsics.llvmcall
         return Some{Any}(Core.Intrinsics.llvmcall(getargs(args, frame)...))

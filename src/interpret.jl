@@ -538,14 +538,13 @@ function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplev
                     error("this should have been handled by split_expressions")
                 elseif node.head === :using || node.head === :import || node.head === :export
                     Core.eval(moduleof(frame), node)
-                elseif node.head === :const
+                elseif node.head === :const || node.head === :globaldecl
                     g = node.args[1]
-                    if isa(g, GlobalRef)
-                        mod, name = g.mod, g.name
+                    if length(node.args) == 2
+                        Core.eval(moduleof(frame), Expr(:block, Expr(node.head, g, @lookup(frame, node.args[2])), nothing))
                     else
-                        mod, name = moduleof(frame), g::Symbol
+                        Core.eval(moduleof(frame), Expr(:block, Expr(node.head, g), nothing))
                     end
-                    Core.eval(mod, Expr(:const, name))
                 elseif node.head === :thunk
                     newframe = Frame(moduleof(frame), node.args[1]::CodeInfo)
                     if isa(recurse, Compiled)
