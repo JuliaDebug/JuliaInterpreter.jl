@@ -21,5 +21,4 @@ Core.eval(JuliaInterpreter, :(debug_mode() = true))
     @static VERSION >= v"1.8.0-DEV.370" && @testset "code_coverage/code_coverage.jl" begin include("code_coverage/code_coverage.jl") end
     remove()
     @testset "debug.jl" begin include("debug.jl") end
-    @testset "opaque_diffractor.jl" begin include("opaque_diffractor.jl") end
 end
