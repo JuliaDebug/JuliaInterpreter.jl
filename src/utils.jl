@@ -353,9 +353,10 @@ function lineoffset(framecode::FrameCode)
     return offset
 end
 
-function getline(ln::Union{LineTypes,Expr})
+function getline(ln::Union{LineTypes,Expr,Nothing})
     _getline(ln::LineTypes) = Int(ln.line)
     _getline(ln::Expr)      = ln.args[1]::Int # assuming ln.head === :line
+    _getline(::Nothing)     = nothing
     return _getline(ln)
 end
 function getfile(ln::Union{LineTypes,Expr})
