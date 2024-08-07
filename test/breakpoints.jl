@@ -589,4 +589,8 @@ end
     g() = fkw(; x=1)
     frame, bp = @interpret g()
     @test isa(frame, Frame) && isa(bp, JuliaInterpreter.BreakpointRef)
+
+    fkw2(;x=1) = x
+    g2() = fkw2(; x=1)
+    @test @interpret g2() === 1
 end
