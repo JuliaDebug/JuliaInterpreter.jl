@@ -241,7 +241,16 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     end
     argtypesv = Any[_Typeof(a) for a in allargs]
     argtypes = Tuple{argtypesv...}
-    method = whichtt(argtypes)
+    if @static isdefined(Core, :OpaqueClosure) && f isa Core.OpaqueClosure
+        method = f.source
+        # don't try to interpret optimized ir
+        if Core.Compiler.uncompressed_ir(method).inferred
+            @debug "not interpreting opaque closure $f since it contains inferred code"
+            return nothing
+        end
+    else
+        method = whichtt(argtypes)
+    end
     if method === nothing
         # Call it to generate the exact error
         return f(allargs[2:end]...)
@@ -298,7 +307,10 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         nargs, meth_nargs = length(argvals), Int(meth.nargs)
         islastva = meth.isva && nargs >= meth_nargs
         for i = 1:meth_nargs-islastva
-            if nargs >= i
+            # for OCs #self# actually refers to the captures instead
+            if @static isdefined(Core, :OpaqueClosure) && i == 1 && (oc = argvals[1]) isa Core.OpaqueClosure
+                locals[i], last_reference[i] = Some{Any}(oc.captures), 1
+            elseif i <= nargs
                 locals[i], last_reference[i] = Some{Any}(argvals[i]), 1
             else
                 locals[i] = Some{Any}(())
