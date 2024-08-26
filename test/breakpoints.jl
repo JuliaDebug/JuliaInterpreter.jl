@@ -593,4 +593,10 @@ end
     fkw2(;x=1) = x
     g2() = fkw2(; x=1)
     @test @interpret g2() === 1
+
+    fkw3(::T; x=1) where {T} = x
+    breakpoint(fkw3)
+    g3() = fkw3(7; x=1)
+    frame, bp = @interpret g3()
+    @test isa(frame, Frame) && isa(bp, JuliaInterpreter.BreakpointRef)
 end
