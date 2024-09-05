@@ -277,12 +277,11 @@ function linetable(arg)
     return ci.linetable::Union{Vector{Core.LineInfoNode},Vector{Any}} # issue #264
     end # @static if
 end
-function linetable(arg, i::Integer; macro_caller::Bool=false)::Union{Expr,Nothing,LineTypes}
+function linetable(arg, i::Integer; macro_caller::Bool=false, def=:var"n/a")::Union{Expr,Nothing,LineTypes}
     lt = linetable(arg)
     @static if VERSION ≥ v"1.12.0-DEV.173"
     # TODO: decode the linetable at this frame efficiently by reimplementing this here
-    # TODO: get the contextual name from the parent, rather than returning "n/a" (which breaks Cthulhu)
-    nodes = Base.IRShow.buildLineInfoNode(lt, :var"n/a", i)
+    nodes = Base.IRShow.buildLineInfoNode(lt, def, i)
     isempty(nodes) && return nothing
     return nodes[1] # ignore all inlining / macro expansion / etc :(
     else # VERSION < v"1.12.0-DEV.173"
@@ -389,10 +388,13 @@ method that issued the macro.
 function CodeTracking.whereis(framecode::FrameCode, pc::Int; kwargs...)
     codeloc = codelocation(framecode.src, pc)
     codeloc == 0 && return nothing
-    lineinfo = linetable(framecode, codeloc; kwargs...)
-    lineinfo === nothing && return nothing
     m = framecode.scope
-    return isa(m, Method) ? whereis(lineinfo, m) : (getfile(lineinfo), getline(lineinfo))
+    lineinfo = linetable(framecode, codeloc; kwargs..., def=isa(m, Method) ? m : :var"n/a")
+    if m isa Method
+        return lineinfo === nothing ? (String(m.file), m.line) : whereis(lineinfo, m)
+    else
+        return lineinfo === nothing ? nothing : (getfile(lineinfo), getline(lineinfo))
+    end
 end
 CodeTracking.whereis(frame::Frame, pc::Int=frame.pc; kwargs...) = whereis(frame.framecode, pc; kwargs...)
 
