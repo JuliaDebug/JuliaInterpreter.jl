@@ -1,9 +1,9 @@
-isassign(frame) = isassign(frame, frame.pc)
-isassign(frame, pc) = (pc in frame.framecode.used)
+isassign(frame::Frame) = isassign(frame, frame.pc)
+isassign(frame::Frame, pc::Int) = (pc in frame.framecode.used)
 
-lookup_var(frame, val::SSAValue) = frame.framedata.ssavalues[val.id]
-lookup_var(frame, ref::GlobalRef) = getfield(ref.mod, ref.name)
-function lookup_var(frame, slot::SlotNumber)
+lookup_var(frame::Frame, val::SSAValue) = frame.framedata.ssavalues[val.id]
+lookup_var(frame::Frame, ref::GlobalRef) = getfield(ref.mod, ref.name)
+function lookup_var(frame::Frame, slot::SlotNumber)
     val = frame.framedata.locals[slot.id]
     val !== nothing && return val.value
     throw(UndefVarError(frame.framecode.src.slotnames[slot.id]))
@@ -51,7 +51,7 @@ macro lookup(args...)
     end
 end
 
-function lookup_expr(frame, e::Expr)
+function lookup_expr(frame::Frame, e::Expr)
     head = e.head
     head === :the_exception && return frame.framedata.last_exception[]
     if head === :static_parameter
@@ -82,7 +82,7 @@ end
 # and hence our re-use of the `callargs` field of Frame would introduce
 # bugs. Since these nodes use a very limited repertoire of calls, we can special-case
 # this quite easily.
-function lookup_or_eval(@nospecialize(recurse), frame, @nospecialize(node))
+function lookup_or_eval(@nospecialize(recurse), frame::Frame, @nospecialize(node))
     if isa(node, SSAValue)
         return lookup_var(frame, node)
     elseif isa(node, SlotNumber)
@@ -130,7 +130,7 @@ function lookup_or_eval(@nospecialize(recurse), frame, @nospecialize(node))
     return eval_rhs(recurse, frame, node)
 end
 
-function resolvefc(frame, @nospecialize(expr))
+function resolvefc(frame::Frame, @nospecialize(expr))
     if isa(expr, SlotNumber)
         expr = lookup_var(frame, expr)
     elseif isa(expr, SSAValue)
@@ -200,7 +200,7 @@ function evaluate_foreigncall(@nospecialize(recurse), frame::Frame, call_expr::E
 end
 
 # We have to intercept ccalls / llvmcalls before we try it as a builtin
-function bypass_builtins(@nospecialize(recurse), frame, call_expr, pc)
+function bypass_builtins(@nospecialize(recurse), frame::Frame, call_expr::Expr, pc::Int)
     if isassigned(frame.framecode.methodtables, pc)
         tme = frame.framecode.methodtables[pc]
         if isa(tme, Compiled)
@@ -311,7 +311,7 @@ evaluate_call!(@nospecialize(recurse), frame::Frame, call_expr::Expr; kwargs...)
 evaluate_call!(frame::Frame, call_expr::Expr; kwargs...) = evaluate_call!(finish_and_return!, frame, call_expr; kwargs...)
 
 # The following come up only when evaluating toplevel code
-function evaluate_methoddef(frame, node)
+function evaluate_methoddef(frame::Frame, node::Expr)
     f = node.args[1]
     if f isa Symbol || f isa GlobalRef
         mod = f isa Symbol ? moduleof(frame) : f.mod
@@ -334,36 +334,7 @@ function evaluate_methoddef(frame, node)
     return f
 end
 
-function structname(frame, node)
-    name = node.args[1]
-    if isa(name, GlobalRef)
-        mod = name.mod
-        name = name.name
-    else
-        mod = moduleof(frame)
-        name = name::Symbol
-    end
-    return name, mod
-end
-
-function set_structtype_const(mod::Module, name::Symbol)
-    dt = Base.unwrap_unionall(getfield(mod, name))::DataType
-    ccall(:jl_set_const, Cvoid, (Any, Any, Any), mod, dt.name.name::Symbol, dt.name.wrapper)
-end
-
-function inplace_lookup!(ex, i, frame)
-    a = ex.args[i]
-    if isa(a, SSAValue) || isa(a, SlotNumber)
-        ex.args[i] = lookup_var(frame, a)
-    elseif isexpr(a, :call)
-        for j = 1:length((a::Expr).args)
-            inplace_lookup!(a, j, frame)
-        end
-    end
-    return ex
-end
-
-function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
+function do_assignment!(frame::Frame, @nospecialize(lhs), @nospecialize(rhs))
     code, data = frame.framecode, frame.framedata
     if isa(lhs, SSAValue)
         data.ssavalues[lhs.id] = rhs
@@ -383,7 +354,7 @@ function do_assignment!(frame, @nospecialize(lhs), @nospecialize(rhs))
     end
 end
 
-function maybe_assign!(frame, @nospecialize(stmt), @nospecialize(val))
+function maybe_assign!(frame::Frame, @nospecialize(stmt), @nospecialize(val))
     pc = frame.pc
     if isexpr(stmt, :(=))
         lhs = stmt.args[1]
@@ -394,9 +365,9 @@ function maybe_assign!(frame, @nospecialize(stmt), @nospecialize(val))
     end
     return nothing
 end
-maybe_assign!(frame, @nospecialize(val)) = maybe_assign!(frame, pc_expr(frame), val)
+maybe_assign!(frame::Frame, @nospecialize(val)) = maybe_assign!(frame, pc_expr(frame), val)
 
-function eval_rhs(@nospecialize(recurse), frame, node::Expr)
+function eval_rhs(@nospecialize(recurse), frame::Frame, node::Expr)
     head = node.head
     if head === :new
         mod = moduleof(frame)
@@ -435,7 +406,7 @@ function eval_rhs(@nospecialize(recurse), frame, node::Expr)
     return lookup_expr(frame, node)
 end
 
-function check_isdefined(frame, @nospecialize(node))
+function check_isdefined(frame::Frame, @nospecialize(node))
     data = frame.framedata
     if isa(node, SlotNumber)
         return data.locals[node.id] !== nothing
@@ -483,7 +454,7 @@ end
 # in `step_expr!`
 const _location = Dict{Tuple{Method,Int},Int}()
 
-function step_expr!(@nospecialize(recurse), frame, @nospecialize(node), istoplevel::Bool)
+function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), istoplevel::Bool)
     pc, code, data = frame.pc, frame.framecode, frame.framedata
     # if !is_leaf(frame)
     #     show_stackloc(frame)
@@ -657,7 +628,7 @@ behaviors:
   `loc` is a `BreakpointRef`;
 - otherwise, `err` gets rethrown.
 """
-function handle_err(@nospecialize(recurse), frame, err)
+function handle_err(@nospecialize(recurse), frame::Frame, @nospecialize(err))
     data = frame.framedata
     err_will_be_thrown_to_top_level = isempty(data.exception_frames) && !data.caller_will_catch_err
     if break_on_throw[] || (break_on_error[] && err_will_be_thrown_to_top_level)
