@@ -471,7 +471,9 @@ file, line = JuliaInterpreter.whereis(fr)
 fr = JuliaInterpreter.enter_call(Test.eval, 1)
 file, line = JuliaInterpreter.whereis(fr)
 @test isfile(file)
-@test isfile(JuliaInterpreter.getfile(fr.framecode.src.linetable[1]))
+@static if VERSION < v"1.12.0-DEV.173"
+    @test isfile(JuliaInterpreter.getfile(fr.framecode.src.linetable[1]))
+end
 @static if VERSION < v"1.9.0-DEV.846" # https://github.com/JuliaLang/julia/pull/45069
     @test occursin(Sys.STDLIB, repr(fr))
 else
