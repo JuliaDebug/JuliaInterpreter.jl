@@ -944,7 +944,16 @@ end
 @test @interpret foo_536(UInt8('A'))
 
 @static if isdefined(Base.Experimental, Symbol("@opaque"))
-    @test @interpret (Base.Experimental.@opaque x->3*x)(4) == 12
+    @testset "opaque closures" begin
+        g(x) = 3x
+        f = Base.Experimental.@opaque x -> g(x)
+        @test @interpret f(4) == 12
+
+        # test stepping into opaque closures
+        @breakpoint g(1)
+        fr = JuliaInterpreter.enter_call_expr(Expr(:call, f, 4))
+        @test JuliaInterpreter.finish_and_return!(fr) isa JuliaInterpreter.BreakpointRef
+    end
 end
 
 # CassetteOverlay, issue #552
