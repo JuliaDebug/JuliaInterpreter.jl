@@ -233,6 +233,8 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         end
     elseif f === Core.svec
         return Some{Any}(Core.svec(getargs(args, frame)...))
+    elseif @static isdefined(Core, :throw_methoderror) && f === Core.throw_methoderror
+        return Some{Any}(Core.throw_methoderror(getargs(args, frame)...))
     elseif f === applicable
         return Some{Any}(applicable(getargs(args, frame)...))
     elseif f === fieldtype
