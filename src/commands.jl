@@ -175,7 +175,7 @@ function next_line!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false
     end
     return _next_line!(recurse, frame, istoplevel, initialline, initialfile) # avoid boxing
 end
-function _next_line!(@nospecialize(recurse), frame, istoplevel, initialline::Int, initialfile::String)
+function _next_line!(@nospecialize(recurse), frame::Frame, istoplevel, initialline::Int, initialfile::String)
     predicate(frame) = is_return(pc_expr(frame)) || (linenumber(frame) != initialline || getfile(frame) != initialfile)
 
     pc = next_until!(predicate, recurse, frame, istoplevel)
@@ -451,7 +451,7 @@ or one of the 'advanced' commands
 `rootistoplevel` and `ret` are as described for [`JuliaInterpreter.maybe_reset_frame!`](@ref).
 """
 function debug_command(@nospecialize(recurse), frame::Frame, cmd::Symbol, rootistoplevel::Bool=false; line=nothing)
-    function nicereturn!(@nospecialize(recurse), frame, pc, rootistoplevel)
+    function nicereturn!(@nospecialize(recurse), frame::Frame, pc, rootistoplevel)
         if pc === nothing || isa(pc, BreakpointRef)
             return maybe_reset_frame!(recurse, frame, pc, rootistoplevel)
         end
