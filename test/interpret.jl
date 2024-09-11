@@ -947,7 +947,7 @@ end
     @testset "opaque closures" begin
         g(x) = 3x
         f = Base.Experimental.@opaque x -> g(x)
-        @test @interpret f(4) == 12
+        @test @interpret(f(4)) == 12
 
         # test stepping into opaque closures
         @breakpoint g(1)
