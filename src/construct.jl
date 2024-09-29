@@ -244,7 +244,10 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     if @static isdefined(Core, :OpaqueClosure) && f isa Core.OpaqueClosure
         method = f.source
         # don't try to interpret optimized ir
-        if Core.Compiler.uncompressed_ir(method).inferred
+        is_inferred_ir = any(Core.Compiler.uncompressed_ir(f.source).code) do stmt
+            stmt isa Core.PiNode || stmt isa Core.PhiNode || stmt isa Core.PhiCNode || stmt isa Core.UpsilonNode
+        end
+        if is_inferred_ir
             @debug "not interpreting opaque closure $f since it contains inferred code"
             return nothing
         end
