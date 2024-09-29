@@ -86,7 +86,7 @@ module EvalLimited end
     end
     modexs = collect(ExprSplitter(EvalLimited, ex))
     @static if VERSION >= v"1.12-"
-        nstmts = 10*21 + 27 # 10 * 17 statements per iteration + α
+        nstmts = 10*21 + 27 # 10 * 21 statements per iteration + α
     elseif VERSION >= v"1.11-"
         nstmts = 10*17 + 20 # 10 * 17 statements per iteration + α
     elseif VERSION >= v"1.10-"
