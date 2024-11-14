@@ -132,7 +132,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         f = @lookup(frame, fex)
     end
 
-    if @static isdefined(Core, :OpaqueClosure) && f isa Core.OpaqueClosure
+    if f isa Core.OpaqueClosure
         if expand
             if !Core.Compiler.uncompressed_ir(f.source).inferred
                 return Expr(:call, f, args[2:end]...)
@@ -324,16 +324,14 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
 """
     if isa(f, Core.IntrinsicFunction)
         cargs = getargs(args, frame)
-        @static if isdefined(Core.Intrinsics, :have_fma)
-            if f === Core.Intrinsics.have_fma && length(cargs) == 1
-                cargs1 = cargs[1]
-                if cargs1 == Float64
-                    return Some{Any}(FMA_FLOAT64[])
-                elseif cargs1 == Float32
-                    return Some{Any}(FMA_FLOAT32[])
-                elseif cargs1 == Float16
-                    return Some{Any}(FMA_FLOAT16[])
-                end
+        if f === Core.Intrinsics.have_fma && length(cargs) == 1
+            cargs1 = cargs[1]
+            if cargs1 == Float64
+                return Some{Any}(FMA_FLOAT64[])
+            elseif cargs1 == Float32
+                return Some{Any}(FMA_FLOAT32[])
+            elseif cargs1 == Float16
+                return Some{Any}(FMA_FLOAT16[])
             end
         end
         if f === Core.Intrinsics.muladd_float && length(cargs) == 3

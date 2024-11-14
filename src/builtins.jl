@@ -38,7 +38,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         f = @lookup(frame, fex)
     end
 
-    if @static isdefined(Core, :OpaqueClosure) && f isa Core.OpaqueClosure
+    if f isa Core.OpaqueClosure
         if expand
             if !Core.Compiler.uncompressed_ir(f.source).inferred
                 return Expr(:call, f, args[2:end]...)
@@ -152,11 +152,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             return Some{Any}(Core.finalizer(getargs(args, frame)...))
         end
     elseif @static isdefined(Core, :get_binding_type) && f === Core.get_binding_type
-        if nargs == 2
-            return Some{Any}(Core.get_binding_type(@lookup(frame, args[2]), @lookup(frame, args[3])))
-        else
-            return Some{Any}(Core.get_binding_type(getargs(args, frame)...))
-        end
+        return Some{Any}(Core.get_binding_type(getargs(args, frame)...))
     elseif f === Core.ifelse
         if nargs == 3
             return Some{Any}(Core.ifelse(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
@@ -256,13 +252,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             return Some{Any}(getfield(getargs(args, frame)...))
         end
     elseif @static isdefined(Core, :getglobal) && f === getglobal
-        if nargs == 2
-            return Some{Any}(getglobal(@lookup(frame, args[2]), @lookup(frame, args[3])))
-        elseif nargs == 3
-            return Some{Any}(getglobal(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
-        else
-            return Some{Any}(getglobal(getargs(args, frame)...))
-        end
+        return Some{Any}(getglobal(getargs(args, frame)...))
     elseif f === invoke
         if !expand
             argswrapped = getargs(args, frame)
@@ -294,13 +284,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             return Some{Any}(modifyfield!(getargs(args, frame)...))
         end
     elseif @static isdefined(Core, :modifyglobal!) && f === modifyglobal!
-        if nargs == 4
-            return Some{Any}(modifyglobal!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
-        elseif nargs == 5
-            return Some{Any}(modifyglobal!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
-        else
-            return Some{Any}(modifyglobal!(getargs(args, frame)...))
-        end
+        return Some{Any}(modifyglobal!(getargs(args, frame)...))
     elseif f === nfields
         if nargs == 1
             return Some{Any}(nfields(@lookup(frame, args[2])))
@@ -318,15 +302,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             return Some{Any}(replacefield!(getargs(args, frame)...))
         end
     elseif @static isdefined(Core, :replaceglobal!) && f === replaceglobal!
-        if nargs == 4
-            return Some{Any}(replaceglobal!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
-        elseif nargs == 5
-            return Some{Any}(replaceglobal!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
-        elseif nargs == 6
-            return Some{Any}(replaceglobal!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6]), @lookup(frame, args[7])))
-        else
-            return Some{Any}(replaceglobal!(getargs(args, frame)...))
-        end
+        return Some{Any}(replaceglobal!(getargs(args, frame)...))
     elseif f === setfield!
         if nargs == 3
             return Some{Any}(setfield!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
@@ -346,23 +322,9 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             return Some{Any}(setfieldonce!(getargs(args, frame)...))
         end
     elseif @static isdefined(Core, :setglobal!) && f === setglobal!
-        if nargs == 3
-            return Some{Any}(setglobal!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
-        elseif nargs == 4
-            return Some{Any}(setglobal!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
-        else
-            return Some{Any}(setglobal!(getargs(args, frame)...))
-        end
+        return Some{Any}(setglobal!(getargs(args, frame)...))
     elseif @static isdefined(Core, :setglobalonce!) && f === setglobalonce!
-        if nargs == 3
-            return Some{Any}(setglobalonce!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
-        elseif nargs == 4
-            return Some{Any}(setglobalonce!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
-        elseif nargs == 5
-            return Some{Any}(setglobalonce!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
-        else
-            return Some{Any}(setglobalonce!(getargs(args, frame)...))
-        end
+        return Some{Any}(setglobalonce!(getargs(args, frame)...))
     elseif @static isdefined(Core, :swapfield!) && f === swapfield!
         if nargs == 3
             return Some{Any}(swapfield!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
@@ -372,13 +334,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             return Some{Any}(swapfield!(getargs(args, frame)...))
         end
     elseif @static isdefined(Core, :swapglobal!) && f === swapglobal!
-        if nargs == 3
-            return Some{Any}(swapglobal!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
-        elseif nargs == 4
-            return Some{Any}(swapglobal!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
-        else
-            return Some{Any}(swapglobal!(getargs(args, frame)...))
-        end
+        return Some{Any}(swapglobal!(getargs(args, frame)...))
     elseif f === throw
         if nargs == 1
             return Some{Any}(throw(@lookup(frame, args[2])))
@@ -500,16 +456,14 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     end
     if isa(f, Core.IntrinsicFunction)
         cargs = getargs(args, frame)
-        @static if isdefined(Core.Intrinsics, :have_fma)
-            if f === Core.Intrinsics.have_fma && length(cargs) == 1
-                cargs1 = cargs[1]
-                if cargs1 == Float64
-                    return Some{Any}(FMA_FLOAT64[])
-                elseif cargs1 == Float32
-                    return Some{Any}(FMA_FLOAT32[])
-                elseif cargs1 == Float16
-                    return Some{Any}(FMA_FLOAT16[])
-                end
+        if f === Core.Intrinsics.have_fma && length(cargs) == 1
+            cargs1 = cargs[1]
+            if cargs1 == Float64
+                return Some{Any}(FMA_FLOAT64[])
+            elseif cargs1 == Float32
+                return Some{Any}(FMA_FLOAT32[])
+            elseif cargs1 == Float16
+                return Some{Any}(FMA_FLOAT16[])
             end
         end
         if f === Core.Intrinsics.muladd_float && length(cargs) == 3

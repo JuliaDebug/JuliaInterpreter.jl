@@ -14,13 +14,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - version: '1.6' # old LTS
+          - version: '1' # current stable
             os: ubuntu-latest
             arch: x64
-          - version: '1.10' # current stable
+          - version: '1.10' # lowerest version supported
             os: ubuntu-latest
             arch: x64
-          - version: '~1.11.0-0' # next release
+          - version: '1.12-nightly' # next release
             os: ubuntu-latest
             arch: x64
           - version: 'nightly' # dev

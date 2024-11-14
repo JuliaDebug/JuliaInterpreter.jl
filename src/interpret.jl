@@ -184,8 +184,7 @@ function evaluate_foreigncall(@nospecialize(recurse), frame::Frame, call_expr::E
         sig = scope.sig
         args[2] = instantiate_type_in_env(args[2], sig, data.sparams)
         arg3 = args[3]
-        if (@static VERSION < v"1.7.0" && arg3 isa Core.SimpleVector) ||
-            head === :foreigncall
+        if head === :foreigncall
             args[3] = Core.svec(map(arg3) do arg
                 instantiate_type_in_env(arg, sig, data.sparams)
             end...)
@@ -209,11 +208,7 @@ function bypass_builtins(@nospecialize(recurse), frame::Frame, call_expr::Expr, 
             fmod = parentmodule(f)::Module
             if fmod === JuliaInterpreter.CompiledCalls || fmod === Core.Compiler
                 # Fixing https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/432.
-                @static if VERSION >= v"1.7.0"
-                    return Some{Any}(Base.invoke_in_world(get_world_counter(), f, fargs[2:end]...))
-                else
-                    return Some{Any}(Base.invokelatest(f, fargs[2:end]...))
-                end
+                return Some{Any}(Base.invoke_in_world(get_world_counter(), f, fargs[2:end]...))
             else
                 return Some{Any}(f(fargs[2:end]...))
             end
@@ -326,11 +321,7 @@ function evaluate_methoddef(frame::Frame, node::Expr)
     sig = @lookup(frame, node.args[2])::SimpleVector
     body = @lookup(frame, node.args[3])::Union{CodeInfo, Expr}
     # branching on https://github.com/JuliaLang/julia/pull/41137
-    @static if isdefined(Core.Compiler, :OverlayMethodTable)
-        ccall(:jl_method_def, Cvoid, (Any, Ptr{Cvoid}, Any, Any), sig, C_NULL, body, moduleof(frame)::Module)
-    else
-        ccall(:jl_method_def, Cvoid, (Any, Any, Any), sig, body, moduleof(frame)::Module)
-    end
+    ccall(:jl_method_def, Cvoid, (Any, Ptr{Cvoid}, Any, Any), sig, C_NULL, body, moduleof(frame)::Module)
     return f
 end
 
@@ -346,11 +337,7 @@ function do_assignment!(frame::Frame, @nospecialize(lhs), @nospecialize(rhs))
         mod = lhs isa Symbol ? moduleof(frame) : lhs.mod
         name = lhs isa Symbol ? lhs : lhs.name
         Core.eval(mod, Expr(:global, name))
-        @static if @isdefined setglobal!
-            setglobal!(mod, name, rhs)
-        else
-            ccall(:jl_set_global, Cvoid, (Any, Any, Any), mod, name, rhs)
-        end
+        setglobal!(mod, name, rhs)
     end
 end
 
@@ -461,7 +448,7 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
     #     @show node
     # end
     @assert is_leaf(frame)
-    @static VERSION >= v"1.8.0-DEV.370" && coverage_visit_line!(frame)
+    coverage_visit_line!(frame)
     local rhs
     # For debugging:
     # show_stackloc(frame)

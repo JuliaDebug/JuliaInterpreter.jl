@@ -20,9 +20,7 @@ using Test
     frame = JuliaInterpreter.enter_call(buildexpr)
     lines = JuliaInterpreter.framecode_lines(frame.framecode.src)
     # Test that the :copyast ends up on the same line as the println
-    if isdefined(Base.IRShow, :show_ir_stmt)   # only works on Julia 1.6 and higher
-        @test any(str->occursin(":copyast", str) && occursin("println", str), lines)
-    end
+    @test any(str->occursin(":copyast", str) && occursin("println", str), lines)
 
     thunk = Meta.lower(Main, :(return 1+2))
     stmt = thunk.args[1].code[end]::Core.ReturnNode   # the return

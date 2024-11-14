@@ -18,7 +18,7 @@ Core.eval(JuliaInterpreter, :(debug_mode() = true))
     @testset "limits.jl" begin include("limits.jl") end
     @testset "eval_code.jl" begin include("eval_code.jl") end
     @testset "breakpoints.jl" begin include("breakpoints.jl") end
-    @static VERSION >= v"1.8.0-DEV.370" && @testset "code_coverage/code_coverage.jl" begin include("code_coverage/code_coverage.jl") end
+    @testset "code_coverage/code_coverage.jl" begin include("code_coverage/code_coverage.jl") end
     remove()
     @testset "debug.jl" begin include("debug.jl") end
 end

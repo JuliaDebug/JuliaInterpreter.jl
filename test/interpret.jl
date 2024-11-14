@@ -256,13 +256,6 @@ let a = ['0'], b = ['a']
     @test @interpret(vcat(a, b)) == vcat(a, b)
 end
 
-# issue #51
-if isdefined(Core.Compiler, :SNCA)
-    ci = @code_lowered gcd(10, 20)
-    cfg = Core.Compiler.compute_basic_blocks(ci.code)
-    @test isa(@interpret(Core.Compiler.SNCA(cfg)), Vector{Int})
-end
-
 # llvmcall
 function add1234(x::Tuple{Int32,Int32,Int32,Int32})
     Base.llvmcall("""%3 = extractvalue [4 x i32] %0, 0
@@ -472,13 +465,9 @@ fr = JuliaInterpreter.enter_call(Test.eval, 1)
 file, line = JuliaInterpreter.whereis(fr)
 @test isfile(file)
 @static if VERSION < v"1.12.0-DEV.173"
-    @test isfile(JuliaInterpreter.getfile(fr.framecode.src.linetable[1]))
+@test isfile(JuliaInterpreter.getfile(fr.framecode.src.linetable[1]))
 end
-@static if VERSION < v"1.9.0-DEV.846" # https://github.com/JuliaLang/julia/pull/45069
-    @test occursin(Sys.STDLIB, repr(fr))
-else
-    @test occursin(contractuser(Sys.STDLIB), repr(fr))
-end
+@test occursin(contractuser(Sys.STDLIB), repr(fr))
 
 # Test undef sparam (https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/165)
 function foo(x::T) where {T <: AbstractString, S <: AbstractString}
@@ -509,32 +498,21 @@ g_2(x) = g_3(x)
 g_3(x) = error("foo")
 line_g = @__LINE__
 
-if isdefined(Base, :replaceuserpath)
-    _contractuser = Base.replaceuserpath
-else
-    _contractuser = Base.contractuser
-end
+_contractuser = Base.contractuser
 
 try
     break_on(:error)
     local frame, bp = @interpret g_1(2.0)
     stacktrace_lines = split(sprint(Base.display_error, bp.err, leaf(frame)), '\n')
     @test occursin(string("ERROR: ", sprint(showerror, ErrorException("foo"))), stacktrace_lines[1])
-    if isdefined(Base, :print_stackframe)
-        @test occursin("[1] error(s::String)", stacktrace_lines[3])
-        @test occursin("[2] g_3(x::Float64)", stacktrace_lines[5])
-        thefile = _contractuser(@__FILE__)
-        @test occursin("$thefile:$(line_g - 1)", stacktrace_lines[6])
-        @test occursin("[3] g_2(x::Float64)", stacktrace_lines[7])
-        @test occursin("$thefile:$(line_g - 2)", stacktrace_lines[8])
-        @test occursin("[4] g_1(x::Float64)", stacktrace_lines[9])
-        @test occursin("$thefile:$(line_g - 3)", stacktrace_lines[10])
-    else
-        @test occursin("[1] error(::String) at error.jl:", stacktrace_lines[3])
-        @test occursin("[2] g_3(::Float64) at $(@__FILE__):$(line_g - 1)", stacktrace_lines[4])
-        @test occursin("[3] g_2(::Float64) at $(@__FILE__):$(line_g - 2)", stacktrace_lines[5])
-        @test occursin("[4] g_1(::Float64) at $(@__FILE__):$(line_g - 3)", stacktrace_lines[6])
-    end
+    @test occursin("[1] error(s::String)", stacktrace_lines[3])
+    @test occursin("[2] g_3(x::Float64)", stacktrace_lines[5])
+    thefile = _contractuser(@__FILE__)
+    @test occursin("$thefile:$(line_g - 1)", stacktrace_lines[6])
+    @test occursin("[3] g_2(x::Float64)", stacktrace_lines[7])
+    @test occursin("$thefile:$(line_g - 2)", stacktrace_lines[8])
+    @test occursin("[4] g_1(x::Float64)", stacktrace_lines[9])
+    @test occursin("$thefile:$(line_g - 3)", stacktrace_lines[10])
 finally
     break_off(:error)
 end
@@ -549,24 +527,16 @@ try
     frame, bp = JuliaInterpreter.debug_command(frame, :c, true)
     stacktrace_lines = split(sprint(Base.display_error, bp.err, leaf(frame)), '\n')
     @test occursin(string("ERROR: ", sprint(showerror, ErrorException("foo"))), stacktrace_lines[1])
-    if isdefined(Base, :print_stackframe)
-        @test occursin("[1] error(s::String)", stacktrace_lines[3])
-        thefile = _contractuser(@__FILE__)
-        @test occursin("[2] g_3(x::Float64)", stacktrace_lines[5])
-        @test occursin("$thefile:$(line_g - 1)", stacktrace_lines[6])
-        @test occursin("[3] g_2(x::Float64)", stacktrace_lines[7])
-        @test occursin("$thefile:$(line_g - 2)", stacktrace_lines[8])
-        @test occursin("[4] g_1(x::Float64)", stacktrace_lines[9])
-        @test occursin("$thefile:$(line_g - 3)", stacktrace_lines[10])
-        @test occursin("[5] top-level scope", stacktrace_lines[11])
-        @test occursin("$thefile:$(line2_g - 2)", stacktrace_lines[12])
-    else
-        @test occursin("[1] error(::String) at error.jl:", stacktrace_lines[3])
-        @test occursin("[2] g_3(::Float64) at $(@__FILE__):$(line_g - 1)", stacktrace_lines[4])
-        @test occursin("[3] g_2(::Float64) at $(@__FILE__):$(line_g - 2)", stacktrace_lines[5])
-        @test occursin("[4] g_1(::Float64) at $(@__FILE__):$(line_g - 3)", stacktrace_lines[6])
-        @test occursin("[5] top-level scope at $(@__FILE__):$(line2_g - 2)", stacktrace_lines[7])
-    end
+    @test occursin("[1] error(s::String)", stacktrace_lines[3])
+    thefile = _contractuser(@__FILE__)
+    @test occursin("[2] g_3(x::Float64)", stacktrace_lines[5])
+    @test occursin("$thefile:$(line_g - 1)", stacktrace_lines[6])
+    @test occursin("[3] g_2(x::Float64)", stacktrace_lines[7])
+    @test occursin("$thefile:$(line_g - 2)", stacktrace_lines[8])
+    @test occursin("[4] g_1(x::Float64)", stacktrace_lines[9])
+    @test occursin("$thefile:$(line_g - 3)", stacktrace_lines[10])
+    @test occursin("[5] top-level scope", stacktrace_lines[11])
+    @test occursin("$thefile:$(line2_g - 2)", stacktrace_lines[12])
 finally
     break_off(:error)
 end
@@ -678,9 +648,7 @@ end
 let
     # NOTE we need to make sure this code block is compiled, since vecadd is generated function,
     # but currently `@interpret` doesn't handle a call to generated functions very well
-    @static if isdefined(Base.Experimental, Symbol("@force_compile"))
-        Base.Experimental.@force_compile
-    end
+    Base.Experimental.@force_compile
     a = (VecElement{Float64}(1.0), VecElement{Float64}(2.0))
     @test @interpret(VecTest.vecadd(a, a)) == VecTest.vecadd(a, a)
 end
@@ -814,11 +782,7 @@ end
     end
     # this shouldn't throw "type DataType has no field hasfreetypevars"
     # even after https://github.com/JuliaLang/julia/pull/41018
-    @static if VERSION ≥ v"1.9.0-DEV.1556"
-        @test Int === @interpret Core.Compiler.getfield_tfunc(Core.Compiler.fallback_lattice, m.Foo, Core.Compiler.Const(:foo))
-    else
-        @test Int === @interpret Core.Compiler.getfield_tfunc(m.Foo, Core.Compiler.Const(:foo))
-    end
+    @test Int === @interpret Core.Compiler.getfield_tfunc(Core.Compiler.fallback_lattice, m.Foo, Core.Compiler.Const(:foo))
 end
 
 @testset "https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/488" begin
@@ -835,14 +799,12 @@ module ForInclude end
     @test JuliaInterpreter.finish_and_return!(Frame(ForInclude, ex), true) == 55
 end
 
-@static if VERSION >= v"1.7.0"
-    @testset "issue #432" begin
-        function f()
-            t = @ccall time(C_NULL::Ptr{Cvoid})::Cint
-        end
-        @test @interpret(f()) !== 0
-        @test @interpret(f()) !== 0
+@testset "issue #432" begin
+    function f()
+        t = @ccall time(C_NULL::Ptr{Cvoid})::Cint
     end
+    @test @interpret(f()) !== 0
+    @test @interpret(f()) !== 0
 end
 
 @testset "issue #385" begin
@@ -874,11 +836,7 @@ end
     end
 
     ci = code_typed(foo, NTuple{2, Int}; optimize=false)[][1]
-    @static if VERSION ≥ v"1.10.0-DEV.873"
-        mi = Core.Compiler.method_instances(foo, NTuple{2, Int}, Base.get_world_counter())[]
-    else
-        mi = Core.Compiler.method_instances(foo, NTuple{2, Int})[]
-    end
+    mi = Core.Compiler.method_instances(foo, NTuple{2, Int}, Base.get_world_counter())[]
 
     frameargs = Any[foo, 1, 2]
     framecode = JuliaInterpreter.FrameCode(mi.def, ci)
@@ -923,7 +881,6 @@ end
     @test (@interpret iscallexpr(:(sin(3.14))))
 end
 
-if isdefined(Base, :have_fma)
 f_fma() = Base.have_fma(Float64)
 @testset "fma" begin
     @test (@interpret f_fma()) == f_fma()
@@ -931,7 +888,6 @@ f_fma() = Base.have_fma(Float64)
     @test (@interpret muladd(a, b, c)) === muladd(a,b,c)
     a = 1.0883740903666346; b = 2/3
     @test (@interpret a^b) === a^b
-end
 end
 
 # issue 536
@@ -943,34 +899,27 @@ end
 @test !@interpret foo_536(0x00)
 @test @interpret foo_536(UInt8('A'))
 
-@static if isdefined(Base.Experimental, Symbol("@opaque"))
-    @testset "opaque closures" begin
-        g(x) = 3x
-        f = Base.Experimental.@opaque x -> g(x)
-        @test @interpret(f(4)) == 12
+@testset "opaque closures" begin
+    g(x) = 3x
+    f = Base.Experimental.@opaque x -> g(x)
+    @test @interpret(f(4)) == 12
 
-        # test stepping into opaque closures
-        @breakpoint g(1)
-        fr = JuliaInterpreter.enter_call_expr(Expr(:call, f, 4))
-        @test JuliaInterpreter.finish_and_return!(fr) isa JuliaInterpreter.BreakpointRef
-    end
+    # test stepping into opaque closures
+    @breakpoint g(1)
+    fr = JuliaInterpreter.enter_call_expr(Expr(:call, f, 4))
+    @test JuliaInterpreter.finish_and_return!(fr) isa JuliaInterpreter.BreakpointRef
 end
 
 # CassetteOverlay, issue #552
-@static if VERSION >= v"1.8"
 using CassetteOverlay
-end
-
-@static if VERSION >= v"1.8"
-function foo()
+function cassette_overlay_func()
     x = IdDict()
     x[:foo] = 1
 end
 @MethodTable SinTable;
 @testset "CassetteOverlay" begin
     pass = @overlaypass SinTable;
-    @test (@interpret pass(foo)) == 1
-end
+    @test (@interpret pass(cassette_overlay_func)) == 1
 end
 
 using LoopVectorization
