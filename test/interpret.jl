@@ -836,7 +836,7 @@ end
     end
 
     ci = code_typed(foo, NTuple{2, Int}; optimize=false)[][1]
-    mi = Core.Compiler.method_instances(foo, NTuple{2, Int}, Base.get_world_counter())[]
+    mi = Base.method_instances(foo, NTuple{2, Int}, Base.get_world_counter())[]
 
     frameargs = Any[foo, 1, 2]
     framecode = JuliaInterpreter.FrameCode(mi.def, ci)
