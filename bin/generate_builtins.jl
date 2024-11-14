@@ -2,7 +2,7 @@
 # Should be run on the latest Julia nightly
 using InteractiveUtils
 
-# All builtins present in 1.10
+# Builtins not present in 1.10 (the lowest supported version)
 const RECENTLY_ADDED = Core.Builtin[
     Core.current_scope,
     Core.memoryref_isassigned,
