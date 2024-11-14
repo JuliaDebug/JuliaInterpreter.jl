@@ -550,6 +550,8 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
                     error("unexpected error statement ", node)
                 elseif node.head === :incomplete
                     error("incomplete statement ", node)
+                elseif node.head === :latestworld
+                    frame.world = Base.get_world_counter()
                 else
                     rhs = eval_rhs(recurse, frame, node)
                 end
