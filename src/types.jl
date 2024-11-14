@@ -253,8 +253,11 @@ mutable struct Frame
     caller::Union{Frame,Nothing}
     callee::Union{Frame,Nothing}
     last_codeloc::Int
+    # TODO: This is incompletely implemented
+    world::UInt
 end
-function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing)
+function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing,
+               world=isdefined(Base, :tls_world_age) ? Base.tls_world_age() : Base.get_world_counter())
     if length(junk_frames) > 0
         frame = pop!(junk_frames)
         frame.framecode = framecode
@@ -264,9 +267,10 @@ function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing)
         frame.caller = caller
         frame.callee = nothing
         frame.last_codeloc = 0
+        frame.world = world
         return frame
     else
-        return Frame(framecode, framedata, pc, 1, caller, nothing, 0)
+        return Frame(framecode, framedata, pc, 1, caller, nothing, 0, world)
     end
 end
 """
