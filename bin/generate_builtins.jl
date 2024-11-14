@@ -134,7 +134,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
 
     if f isa Core.OpaqueClosure
         if expand
-            if !Core.Compiler.uncompressed_ir(f.source).inferred
+            if !Base.uncompressed_ir(f.source).inferred
                 return Expr(:call, f, args[2:end]...)
             else
                 @debug "not interpreting opaque closure \$f since it contains inferred code"

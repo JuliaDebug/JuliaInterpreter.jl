@@ -236,7 +236,7 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     if f isa Core.OpaqueClosure
         method = f.source
         # don't try to interpret optimized ir
-        if Core.Compiler.uncompressed_ir(method).inferred
+        if Base.uncompressed_ir(method).inferred
             @debug "not interpreting opaque closure $f since it contains inferred code"
             return nothing
         end
