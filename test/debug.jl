@@ -146,8 +146,7 @@ end
             cframe, pc = debug_command(frame, :sg)
             # Aside: generators can have `Expr(:line, ...)` in their line tables, test that this is OK
             lt = JuliaInterpreter.linetable(cframe, 2)
-            @test isexpr(lt, :line) || isa(lt, Core.LineInfoNode) ||
-                (isdefined(Base.IRShow, :LineInfoNode) && isa(lt, Base.IRShow.LineInfoNode))
+            @test isexpr(lt, :line) || isa(lt, Core.LineInfoNode) || isa(lt, Base.IRShow.LineInfoNode)
             @test isa(pc, BreakpointRef)
             @test JuliaInterpreter.scopeof(cframe).name === :generatedfoo
             cframe, pc = debug_command(cframe, :finish)
@@ -392,7 +391,7 @@ end
         @test get_return(frame) == f_inv(2)
     end
 
-    f_inv_latest(x::Real) = 1 + (@static isdefined(Core, :_call_latest) ? Core._call_latest(f_inv, x) : Core._apply_latest(f_inv, x))
+    f_inv_latest(x::Real) = 1 + Core._call_latest(f_inv, x)
     @testset "invokelatest" begin
         fr = JuliaInterpreter.enter_call(f_inv_latest, 2.0)
         fr, pc = JuliaInterpreter.debug_command(fr, :nc)
@@ -427,12 +426,7 @@ end
 
         frame = JuliaInterpreter.enter_call(sort, a)
         frame = stepkw!(frame)
-        @static if VERSION ≥ v"1.7"
-            # TODO fix this broken test (@aviatesk)
-            @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1 broken=VERSION≥v"1.11-"
-        else
-            @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1
-        end
+        @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1 broken=VERSION≥v"1.11-"
 
         frame, pc = debug_command(frame, :s)
         frame, pc = debug_command(frame, :se)  # get past copymutable
@@ -477,7 +471,7 @@ end
     @testset "si should not step through wrappers or kwprep" begin
         frame = JuliaInterpreter.enter_call(h_1, 2, 1)
         frame, pc = debug_command(frame, :si)
-        @test frame.pc == (VERSION >= v"1.11-" ? 2 : 1)
+        @test frame.pc == (@static VERSION >= v"1.11-" ? 2 : 1)
     end
 
     @testset "breakpoints hit during wrapper step through" begin

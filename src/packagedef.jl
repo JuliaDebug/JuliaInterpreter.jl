@@ -1,5 +1,5 @@
 using Base.Meta
-import Base: +, -, convert, isless, get_world_counter
+import Base: +, -, convert, isless, get_world_counter, mapany, ntupleany
 using Core: CodeInfo, SimpleVector, LineInfoNode, GotoNode, GotoIfNot, ReturnNode,
             GeneratedFunctionStub, MethodInstance, NewvarNode, TypeName
 
@@ -22,28 +22,7 @@ const SlotNamesType = Vector{Symbol}
 
 append_any(@nospecialize x...) = append!([], Core.svec((x...)...))
 
-if isdefined(Base, :mapany)
-    const mapany = Base.mapany
-else
-    mapany(f, itr) = map!(f, Vector{Any}(undef, length(itr)::Int), itr)  # convenient for Expr.args
-end
-
-if isdefined(Base, :ntupleany)
-    const ntupleany = Base.ntupleany
-else
-    @noinline function ntupleany(f, n)
-        (n >= 0) || throw(ArgumentError(string("tuple length should be ≥ 0, got ", n)))
-        (Any[f(i) for i = 1:n]...,)
-    end
-end
-
-if !isdefined(Base, Symbol("@something"))
-    macro something(x...)
-        :(something($(map(esc, x)...)))
-    end
-end
-
-if isdefined(Base, :ScopedValues)
+@static if isdefined(Base, :ScopedValues)
     using Base: ScopedValues.Scope
 else
     const Scope = Any
@@ -103,10 +82,10 @@ function set_compiled_methods()
     end
 
     # Does an atomic operation via llvmcall (this fixes #354)
-    if isdefined(Base, :load_state_acquire)
-        for m in methods(Base.load_state_acquire)
-            push!(compiled_methods, m)
-        end
+    @static if isdefined(Base, :load_state_acquire) # VERSION < v"1.12-"
+    for m in methods(Base.load_state_acquire)
+        push!(compiled_methods, m)
+    end
     end
 
     # This is about performance, not safety (issue #462)
@@ -157,11 +136,9 @@ function __init__()
     #     precompile(f, AT)
     # end
 
-    @static if isdefined(Base, :have_fma)
-        FMA_FLOAT64[] = _have_fma_compiled(Float64)
-        FMA_FLOAT32[] = _have_fma_compiled(Float32)
-        FMA_FLOAT16[] = _have_fma_compiled(Float16)
-    end
+    FMA_FLOAT64[] = _have_fma_compiled(Float64)
+    FMA_FLOAT32[] = _have_fma_compiled(Float32)
+    FMA_FLOAT16[] = _have_fma_compiled(Float16)
 end
 
 include("precompile.jl")

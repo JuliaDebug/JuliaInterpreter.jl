@@ -88,18 +88,10 @@ end
 
 get_source(meth::Method) = Base.uncompressed_ast(meth)
 
-@static if VERSION < v"1.10.0-DEV.873"  # julia#48766
-    function get_source(g::GeneratedFunctionStub, env, file, line)
-        b = g(env..., g.argnames...)
-        b isa CodeInfo && return b
-        return eval(b)
-    end
-else
-    function get_source(g::GeneratedFunctionStub, env, file, line::Int)
-        b = g(Base.get_world_counter(), LineNumberNode(line, file), env..., g.argnames...)
-        b isa CodeInfo && return b
-        return eval(b)
-    end
+function get_source(g::GeneratedFunctionStub, env, file, line::Int)
+    b = g(Base.get_world_counter(), LineNumberNode(line, file), env..., g.argnames...)
+    b isa CodeInfo && return b
+    return eval(b)
 end
 
 """
@@ -241,10 +233,10 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     end
     argtypesv = Any[_Typeof(a) for a in allargs]
     argtypes = Tuple{argtypesv...}
-    if @static isdefined(Core, :OpaqueClosure) && f isa Core.OpaqueClosure
+    if f isa Core.OpaqueClosure
         method = f.source
         # don't try to interpret optimized ir
-        if Core.Compiler.uncompressed_ir(method).inferred
+        if Base.uncompressed_ir(method).inferred
             @debug "not interpreting opaque closure $f since it contains inferred code"
             return nothing
         end
@@ -308,7 +300,7 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         islastva = meth.isva && nargs >= meth_nargs
         for i = 1:meth_nargs-islastva
             # for OCs #self# actually refers to the captures instead
-            if @static isdefined(Core, :OpaqueClosure) && i == 1 && (oc = argvals[1]) isa Core.OpaqueClosure
+            if i == 1 && (oc = argvals[1]) isa Core.OpaqueClosure
                 locals[i], last_reference[i] = Some{Any}(oc.captures), 1
             elseif i <= nargs
                 locals[i], last_reference[i] = Some{Any}(argvals[i]), 1

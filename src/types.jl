@@ -257,7 +257,7 @@ mutable struct Frame
     world::UInt
 end
 function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing,
-               world=isdefined(Base, :tls_world_age) ? Base.tls_world_age() : Base.get_world_counter())
+               world=@static isdefined(Base, :tls_world_age) ? Base.tls_world_age() : Base.get_world_counter())
     if length(junk_frames) > 0
         frame = pop!(junk_frames)
         frame.framecode = framecode

@@ -2,16 +2,26 @@
 # Should be run on the latest Julia nightly
 using InteractiveUtils
 
-# All builtins present in 1.6
-const ALWAYS_PRESENT = Core.Builtin[
-    (<:), (===), Core._abstracttype, Core._apply_iterate, Core._apply_pure,
-    Core._call_in_world, Core._call_latest, Core._equiv_typedef, Core._expr,
-    Core._primitivetype, Core._setsuper!, Core._structtype, Core._typebody!,
-    Core._typevar, Core.apply_type, Core.ifelse, Core.sizeof, Core.svec,
-    applicable, fieldtype, getfield, invoke, isa, isdefined, nfields,
-    setfield!, throw, tuple, typeassert, typeof
+# Builtins not present in 1.10 (the lowest supported version)
+const RECENTLY_ADDED = Core.Builtin[
+    Core.current_scope,
+    Core.memoryref_isassigned,
+    Core.memoryrefget,
+    Core.memoryrefmodify!,
+    Core.memoryrefnew,
+    Core.memoryrefoffset,
+    Core.memoryrefreplace!,
+    Core.memoryrefset!,
+    Core.memoryrefsetonce!,
+    Core.memoryrefswap!,
+    Core.throw_methoderror,
+    modifyglobal!,
+    replaceglobal!,
+    setfieldonce!,
+    setglobalonce!,
+    swapglobal!,
 ]
-# Builtins present from 1.6, not builtins (potentially still normal functions) anymore
+# Builtins present from 1.10, not builtins (potentially still normal functions) anymore
 const RECENTLY_REMOVED = GlobalRef.(Ref(Core), [
     :arrayref, :arrayset, :arrayset, :const_arrayref, :memoryref, :set_binding_type!
 ])
@@ -132,9 +142,9 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         f = @lookup(frame, fex)
     end
 
-    if @static isdefined(Core, :OpaqueClosure) && f isa Core.OpaqueClosure
+    if f isa Core.OpaqueClosure
         if expand
-            if !Core.Compiler.uncompressed_ir(f.source).inferred
+            if !Base.uncompressed_ir(f.source).inferred
                 return Expr(:call, f, args[2:end]...)
             else
                 @debug "not interpreting opaque closure \$f since it contains inferred code"
@@ -235,7 +245,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
 
         id = findfirst(isequal(f), Core.Compiler.T_FFUNC_KEY)
         fcall = generate_fcall(f, Core.Compiler.T_FFUNC_VAL, id)
-        if !(f in ALWAYS_PRESENT)
+        if f in RECENTLY_ADDED
             print(io,
 """
     $head @static isdefined($(ft.name.module), $(repr(nameof(f)))) && f === $fname
@@ -324,16 +334,14 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
 """
     if isa(f, Core.IntrinsicFunction)
         cargs = getargs(args, frame)
-        @static if isdefined(Core.Intrinsics, :have_fma)
-            if f === Core.Intrinsics.have_fma && length(cargs) == 1
-                cargs1 = cargs[1]
-                if cargs1 == Float64
-                    return Some{Any}(FMA_FLOAT64[])
-                elseif cargs1 == Float32
-                    return Some{Any}(FMA_FLOAT32[])
-                elseif cargs1 == Float16
-                    return Some{Any}(FMA_FLOAT16[])
-                end
+        if f === Core.Intrinsics.have_fma && length(cargs) == 1
+            cargs1 = cargs[1]
+            if cargs1 == Float64
+                return Some{Any}(FMA_FLOAT64[])
+            elseif cargs1 == Float32
+                return Some{Any}(FMA_FLOAT32[])
+            elseif cargs1 == Float16
+                return Some{Any}(FMA_FLOAT16[])
             end
         end
         if f === Core.Intrinsics.muladd_float && length(cargs) == 3
