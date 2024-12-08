@@ -112,6 +112,9 @@ function lookup_or_eval(@nospecialize(recurse), frame::Frame, @nospecialize(node
                 return typeassert(ex.args[2], ex.args[3])
             elseif f === Base.getproperty && length(ex.args) == 3
                 return Base.getproperty(ex.args[2], ex.args[3])
+            elseif f === Base.getindex && length(ex.args) >= 3
+                popfirst!(ex.args)
+                return Base.getindex(ex.args...)
             elseif f === Core.Compiler.Val && length(ex.args) == 2
                 return Core.Compiler.Val(ex.args[2])
             elseif f === Val && length(ex.args) == 2
