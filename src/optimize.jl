@@ -24,8 +24,8 @@ function smallest_ref(stmts, arg, idmin)
 end
 
 function lookup_global_ref(a::GlobalRef)
-    if Base.isbindingresolved(a.mod, a.name) && isdefined(a.mod, a.name) && isconst(a.mod, a.name)
-        return QuoteNode(getfield(a.mod, a.name))
+    if Base.isbindingresolved(a.mod, a.name) && invokelatest(isdefined, a.mod, a.name) && invokelatest(isconst, a.mod, a.name)
+        return QuoteNode(invokelatest(getfield, a.mod, a.name))
     end
     return a
 end

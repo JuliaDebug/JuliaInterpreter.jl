@@ -2,7 +2,7 @@ isassign(frame::Frame) = isassign(frame, frame.pc)
 isassign(frame::Frame, pc::Int) = (pc in frame.framecode.used)
 
 lookup_var(frame::Frame, val::SSAValue) = frame.framedata.ssavalues[val.id]
-lookup_var(frame::Frame, ref::GlobalRef) = getfield(ref.mod, ref.name)
+lookup_var(frame::Frame, ref::GlobalRef) = invokelatest(getfield, ref.mod, ref.name)
 function lookup_var(frame::Frame, slot::SlotNumber)
     val = frame.framedata.locals[slot.id]
     val !== nothing && return val.value
@@ -311,8 +311,8 @@ function evaluate_methoddef(frame::Frame, node::Expr)
     if f isa Symbol || f isa GlobalRef
         mod = f isa Symbol ? moduleof(frame) : f.mod
         name = f isa Symbol ? f : f.name
-        if Base.isbindingresolved(mod, name) && isdefined(mod, name)  # `isdefined` accesses the binding, making it impossible to create a new one
-            f = getfield(mod, name)
+        if Base.isbindingresolved(mod, name) && invokelatest(isdefined, mod, name)  # `isdefined` accesses the binding, making it impossible to create a new one
+            f = invokelatest(getfield, mod, name)
         else
             f = Core.eval(mod, Expr(:function, name))  # create a new function
         end
