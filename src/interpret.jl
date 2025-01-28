@@ -2,7 +2,7 @@ isassign(frame::Frame) = isassign(frame, frame.pc)
 isassign(frame::Frame, pc::Int) = (pc in frame.framecode.used)
 
 lookup_var(frame::Frame, val::SSAValue) = frame.framedata.ssavalues[val.id]
-lookup_var(frame::Frame, ref::GlobalRef) = invokelatest(getfield, ref.mod, ref.name)
+lookup_var(frame::Frame, ref::GlobalRef) = @invokelatest getfield(ref.mod, ref.name)
 function lookup_var(frame::Frame, slot::SlotNumber)
     val = frame.framedata.locals[slot.id]
     val !== nothing && return val.value
@@ -117,7 +117,7 @@ function lookup_or_eval(@nospecialize(recurse), frame::Frame, @nospecialize(node
             elseif f === Val && length(ex.args) == 2
                 return Val(ex.args[2])
             else
-                Base.invokelatest(error, "unknown call f introduced by ccall lowering ", f)
+                @invokelatest error("unknown call f introduced by ccall lowering ", f)
             end
         else
             return lookup_expr(frame, ex)
@@ -147,7 +147,7 @@ function resolvefc(frame::Frame, @nospecialize(expr))
         (isa(a, QuoteNode) && a.value === Core.tuple) || error("unexpected ccall to ", expr)
         return Expr(:call, GlobalRef(Core, :tuple), (expr::Expr).args[2:end]...)
     end
-    Base.invokelatest(error, "unexpected ccall to ", expr)
+    @invokelatest error("unexpected ccall to ", expr)
 end
 
 function collect_args(@nospecialize(recurse), frame::Frame, call_expr::Expr; isfc::Bool=false)
@@ -229,7 +229,7 @@ function native_call(fargs::Vector{Any}, frame::Frame)
             return Core.eval(moduleof(frame), ex)
         end
     end
-    return Base.invokelatest(f, fargs...)
+    return @invokelatest f(fargs...)
 end
 
 function evaluate_call_compiled!(::Compiled, frame::Frame, call_expr::Expr; enter_generated::Bool=false)
@@ -311,8 +311,8 @@ function evaluate_methoddef(frame::Frame, node::Expr)
     if f isa Symbol || f isa GlobalRef
         mod = f isa Symbol ? moduleof(frame) : f.mod
         name = f isa Symbol ? f : f.name
-        if Base.isbindingresolved(mod, name) && invokelatest(isdefined, mod, name)  # `isdefined` accesses the binding, making it impossible to create a new one
-            f = invokelatest(getfield, mod, name)
+        if Base.isbindingresolved(mod, name) && @invokelatest isdefined(mod, name)  # `isdefined` accesses the binding, making it impossible to create a new one
+            f = @invokelatest getfield(mod, name)
         else
             f = Core.eval(mod, Expr(:function, name))  # create a new function
         end
@@ -656,7 +656,7 @@ e.g., [`JuliaInterpreter.finish!`](@ref)).
 """
 function get_return(frame)
     node = pc_expr(frame)
-    is_return(node) || Base.invokelatest(error, "expected return statement, got ", node)
+    is_return(node) || @invokelatest error("expected return statement, got ", node)
     return lookup_return(frame, node)
 end
 get_return(t::Tuple{Module,Expr,Frame}) = get_return(t[end])

@@ -195,7 +195,7 @@ function shouldbreak(frame::Frame, pc::Int)
     isassigned(bps, pc) || return false
     bp = bps[pc]
     bp.isactive || return false
-    return Base.invokelatest(bp.condition, frame)::Bool
+    return invokelatest(bp.condition, frame)::Bool
 end
 
 function prepare_slotfunction(framecode::FrameCode, body::Union{Symbol,Expr})

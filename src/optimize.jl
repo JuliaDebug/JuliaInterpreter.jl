@@ -24,8 +24,10 @@ function smallest_ref(stmts, arg, idmin)
 end
 
 function lookup_global_ref(a::GlobalRef)
-    if Base.isbindingresolved(a.mod, a.name) && invokelatest(isdefined, a.mod, a.name) && invokelatest(isconst, a.mod, a.name)
-        return QuoteNode(invokelatest(getfield, a.mod, a.name))
+    if (Base.isbindingresolved(a.mod, a.name) &&
+        (@invokelatest isdefined(a.mod, a.name)) &&
+        (@invokelatest isconst(a.mod, a.name)))
+        return QuoteNode(@invokelatest getfield(a.mod, a.name))
     end
     return a
 end
@@ -114,12 +116,12 @@ function optimize!(code::CodeInfo, scope)
                 arg1 = stmt.args[1]
                 if (arg1 === :llvmcall || lookup_stmt(code.code, arg1) === Base.llvmcall) && isempty(sparams) && scope isa Method
                     # Call via `invokelatest` to avoid compiling it until we need it
-                    Base.invokelatest(build_compiled_llvmcall!, stmt, code, idx, evalmod)
+                    @invokelatest build_compiled_llvmcall!(stmt, code, idx, evalmod)
                     methodtables[idx] = Compiled()
                 end
             elseif stmt.head === :foreigncall && scope isa Method
                 # Call via `invokelatest` to avoid compiling it until we need it
-                Base.invokelatest(build_compiled_foreigncall!, stmt, code, sparams, evalmod)
+                @invokelatest build_compiled_foreigncall!(stmt, code, sparams, evalmod)
                 methodtables[idx] = Compiled()
             end
         end

@@ -163,6 +163,12 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(Core.ifelse(getargs(args, frame)...))
         end
+    elseif f === Core.memorynew
+        if nargs == 2
+            return Some{Any}(Core.memorynew(@lookup(frame, args[2]), @lookup(frame, args[3])))
+        else
+            return Some{Any}(Core.memorynew(getargs(args, frame)...))
+        end
     elseif @static isdefined(Core, :memoryref_isassigned) && f === Core.memoryref_isassigned
         if nargs == 3
             return Some{Any}(Core.memoryref_isassigned(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
@@ -285,6 +291,8 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(isdefined(getargs(args, frame)...))
         end
+    elseif f === isdefinedglobal
+        return Some{Any}(isdefinedglobal(getargs(args, frame)...))
     elseif f === modifyfield!
         if nargs == 4
             return Some{Any}(modifyfield!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
