@@ -163,7 +163,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(Core.ifelse(getargs(args, frame)...))
         end
-    elseif f === Core.memorynew
+    elseif @static isdefined(Core, :memorynew) && f === Core.memorynew
         if nargs == 2
             return Some{Any}(Core.memorynew(@lookup(frame, args[2]), @lookup(frame, args[3])))
         else
@@ -291,7 +291,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(isdefined(getargs(args, frame)...))
         end
-    elseif f === isdefinedglobal
+    elseif @static isdefined(Core, :isdefinedglobal) && f === isdefinedglobal
         return Some{Any}(isdefinedglobal(getargs(args, frame)...))
     elseif f === modifyfield!
         if nargs == 4
