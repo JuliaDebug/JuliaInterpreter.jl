@@ -2,7 +2,7 @@ isassign(frame::Frame) = isassign(frame, frame.pc)
 isassign(frame::Frame, pc::Int) = (pc in frame.framecode.used)
 
 lookup_var(frame::Frame, val::SSAValue) = frame.framedata.ssavalues[val.id]
-lookup_var(frame::Frame, ref::GlobalRef) = @invokelatest getfield(ref.mod, ref.name)
+lookup_var(frame::Frame, ref::GlobalRef) = invokelatest(getfield, ref.mod, ref.name)
 function lookup_var(frame::Frame, slot::SlotNumber)
     val = frame.framedata.locals[slot.id]
     val !== nothing && return val.value
@@ -31,7 +31,7 @@ macro lookup(args...)
     nodetmp = gensym(:node)  # used to hoist, e.g., args[4]
     if havemod
         fallback = quote
-            isa($nodetmp, Symbol) ? getfield($(esc(mod)), $nodetmp) :
+            isa($nodetmp, Symbol) ? invokelatest(getfield, $(esc(mod)), $nodetmp) :
             $nodetmp
         end
     else
@@ -45,7 +45,7 @@ macro lookup(args...)
         isa($nodetmp, GlobalRef) ? lookup_var($(esc(frame)), $nodetmp) :
         isa($nodetmp, SlotNumber) ? lookup_var($(esc(frame)), $nodetmp) :
         isa($nodetmp, QuoteNode) ? $nodetmp.value :
-        isa($nodetmp, Symbol) ? getfield(moduleof($(esc(frame))), $nodetmp) :
+        isa($nodetmp, Symbol) ? invokelatest(getfield, moduleof($(esc(frame))), $nodetmp) :
         isa($nodetmp, Expr) ? lookup_expr($(esc(frame)), $nodetmp) :
         $fallback
     end
@@ -90,7 +90,7 @@ function lookup_or_eval(@nospecialize(recurse), frame::Frame, @nospecialize(node
     elseif isa(node, GlobalRef)
         return lookup_var(frame, node)
     elseif isa(node, Symbol)
-        return getfield(moduleof(frame), node)
+        return invokelatest(getfield, moduleof(frame), node)
     elseif isa(node, QuoteNode)
         return node.value
     elseif isa(node, Expr)
@@ -111,7 +111,7 @@ function lookup_or_eval(@nospecialize(recurse), frame::Frame, @nospecialize(node
             elseif f === typeassert && length(ex.args) == 3
                 return typeassert(ex.args[2], ex.args[3])
             elseif f === Base.getproperty && length(ex.args) == 3
-                return Base.getproperty(ex.args[2], ex.args[3])
+                return invokelatest(Base.getproperty, ex.args[2], ex.args[3])
             elseif f === Core.Compiler.Val && length(ex.args) == 2
                 return Core.Compiler.Val(ex.args[2])
             elseif f === Val && length(ex.args) == 2
@@ -311,10 +311,16 @@ function evaluate_methoddef(frame::Frame, node::Expr)
     if f isa Symbol || f isa GlobalRef
         mod = f isa Symbol ? moduleof(frame) : f.mod
         name = f isa Symbol ? f : f.name
-        if Base.isbindingresolved(mod, name) && @invokelatest isdefined(mod, name)  # `isdefined` accesses the binding, making it impossible to create a new one
-            f = @invokelatest getfield(mod, name)
+        if isbindingresolved_deprecated
+            f = Core.eval(mod, Expr(:function, name))
         else
-            f = Core.eval(mod, Expr(:function, name))  # create a new function
+            # TODO: This logic isn't fully correct, but it's been used for a long
+            # time, so let's leave it for now.
+            if Base.isbindingresolved(mod, name) && @invokelatest isdefined(mod, name)  # `isdefined` accesses the binding, making it impossible to create a new one
+                f = @invokelatest getfield(mod, name)
+            else
+                f = Core.eval(mod, Expr(:function, name))  # create a new function
+            end
         end
     end
     length(node.args) == 1 && return f
@@ -563,7 +569,7 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
             # FIXME: undefine the slot?
         elseif istoplevel && isa(node, LineNumberNode)
         elseif istoplevel && isa(node, Symbol)
-            rhs = getfield(moduleof(frame), node)
+            rhs = invokelatest(getfield, moduleof(frame), node)
         elseif @static (isdefined(Core.IR, :EnterNode) && true) && isa(node, Core.IR.EnterNode)
             rhs = node.catch_dest
             push!(data.exception_frames, rhs)
