@@ -22,7 +22,7 @@ end
 _Typeof(x) = isa(x, Type) ? Type{x} : typeof(x)
 
 function to_function(@nospecialize(x))
-    isa(x, GlobalRef) ? getfield(x.mod, x.name) : x
+    isa(x, GlobalRef) ? invokelatest(getfield, x.mod, x.name) : x
 end
 
 """

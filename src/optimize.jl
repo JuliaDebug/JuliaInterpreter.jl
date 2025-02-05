@@ -23,10 +23,12 @@ function smallest_ref(stmts, arg, idmin)
     return idmin
 end
 
+const isbindingresolved_deprecated = which(Base.isbindingresolved, Tuple{Module, Symbol}).file == Symbol("deprecated.jl")
 function lookup_global_ref(a::GlobalRef)
-    if (Base.isbindingresolved(a.mod, a.name) &&
+    isbindingresolved_deprecated && return a
+    if Base.isbindingresolved(a.mod, a.name) &&
         (@invokelatest isdefined(a.mod, a.name)) &&
-        (@invokelatest isconst(a.mod, a.name)))
+        (@invokelatest isconst(a.mod, a.name))
         return QuoteNode(@invokelatest getfield(a.mod, a.name))
     end
     return a

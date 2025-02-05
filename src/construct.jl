@@ -479,8 +479,8 @@ function queuenext!(iter::ExprSplitter)
     if head === :module
         # Find or create the module
         newname = ex.args[2]::Symbol
-        if isdefined(mod, newname)
-            newmod = getfield(mod, newname)
+        if invokelatest(isdefined, mod, newname)
+            newmod = invokelatest(getfield, mod, newname)
             newmod isa Module || throw(ErrorException("invalid redefinition of constant $(newname)"))
             mod = newmod
         else
