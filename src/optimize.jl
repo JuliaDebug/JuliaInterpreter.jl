@@ -191,12 +191,20 @@ end
 # Handle :llvmcall & :foreigncall (issue #28)
 function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector{Symbol}, evalmod::Module)
     TVal = evalmod == Core.Compiler ? Core.Compiler.Val : Val
-    cfunc, RetType, ArgType = lookup_stmt(code.code, stmt.args[1]), stmt.args[2], stmt.args[3]::SimpleVector
+    cfuncarg = stmt.args[1]
+    while isa(cfuncarg, SSAValue)
+        cfuncarg = code.code[cfuncarg.id]
+    end
+    RetType, ArgType = stmt.args[2], stmt.args[3]::SimpleVector
 
     dynamic_ccall = false
     oldcfunc = nothing
-    if isa(cfunc, Expr) # specification by tuple, e.g., (:clock, "libc")
-        cfunc = something(static_eval(cfunc), cfunc)
+    if isa(cfuncarg, Expr) || isa(cfuncarg, GlobalRef) || isa(cfuncarg, Symbol) # specification by tuple, e.g., (:clock, "libc")
+        cfunc = something(static_eval(evalmod, cfuncarg), cfuncarg)
+    elseif isa(cfuncarg, QuoteNode)
+        cfunc = cfuncarg.value
+    else
+        cfunc = cfuncarg
     end
     if isa(cfunc, Symbol)
         cfunc = QuoteNode(cfunc)
