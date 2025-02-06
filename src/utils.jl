@@ -814,9 +814,9 @@ function Base.display_error(io::IO, er, frame::Frame)
     println(io)
 end
 
-function static_eval(ex)
+function static_eval(evalmod, ex)
     try
-        eval(ex)
+        Core.eval(evalmod, ex)
     catch
         nothing
     end
