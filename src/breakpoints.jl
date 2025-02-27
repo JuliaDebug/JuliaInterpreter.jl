@@ -97,12 +97,9 @@ function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointSignat
     meth isa Method || return false
     bp.f isa Method && return meth === bp.f
     f = extract_function_from_method(meth)
-    if !(bp.f === f || @static isdefined(Core, :kwcall) ?
-            f === Core.kwcall && let ftype = Base.unwrap_unionall(meth.sig).parameters[3] 
+    if !(bp.f === f || (f === Core.kwcall && let ftype = Base.unwrap_unionall(meth.sig).parameters[3]
                 !Base.has_free_typevars(ftype) && bp.f isa ftype
-            end :
-            Core.kwfunc(bp.f) === f
-        )
+            end))
         return false
     end
     bp.sig === nothing && return true
@@ -198,7 +195,7 @@ function shouldbreak(frame::Frame, pc::Int)
     isassigned(bps, pc) || return false
     bp = bps[pc]
     bp.isactive || return false
-    return Base.invokelatest(bp.condition, frame)::Bool
+    return invokelatest(bp.condition, frame)::Bool
 end
 
 function prepare_slotfunction(framecode::FrameCode, body::Union{Symbol,Expr})

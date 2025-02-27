@@ -226,8 +226,7 @@ function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
         if unwrap1 isa DataType
             param1 = Base.unwrap_unionall(unwrap1.parameters[1])
             if param1 isa DataType
-                is_kw = isdefined(Core, :kwcall) ? param1.name.name === Symbol("#kwcall") :
-                                                   endswith(String(param1.name.name), "#kw")
+                is_kw = param1.name.name === Symbol("#kwcall")
             end
         end
     end
@@ -255,13 +254,8 @@ function maybe_step_through_wrapper!(@nospecialize(recurse), frame::Frame)
 end
 maybe_step_through_wrapper!(frame::Frame) = maybe_step_through_wrapper!(finish_and_return!, frame)
 
-if isdefined(Core, :kwcall)
-    const kwhandler = Core.kwcall
-    const kwextrastep = 0
-else
-    const kwhandler = Core.kwfunc
-    const kwextrastep = 1
-end
+const kwhandler = Core.kwcall
+const kwextrastep = 0
 
 """
     frame = maybe_step_through_kwprep!(recurse, frame)

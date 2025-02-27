@@ -23,9 +23,13 @@ function smallest_ref(stmts, arg, idmin)
     return idmin
 end
 
+const isbindingresolved_deprecated = which(Base.isbindingresolved, Tuple{Module, Symbol}).file == Symbol("deprecated.jl")
 function lookup_global_ref(a::GlobalRef)
-    if Base.isbindingresolved(a.mod, a.name) && isdefined(a.mod, a.name) && isconst(a.mod, a.name)
-        return QuoteNode(getfield(a.mod, a.name))
+    isbindingresolved_deprecated && return a
+    if Base.isbindingresolved(a.mod, a.name) &&
+        (@invokelatest isdefined(a.mod, a.name)) &&
+        (@invokelatest isconst(a.mod, a.name))
+        return QuoteNode(@invokelatest getfield(a.mod, a.name))
     end
     return a
 end
@@ -114,12 +118,12 @@ function optimize!(code::CodeInfo, scope)
                 arg1 = stmt.args[1]
                 if (arg1 === :llvmcall || lookup_stmt(code.code, arg1) === Base.llvmcall) && isempty(sparams) && scope isa Method
                     # Call via `invokelatest` to avoid compiling it until we need it
-                    Base.invokelatest(build_compiled_llvmcall!, stmt, code, idx, evalmod)
+                    @invokelatest build_compiled_llvmcall!(stmt, code, idx, evalmod)
                     methodtables[idx] = Compiled()
                 end
             elseif stmt.head === :foreigncall && scope isa Method
                 # Call via `invokelatest` to avoid compiling it until we need it
-                Base.invokelatest(build_compiled_foreigncall!, stmt, code, sparams, evalmod)
+                @invokelatest build_compiled_foreigncall!(stmt, code, sparams, evalmod)
                 methodtables[idx] = Compiled()
             end
         end
@@ -187,12 +191,20 @@ end
 # Handle :llvmcall & :foreigncall (issue #28)
 function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector{Symbol}, evalmod::Module)
     TVal = evalmod == Core.Compiler ? Core.Compiler.Val : Val
-    cfunc, RetType, ArgType = lookup_stmt(code.code, stmt.args[1]), stmt.args[2], stmt.args[3]::SimpleVector
+    cfuncarg = stmt.args[1]
+    while isa(cfuncarg, SSAValue)
+        cfuncarg = code.code[cfuncarg.id]
+    end
+    RetType, ArgType = stmt.args[2], stmt.args[3]::SimpleVector
 
     dynamic_ccall = false
     oldcfunc = nothing
-    if isa(cfunc, Expr) # specification by tuple, e.g., (:clock, "libc")
-        cfunc = something(static_eval(cfunc), cfunc)
+    if isa(cfuncarg, Expr) || isa(cfuncarg, GlobalRef) || isa(cfuncarg, Symbol) # specification by tuple, e.g., (:clock, "libc")
+        cfunc = something(static_eval(evalmod, cfuncarg), cfuncarg)
+    elseif isa(cfuncarg, QuoteNode)
+        cfunc = cfuncarg.value
+    else
+        cfunc = cfuncarg
     end
     if isa(cfunc, Symbol)
         cfunc = QuoteNode(cfunc)
@@ -271,11 +283,7 @@ function replace_coretypes_list!(list::AbstractVector; rev::Bool=false)
             isa(x, Core.SSAValue) && return SSAValue(x.id)
             isa(x, Core.SlotNumber) && return SlotNumber(x.id)
             @static if VERSION < v"1.11.0-DEV.337"
-                @static if VERSION ≥ v"1.10.0-DEV.631"
-                    isa(x, Core.Compiler.TypedSlot) && return SlotNumber(x.id)
-                else
-                    isa(x, Core.TypedSlot) && return SlotNumber(x.id)
-                end
+            isa(x, Core.Compiler.TypedSlot) && return SlotNumber(x.id)
             end
             return x
         end

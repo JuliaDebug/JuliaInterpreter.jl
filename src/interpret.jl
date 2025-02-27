@@ -2,7 +2,7 @@ isassign(frame::Frame) = isassign(frame, frame.pc)
 isassign(frame::Frame, pc::Int) = (pc in frame.framecode.used)
 
 lookup_var(frame::Frame, val::SSAValue) = frame.framedata.ssavalues[val.id]
-lookup_var(frame::Frame, ref::GlobalRef) = getfield(ref.mod, ref.name)
+lookup_var(frame::Frame, ref::GlobalRef) = invokelatest(getfield, ref.mod, ref.name)
 function lookup_var(frame::Frame, slot::SlotNumber)
     val = frame.framedata.locals[slot.id]
     val !== nothing && return val.value
@@ -31,7 +31,7 @@ macro lookup(args...)
     nodetmp = gensym(:node)  # used to hoist, e.g., args[4]
     if havemod
         fallback = quote
-            isa($nodetmp, Symbol) ? getfield($(esc(mod)), $nodetmp) :
+            isa($nodetmp, Symbol) ? invokelatest(getfield, $(esc(mod)), $nodetmp) :
             $nodetmp
         end
     else
@@ -45,7 +45,7 @@ macro lookup(args...)
         isa($nodetmp, GlobalRef) ? lookup_var($(esc(frame)), $nodetmp) :
         isa($nodetmp, SlotNumber) ? lookup_var($(esc(frame)), $nodetmp) :
         isa($nodetmp, QuoteNode) ? $nodetmp.value :
-        isa($nodetmp, Symbol) ? getfield(moduleof($(esc(frame))), $nodetmp) :
+        isa($nodetmp, Symbol) ? invokelatest(getfield, moduleof($(esc(frame))), $nodetmp) :
         isa($nodetmp, Expr) ? lookup_expr($(esc(frame)), $nodetmp) :
         $fallback
     end
@@ -90,7 +90,7 @@ function lookup_or_eval(@nospecialize(recurse), frame::Frame, @nospecialize(node
     elseif isa(node, GlobalRef)
         return lookup_var(frame, node)
     elseif isa(node, Symbol)
-        return getfield(moduleof(frame), node)
+        return invokelatest(getfield, moduleof(frame), node)
     elseif isa(node, QuoteNode)
         return node.value
     elseif isa(node, Expr)
@@ -111,7 +111,7 @@ function lookup_or_eval(@nospecialize(recurse), frame::Frame, @nospecialize(node
             elseif f === typeassert && length(ex.args) == 3
                 return typeassert(ex.args[2], ex.args[3])
             elseif f === Base.getproperty && length(ex.args) == 3
-                return Base.getproperty(ex.args[2], ex.args[3])
+                return invokelatest(Base.getproperty, ex.args[2], ex.args[3])
             elseif f === Base.getindex && length(ex.args) >= 3
                 popfirst!(ex.args)
                 return Base.getindex(ex.args...)
@@ -120,7 +120,7 @@ function lookup_or_eval(@nospecialize(recurse), frame::Frame, @nospecialize(node
             elseif f === Val && length(ex.args) == 2
                 return Val(ex.args[2])
             else
-                Base.invokelatest(error, "unknown call f introduced by ccall lowering ", f)
+                @invokelatest error("unknown call f introduced by ccall lowering ", f)
             end
         else
             return lookup_expr(frame, ex)
@@ -150,7 +150,7 @@ function resolvefc(frame::Frame, @nospecialize(expr))
         (isa(a, QuoteNode) && a.value === Core.tuple) || error("unexpected ccall to ", expr)
         return Expr(:call, GlobalRef(Core, :tuple), (expr::Expr).args[2:end]...)
     end
-    Base.invokelatest(error, "unexpected ccall to ", expr)
+    @invokelatest error("unexpected ccall to ", expr)
 end
 
 function collect_args(@nospecialize(recurse), frame::Frame, call_expr::Expr; isfc::Bool=false)
@@ -187,8 +187,7 @@ function evaluate_foreigncall(@nospecialize(recurse), frame::Frame, call_expr::E
         sig = scope.sig
         args[2] = instantiate_type_in_env(args[2], sig, data.sparams)
         arg3 = args[3]
-        if (@static VERSION < v"1.7.0" && arg3 isa Core.SimpleVector) ||
-            head === :foreigncall
+        if head === :foreigncall
             args[3] = Core.svec(map(arg3) do arg
                 instantiate_type_in_env(arg, sig, data.sparams)
             end...)
@@ -212,11 +211,7 @@ function bypass_builtins(@nospecialize(recurse), frame::Frame, call_expr::Expr, 
             fmod = parentmodule(f)::Module
             if fmod === JuliaInterpreter.CompiledCalls || fmod === Core.Compiler
                 # Fixing https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/432.
-                @static if VERSION >= v"1.7.0"
-                    return Some{Any}(Base.invoke_in_world(get_world_counter(), f, fargs[2:end]...))
-                else
-                    return Some{Any}(Base.invokelatest(f, fargs[2:end]...))
-                end
+                return Some{Any}(Base.invoke_in_world(get_world_counter(), f, fargs[2:end]...))
             else
                 return Some{Any}(f(fargs[2:end]...))
             end
@@ -237,7 +232,7 @@ function native_call(fargs::Vector{Any}, frame::Frame)
             return Core.eval(moduleof(frame), ex)
         end
     end
-    return Base.invokelatest(f, fargs...)
+    return @invokelatest f(fargs...)
 end
 
 function evaluate_call_compiled!(::Compiled, frame::Frame, call_expr::Expr; enter_generated::Bool=false)
@@ -319,21 +314,23 @@ function evaluate_methoddef(frame::Frame, node::Expr)
     if f isa Symbol || f isa GlobalRef
         mod = f isa Symbol ? moduleof(frame) : f.mod
         name = f isa Symbol ? f : f.name
-        if Base.isbindingresolved(mod, name) && isdefined(mod, name)  # `isdefined` accesses the binding, making it impossible to create a new one
-            f = getfield(mod, name)
+        if isbindingresolved_deprecated
+            f = Core.eval(mod, Expr(:function, name))
         else
-            f = Core.eval(mod, Expr(:function, name))  # create a new function
+            # TODO: This logic isn't fully correct, but it's been used for a long
+            # time, so let's leave it for now.
+            if Base.isbindingresolved(mod, name) && @invokelatest isdefined(mod, name)  # `isdefined` accesses the binding, making it impossible to create a new one
+                f = @invokelatest getfield(mod, name)
+            else
+                f = Core.eval(mod, Expr(:function, name))  # create a new function
+            end
         end
     end
     length(node.args) == 1 && return f
     sig = @lookup(frame, node.args[2])::SimpleVector
     body = @lookup(frame, node.args[3])::Union{CodeInfo, Expr}
     # branching on https://github.com/JuliaLang/julia/pull/41137
-    @static if isdefined(Core.Compiler, :OverlayMethodTable)
-        ccall(:jl_method_def, Cvoid, (Any, Ptr{Cvoid}, Any, Any), sig, C_NULL, body, moduleof(frame)::Module)
-    else
-        ccall(:jl_method_def, Cvoid, (Any, Any, Any), sig, body, moduleof(frame)::Module)
-    end
+    ccall(:jl_method_def, Cvoid, (Any, Ptr{Cvoid}, Any, Any), sig, C_NULL, body, moduleof(frame)::Module)
     return f
 end
 
@@ -349,11 +346,7 @@ function do_assignment!(frame::Frame, @nospecialize(lhs), @nospecialize(rhs))
         mod = lhs isa Symbol ? moduleof(frame) : lhs.mod
         name = lhs isa Symbol ? lhs : lhs.name
         Core.eval(mod, Expr(:global, name))
-        @static if @isdefined setglobal!
-            setglobal!(mod, name, rhs)
-        else
-            ccall(:jl_set_global, Cvoid, (Any, Any, Any), mod, name, rhs)
-        end
+        setglobal!(mod, name, rhs)
     end
 end
 
@@ -464,7 +457,7 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
     #     @show node
     # end
     @assert is_leaf(frame)
-    @static VERSION >= v"1.8.0-DEV.370" && coverage_visit_line!(frame)
+    coverage_visit_line!(frame)
     local rhs
     # For debugging:
     # show_stackloc(frame)
@@ -553,6 +546,8 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
                     error("unexpected error statement ", node)
                 elseif node.head === :incomplete
                     error("incomplete statement ", node)
+                elseif node.head === :latestworld
+                    frame.world = Base.get_world_counter()
                 else
                     rhs = eval_rhs(recurse, frame, node)
                 end
@@ -577,7 +572,7 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
             # FIXME: undefine the slot?
         elseif istoplevel && isa(node, LineNumberNode)
         elseif istoplevel && isa(node, Symbol)
-            rhs = getfield(moduleof(frame), node)
+            rhs = invokelatest(getfield, moduleof(frame), node)
         elseif @static (isdefined(Core.IR, :EnterNode) && true) && isa(node, Core.IR.EnterNode)
             rhs = node.catch_dest
             push!(data.exception_frames, rhs)
@@ -670,7 +665,7 @@ e.g., [`JuliaInterpreter.finish!`](@ref)).
 """
 function get_return(frame)
     node = pc_expr(frame)
-    is_return(node) || Base.invokelatest(error, "expected return statement, got ", node)
+    is_return(node) || @invokelatest error("expected return statement, got ", node)
     return lookup_return(frame, node)
 end
 get_return(t::Tuple{Module,Expr,Frame}) = get_return(t[end])

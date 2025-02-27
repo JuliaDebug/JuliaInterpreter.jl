@@ -61,7 +61,7 @@ function get_call_framecode(fargs::Vector{Any}, parentframe::FrameCode, idx::Int
     # We haven't yet encountered this argtype combination and need to look it up by dispatch
     fargs[1] = f = to_function(fargs[1])
     ret = prepare_call(f, fargs; enter_generated=enter_generated)
-    ret === nothing && return f(fargs[2:end]...), nothing
+    ret === nothing && return invokelatest(f, fargs[2:end]...), nothing
     is_compiled = isa(ret[1], Compiled)
     local framecode
     if is_compiled

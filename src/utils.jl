@@ -22,7 +22,7 @@ end
 _Typeof(x) = isa(x, Type) ? Type{x} : typeof(x)
 
 function to_function(@nospecialize(x))
-    isa(x, GlobalRef) ? getfield(x.mod, x.name) : x
+    isa(x, GlobalRef) ? invokelatest(getfield, x.mod, x.name) : x
 end
 
 """
@@ -33,18 +33,11 @@ and doesn't throw when there is no matching method.
 """
 function whichtt(@nospecialize(tt))
     # TODO: provide explicit control over world age? In case we ever need to call "old" methods.
-    @static if VERSION ≥ v"1.8-beta2"
-        # branch on https://github.com/JuliaLang/julia/pull/44515
-        # for now, actual code execution doesn't ever need to consider overlayed method table
-        match, _ = Core.Compiler._findsup(tt, nothing, get_world_counter())
-        match === nothing && return nothing
-        return match.method
-    else
-        m = ccall(:jl_gf_invoke_lookup, Any, (Any, Csize_t), tt, get_world_counter())
-        m === nothing && return nothing
-        isa(m, Method) && return m
-        return m.func::Method
-    end
+    # branch on https://github.com/JuliaLang/julia/pull/44515
+    # for now, actual code execution doesn't ever need to consider overlayed method table
+    match, _ = Core.Compiler._findsup(tt, nothing, get_world_counter())
+    match === nothing && return nothing
+    return match.method
 end
 
 instantiate_type_in_env(arg, spsig::UnionAll, spvals::Vector{Any}) =
@@ -210,11 +203,7 @@ end
 
 is_generated(meth::Method) = isdefined(meth, :generator)
 
-@static if VERSION < v"1.10.0-DEV.873"  # julia#48766
-    get_staged(mi::MethodInstance) = Core.Compiler.get_staged(mi)
-else
-    get_staged(mi::MethodInstance) = Core.Compiler.get_staged(mi, Base.get_world_counter())
-end
+get_staged(mi::MethodInstance) = Core.Compiler.get_staged(mi, Base.get_world_counter())
 
 """
     is_doc_expr(ex)
@@ -239,20 +228,7 @@ end
 
 is_leaf(frame::Frame) = frame.callee === nothing
 
-function is_vararg_type(x)
-    @static if isa(Vararg, Type)
-        if isa(x, Type)
-            (x <: Vararg && !(x <: Union{})) && return true
-            if isa(x, UnionAll)
-                x = Base.unwrap_unionall(x)
-            end
-            return isa(x, DataType) && nameof(x) === :Vararg
-        end
-    else
-        return isa(x, typeof(Vararg))
-    end
-    return false
-end
+is_vararg_type(@nospecialize x) = x isa Core.TypeofVararg
 
 ## Location info
 
@@ -524,26 +500,24 @@ end
 
 function framecode_lines(src::CodeInfo)
     buf = IOBuffer()
-    if isdefined(Base.IRShow, :show_ir_stmt)
-        lines = String[]
-        src = replace_coretypes!(copy(src); rev=true)
-        reverse_lookup_globalref!(src.code)
-        io = IOContext(buf, :displaysize => displaysize(stdout),
-                       :SOURCE_SLOTNAMES => Base.sourceinfo_slotnames(src))
-        used = BitSet()
-        cfg = Core.Compiler.compute_basic_blocks(src.code)
-        for stmt in src.code
-            Core.Compiler.scan_ssa_use!(push!, used, stmt)
-        end
-        line_info_preprinter = Base.IRShow.lineinfo_disabled
-        line_info_postprinter = Base.IRShow.default_expr_type_printer
-        bb_idx = 1
-        for idx = 1:length(src.code)
-            bb_idx = Base.IRShow.show_ir_stmt(io, src, idx, line_info_preprinter, line_info_postprinter, used, cfg, bb_idx)
-            push!(lines, chomp(String(take!(buf))))
-        end
-        return lines
+    lines = String[]
+    src = replace_coretypes!(copy(src); rev=true)
+    reverse_lookup_globalref!(src.code)
+    io = IOContext(buf, :displaysize => displaysize(stdout),
+                    :SOURCE_SLOTNAMES => Base.sourceinfo_slotnames(src))
+    used = BitSet()
+    cfg = Core.Compiler.compute_basic_blocks(src.code)
+    for stmt in src.code
+        Core.Compiler.scan_ssa_use!(push!, used, stmt)
     end
+    line_info_preprinter = Base.IRShow.lineinfo_disabled
+    line_info_postprinter = Base.IRShow.default_expr_type_printer
+    bb_idx = 1
+    for idx = 1:length(src.code)
+        bb_idx = Base.IRShow.show_ir_stmt(io, src, idx, line_info_preprinter, line_info_postprinter, used, cfg, bb_idx)
+        push!(lines, chomp(String(take!(buf))))
+    end
+    return lines
     show(buf, src)
     code = filter!(split(String(take!(buf)), '\n')) do line
         !(line == "CodeInfo(" || line == ")" || isempty(line) || occursin("within `", line))
@@ -829,12 +803,8 @@ function Base.show_backtrace(io::IO, frame::Frame)
     nd = ndigits(length(stackframes))
     for (i, (last_frame, n)) in enumerate(stackframes)
         frame_counter += 1
-        if isdefined(Base, :print_stackframe)
-            println(io)
-            Base.print_stackframe(io, i, last_frame, n, nd, Base.info_color())
-        else
-            Base.show_trace_entry(IOContext(io, :backtrace => true), last_frame, n, prefix = string(" [", frame_counter, "] "))
-        end
+        println(io)
+        Base.print_stackframe(io, i, last_frame, n, nd, Base.info_color())
     end
 end
 
@@ -844,9 +814,9 @@ function Base.display_error(io::IO, er, frame::Frame)
     println(io)
 end
 
-function static_eval(ex)
+function static_eval(evalmod, ex)
     try
-        eval(ex)
+        Core.eval(evalmod, ex)
     catch
         nothing
     end

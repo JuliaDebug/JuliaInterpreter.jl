@@ -31,14 +31,8 @@ end
 
 ## For running interpreter frames under resource limitations
 
-if isdefined(Base.IRShow, :LineInfoNode)
 struct Aborted    # for signaling that some statement or test blocks were interrupted
     at::Base.IRShow.LineInfoNode
-end
-else
-struct Aborted    # for signaling that some statement or test blocks were interrupted
-    at::Core.LineInfoNode
-end
 end
 
 function Aborted(frame::Frame, pc)

@@ -14,13 +14,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - version: '1.6' # old LTS
+          - version: '1' # current stable
             os: ubuntu-latest
             arch: x64
-          - version: '1.10' # current stable
+          - version: '1.10' # lowest version supported
             os: ubuntu-latest
             arch: x64
-          - version: '~1.11.0-0' # next release
+          - version: '1.12-nightly' # next release
             os: ubuntu-latest
             arch: x64
           - version: 'nightly' # dev
@@ -59,6 +59,6 @@ jobs:
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
       - uses: julia-actions/julia-processcoverage@v1
-      - uses: codecov/codecov-action@v4
+      - uses: codecov/codecov-action@v5
         with:
           file: lcov.info

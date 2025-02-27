@@ -195,11 +195,7 @@ struct Squarer end
     # Breakpoint display
     io = IOBuffer()
     frame = JuliaInterpreter.enter_call(loop_radius2, 2)
-    @static if VERSION < v"1.9.0-DEV.846" # https://github.com/JuliaLang/julia/pull/45069
-        LOC = " in $(@__MODULE__) at $(@__FILE__)"
-    else
-        LOC = " @ $(@__MODULE__) $(contractuser(@__FILE__))"
-    end
+    LOC = " @ $(@__MODULE__) $(contractuser(@__FILE__))"
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 1)
     @test repr(bp) == "breakpoint(loop_radius2(n)$LOC:$(3-Δ), line 3)"
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 0)  # fictive breakpoint
