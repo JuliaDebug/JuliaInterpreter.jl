@@ -514,7 +514,15 @@ function framecode_lines(src::CodeInfo)
     line_info_postprinter = Base.IRShow.default_expr_type_printer
     bb_idx = 1
     for idx = 1:length(src.code)
-        bb_idx = Base.IRShow.show_ir_stmt(io, src, idx, line_info_preprinter, line_info_postprinter, used, cfg, bb_idx)
+        @static if VERSION >= v"1.12.0-DEV.1359"
+            parent = src.parent
+            sptypes = if parent isa MethodInstance
+                Core.Compiler.sptypes_from_meth_instance(parent)
+            else Core.Compiler.EMPTY_SPTYPES end
+            bb_idx = Base.IRShow.show_ir_stmt(io, src, idx, line_info_preprinter, line_info_postprinter, sptypes, used, cfg, bb_idx)
+        else
+            bb_idx = Base.IRShow.show_ir_stmt(io, src, idx, line_info_preprinter, line_info_postprinter, used, cfg, bb_idx)
+        end
         push!(lines, chomp(String(take!(buf))))
     end
     return lines
