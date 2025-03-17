@@ -25,9 +25,29 @@ const RECENTLY_ADDED = Core.Builtin[
 ]
 # Builtins present from 1.10, not builtins (potentially still normal functions) anymore
 const RECENTLY_REMOVED = GlobalRef.(Ref(Core), [
-    :arrayref, :arrayset, :arrayset, :const_arrayref, :memoryref, :set_binding_type!
+    :arrayref, :arrayset, :arrayset, :const_arrayref, :memoryref, :set_binding_type!,
+    :_apply_pure, :_call_in_world, :_call_latest,
 ])
 const kwinvoke = Core.kwfunc(Core.invoke)
+const REQUIRES_WORLD = Core.Builtin[
+    setglobal!,
+    Core.get_binding_type,
+    swapglobal!,
+    modifyglobal!,
+    replaceglobal!,
+    setglobalonce!,
+]
+const CALL_LATEST = """args = getargs(args, frame)
+        if !expand
+            return Some{Any}(Core._call_latest(args...))
+        end
+        new_expr = Expr(:call, args[1])
+        popfirst!(args)
+        for x in args
+            push!(new_expr.args, QuoteNode(x))
+        end
+        return maybe_recurse_expanded_builtin(frame, new_expr)
+"""
 
 function scopedname(f)
     io = IOBuffer()
@@ -57,7 +77,7 @@ function nargs(f, table, id)
     return minarg, maxarg
 end
 
-function generate_fcall_nargs(fname, minarg, maxarg)
+function generate_fcall_nargs(fname, minarg, maxarg; requires_world::Bool=false)
     # Generate a separate call for each number of arguments
     maxarg < typemax(Int) || error("call this only for constrained number of arguments")
     annotation = fname == "fieldtype" ? "::Type" : ""
@@ -71,13 +91,19 @@ function generate_fcall_nargs(fname, minarg, maxarg)
                 argcall *= ", "
             end
         end
-        wrapper *= "return Some{Any}($fname($argcall)$annotation)"
+        wrapper *= requires_world ? "return Some{Any}(Base.invoke_in_world(frame.world, $fname, $argcall)$annotation)" :
+                                    "return Some{Any}($fname($argcall)$annotation)"
         if nargs < maxarg
             wrapper *= "\n        elseif nargs == "
         end
     end
     wrapper *= "\n        else"
-    wrapper *= "\n            return Some{Any}($fname(getargs(args, frame)...)$annotation)"  # to throw the correct error
+    # To throw the correct error
+    if requires_world
+        wrapper *= "\n            return Some{Any}(Base.invoke_in_world(frame.world, $fname, getargs(args, frame)...)$annotation)"
+    else
+        wrapper *= "\n            return Some{Any}($fname(getargs(args, frame)...)$annotation)"
+    end
     wrapper *= "\n        end"
     return wrapper
 end
@@ -85,11 +111,15 @@ end
 function generate_fcall(f, table, id)
     minarg, maxarg = nargs(f, table, id)
     fname = scopedname(f)
+    requires_world = f ∈ REQUIRES_WORLD
     if maxarg < typemax(Int)
-        return generate_fcall_nargs(fname, minarg, maxarg)
+        return generate_fcall_nargs(fname, minarg, maxarg; requires_world)
     end
     # A built-in with arbitrary or unknown number of arguments.
     # This will (unfortunately) use dynamic dispatch.
+    if requires_world
+        return "return Some{Any}(Base.invoke_in_world(frame.world, $fname, getargs(args, frame)...))"
+    end
     return "return Some{Any}($fname(getargs(args, frame)...))"
 end
 
@@ -212,22 +242,6 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         return Expr(:call, invoke, args[2:end]...)
 """)
             continue
-        elseif f === Core._call_latest
-            print(io,
-"""
-    elseif f === Core._call_latest
-        args = getargs(args, frame)
-        if !expand
-            return Some{Any}(Core._call_latest(args...))
-        end
-        new_expr = Expr(:call, args[1])
-        popfirst!(args)
-        for x in args
-            push!(new_expr.args, QuoteNode(x))
-        end
-        return maybe_recurse_expanded_builtin(frame, new_expr)
-""")
-            continue
         elseif f === Core.current_scope
             print(io,
 """
@@ -294,9 +308,14 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         elseif name === :set_binding_type!
             minarg = 2
             maxarg = 3
+        elseif name in (:_apply_pure, :_call_in_world, :_call_latest)
+            minarg = 0
+            maxarg = typemax(Int)
         end
         _scopedname = "$mod.$name"
-        fcall = generate_fcall_nargs(_scopedname, minarg, maxarg)
+        fcall = name === :_call_latest ? CALL_LATEST :
+                maxarg < typemax(Int) ? generate_fcall_nargs(_scopedname, minarg, maxarg) :
+                                        "return Some{Any}($_scopedname(getargs(args, frame)...))"
         rname = repr(name)
         print(io,
 """
