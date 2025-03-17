@@ -22,6 +22,10 @@ const RECENTLY_ADDED = Core.Builtin[
     setfieldonce!,
     setglobalonce!,
     swapglobal!,
+    Core._defaultctors,
+    # Recently became builtins
+    Base.invokelatest,
+    Base.invoke_in_world,
 ]
 # Builtins present from 1.10, not builtins (potentially still normal functions) anymore
 const RECENTLY_REMOVED = GlobalRef.(Ref(Core), [
