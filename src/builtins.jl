@@ -86,7 +86,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         return Some{Any}(Core._call_in_world_total(getargs(args, frame)...))
     elseif f === Core._compute_sparams
         return Some{Any}(Core._compute_sparams(getargs(args, frame)...))
-    elseif f === Core._defaultctors
+    elseif @static isdefined(Core, :_defaultctors) && f === Core._defaultctors
         return Some{Any}(Core._defaultctors(getargs(args, frame)...))
     elseif f === Core._equiv_typedef
         return Some{Any}(Core._equiv_typedef(getargs(args, frame)...))
@@ -150,9 +150,9 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(Core.ifelse(getargs(args, frame)...))
         end
-    elseif f === Core.invoke_in_world
+    elseif @static isdefined(Core, :invoke_in_world) && f === Core.invoke_in_world
         return Some{Any}(Core.invoke_in_world(getargs(args, frame)...))
-    elseif f === Core.invokelatest
+    elseif @static isdefined(Core, :invokelatest) && f === Core.invokelatest
         return Some{Any}(Core.invokelatest(getargs(args, frame)...))
     elseif @static isdefined(Core, :memorynew) && f === Core.memorynew
         if nargs == 2
