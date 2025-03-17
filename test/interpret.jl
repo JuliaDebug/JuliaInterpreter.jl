@@ -142,6 +142,19 @@ JuliaInterpreter.finish_and_return!(frame, true)
 
 @test @interpret Base.Math.DoubleFloat64(-0.5707963267948967, 4.9789962508669555e-17).hi ≈ -0.5707963267948967
 
+# assignment (issue #662)
+ex = quote
+    assignedvar = 33
+    return assignedvar + 1
+end
+frame = Frame(Main, ex)
+ret = try
+    JuliaInterpreter.finish_and_return!(frame, true)
+catch
+    catch_backtrace()
+end
+@test ret == 34
+
 # ccall with cfunction
 fcfun(x::Int, y::Int) = 1
 ex = quote   # in lowered code, cf is a Symbol

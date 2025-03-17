@@ -355,11 +355,11 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         end
     elseif f === setglobal!
         if nargs == 3
-            return Some{Any}(setglobal!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(Base.invoke_in_world(frame.world, setglobal!, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(setglobal!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(Base.invoke_in_world(frame.world, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
         else
-            return Some{Any}(setglobal!(getargs(args, frame)...))
+            return Some{Any}(Base.invoke_in_world(frame.world, getargs(args, frame)...))
         end
     elseif @static isdefined(Core, :setglobalonce!) && f === setglobalonce!
         if nargs == 3
