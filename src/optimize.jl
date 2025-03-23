@@ -7,6 +7,21 @@ function lookup_stmt(stmts::Vector{Any}, @nospecialize arg)
     end
     if isa(arg, QuoteNode)
         return arg.value
+    elseif isexpr(arg, :call, 3) && is_global_ref(arg.args[1], Base, :getproperty)
+        # Starting with Julia 1.12, llvmcall looks like this:
+        # julia> src.code[1:3]
+        # 3-element Vector{Any}:
+        #  :(TheModule.Core)                          # GlobalRef
+        #  :(Base.getproperty(%1, :Intrinsics))
+        #  :(Base.getproperty(%2, :llvmcall))
+        q = arg.args[3]
+        if isa(q, QuoteNode) && isa(q.value, Symbol)
+            mod = lookup_stmt(stmts, arg.args[2])
+            if isa(mod, GlobalRef)
+                mod = getproperty(mod.mod, mod.name)
+            end
+            isa(mod, Module) && return getproperty(mod, q.value)
+        end
     end
     return arg
 end
@@ -116,7 +131,8 @@ function optimize!(code::CodeInfo, scope)
             if stmt.head === :call
                 # Check for :llvmcall
                 arg1 = stmt.args[1]
-                if (arg1 === :llvmcall || lookup_stmt(code.code, arg1) === Base.llvmcall) && isempty(sparams) && scope isa Method
+                larg1 = lookup_stmt(code.code, arg1)
+                if (arg1 === :llvmcall || larg1 === Base.llvmcall || is_global_ref(larg1, Base, :llvmcall)) && isempty(sparams) && scope isa Method
                     # Call via `invokelatest` to avoid compiling it until we need it
                     @invokelatest build_compiled_llvmcall!(stmt, code, idx, evalmod)
                     methodtables[idx] = Compiled()
@@ -193,7 +209,7 @@ function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector
     TVal = evalmod == Core.Compiler ? Core.Compiler.Val : Val
     cfuncarg = stmt.args[1]
     while isa(cfuncarg, SSAValue)
-        cfuncarg = code.code[cfuncarg.id]
+        cfuncarg = lookup_stmt(code.code, cfuncarg)
     end
     RetType, ArgType = stmt.args[2], stmt.args[3]::SimpleVector
 

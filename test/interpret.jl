@@ -258,7 +258,7 @@ end
 
 # llvmcall
 function add1234(x::Tuple{Int32,Int32,Int32,Int32})
-    Base.llvmcall("""%3 = extractvalue [4 x i32] %0, 0
+    Core.Intrinsics.llvmcall("""%3 = extractvalue [4 x i32] %0, 0
       %4 = extractvalue [4 x i32] %0, 1
       %5 = extractvalue [4 x i32] %0, 2
       %6 = extractvalue [4 x i32] %0, 3
