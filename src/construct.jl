@@ -236,7 +236,8 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
     if f isa Core.OpaqueClosure
         method = f.source
         # don't try to interpret optimized ir
-        if Base.uncompressed_ir(method).inferred
+        src = Base.uncompressed_ir(method)
+        if hasfield(CodeInfo, :inferred) && src.inferred   # xref https://github.com/JuliaLang/julia/pull/53219
             @debug "not interpreting opaque closure $f since it contains inferred code"
             return nothing
         end
