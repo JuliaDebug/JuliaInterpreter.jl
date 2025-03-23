@@ -181,6 +181,9 @@ function evaluate_foreigncall(@nospecialize(recurse), frame::Frame, call_expr::E
         args[i] = isa(arg, Symbol) ? QuoteNode(arg) : arg
     end
     head === :cfunction && (args[2] = QuoteNode(args[2]))
+    if head === :foreigncall && !isa(args[5], QuoteNode)
+        args[5] = QuoteNode(args[5])
+    end
     scope = frame.framecode.scope
     data = frame.framedata
     if !isempty(data.sparams) && scope isa Method

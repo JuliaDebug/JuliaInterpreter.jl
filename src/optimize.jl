@@ -131,7 +131,8 @@ function optimize!(code::CodeInfo, scope)
             if stmt.head === :call
                 # Check for :llvmcall
                 arg1 = stmt.args[1]
-                if (arg1 === :llvmcall || lookup_stmt(code.code, arg1) === Base.llvmcall) && isempty(sparams) && scope isa Method
+                larg1 = lookup_stmt(code.code, arg1)
+                if (arg1 === :llvmcall || larg1 === Base.llvmcall || is_global_ref(larg1, Base, :llvmcall)) && isempty(sparams) && scope isa Method
                     # Call via `invokelatest` to avoid compiling it until we need it
                     @invokelatest build_compiled_llvmcall!(stmt, code, idx, evalmod)
                     methodtables[idx] = Compiled()
