@@ -256,6 +256,7 @@ maybe_step_through_wrapper!(frame::Frame) = maybe_step_through_wrapper!(finish_a
 
 const kwhandler = Core.kwcall
 const kwextrastep = 0
+const kw_has_f_first = VERSION.major == 1 && VERSION.minor == 11
 
 """
     frame = maybe_step_through_kwprep!(recurse, frame)
@@ -275,6 +276,9 @@ function maybe_step_through_kwprep!(@nospecialize(recurse), frame::Frame, istopl
     stmt = pc_expr(frame, pc)
     if isbindingresolved_deprecated && !isa(stmt, Tuple{Symbol,Vararg{Symbol}}) && !is_empty_namedtuple(stmt) && n >= pc+1
         pc += 1
+        stmt = pc_expr(frame, pc)
+    elseif kw_has_f_first && pc < n && is_empty_namedtuple(pc_expr(frame, pc+1)) && isa(stmt, QuoteNode)
+        pc = step_expr!(recurse, frame, istoplevel)
         stmt = pc_expr(frame, pc)
     end
     if isa(stmt, Tuple{Symbol,Vararg{Symbol}})
