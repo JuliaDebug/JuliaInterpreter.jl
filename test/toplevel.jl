@@ -82,15 +82,15 @@ end
         end
         @eval using TmpPkg1
         # Every package is technically parented in Main but the name may not be visible in Main
-        @test isdefined(@__MODULE__, :TmpPkg1)
-        @test !isdefined(@__MODULE__, :TmpPkg2)
+        @test @eval isdefined(@__MODULE__, :TmpPkg1)
+        @test @eval !isdefined(@__MODULE__, :TmpPkg2)
         collect(ExprSplitter(@__MODULE__, quote
                 module TmpPkg2
                 f() = 2
                 end
             end))
-        @test isdefined(@__MODULE__, :TmpPkg1)
-        @test !isdefined(@__MODULE__, :TmpPkg2)
+        @test @eval isdefined(@__MODULE__, :TmpPkg1)
+        @test @eval !isdefined(@__MODULE__, :TmpPkg2)
     end
 
     # Revise issue #718
@@ -119,7 +119,7 @@ module Toplevel end
     for (mod, ex) in modexs
         frame = Frame(mod, ex)
         while true
-            JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
+            invokelatest(JuliaInterpreter.through_methoddef_or_done!, frame) === nothing && break
         end
     end
 
