@@ -152,8 +152,6 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         end
     elseif @static isdefined(Core, :invoke_in_world) && f === Core.invoke_in_world
         return Some{Any}(Core.invoke_in_world(getargs(args, frame)...))
-    elseif @static isdefined(Core, :invokelatest) && f === Core.invokelatest
-        return Some{Any}(Core.invokelatest(getargs(args, frame)...))
     elseif @static isdefined(Core, :memorynew) && f === Core.memorynew
         if nargs == 2
             return Some{Any}(Core.memorynew(@lookup(frame, args[2]), @lookup(frame, args[3])))
@@ -268,6 +266,18 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         # This uses the original arguments to avoid looking them up twice
         # See #442
         return Expr(:call, invoke, args[2:end]...)
+    elseif @static isdefined(Core, :invokelatest) && f === Core.invokelatest
+        args = getargs(args, frame)
+        if !expand
+            return Some{Any}(Core.invokelatest(args...))
+        end
+        new_expr = Expr(:call, args[1])
+        popfirst!(args)
+        for x in args
+            push!(new_expr.args, QuoteNode(x))
+        end
+        return maybe_recurse_expanded_builtin(frame, new_expr)
+
     elseif f === isa
         if nargs == 2
             return Some{Any}(isa(@lookup(frame, args[2]), @lookup(frame, args[3])))
