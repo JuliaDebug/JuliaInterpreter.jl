@@ -266,6 +266,9 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         id = findfirst(isequal(f), Core.Compiler.T_FFUNC_KEY)
         fcall = generate_fcall(f, Core.Compiler.T_FFUNC_VAL, id)
         if f in RECENTLY_ADDED
+            if f === Core.invokelatest
+                fcall = replace(CALL_LATEST, "_call_latest" => "invokelatest")
+            end
             print(io,
 """
     $head @static isdefined($(ft.name.module), $(repr(nameof(f)))) && f === $fname
