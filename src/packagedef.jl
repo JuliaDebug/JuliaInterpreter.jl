@@ -28,6 +28,8 @@ else
     const Scope = Any
 end
 
+const isbindingresolved_deprecated = which(Base.isbindingresolved, Tuple{Module, Symbol}).file == Symbol("deprecated.jl")
+
 include("types.jl")
 include("utils.jl")
 include("construct.jl")

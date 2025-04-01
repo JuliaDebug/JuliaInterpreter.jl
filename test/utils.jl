@@ -6,6 +6,12 @@ using JuliaInterpreter: finish_and_return!, evaluate_call!, step_expr!, shouldbr
 using Base.Meta: isexpr
 using Test, Random, SHA
 
+@static if JuliaInterpreter.isbindingresolved_deprecated
+    is_getproperty(stmt) = JuliaInterpreter.is_global_ref(stmt, Base, :getproperty)
+else
+    is_getproperty(stmt) = JuliaInterpreter.is_quotenode_egal(stmt, Base.getproperty)
+end
+
 function stacklength(frame)
     n = 1
     frame = frame.callee
