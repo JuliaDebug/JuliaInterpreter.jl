@@ -88,10 +88,18 @@ end
 
 get_source(meth::Method) = Base.uncompressed_ast(meth)
 
-function get_source(g::GeneratedFunctionStub, env, file, line::Int)
-    b = g(Base.get_world_counter(), LineNumberNode(line, file), env..., g.argnames...)
-    b isa CodeInfo && return b
-    return eval(b)
+@static if VERSION < v"1.12.0-DEV.1968"   # julia #57230
+    function get_source(g::GeneratedFunctionStub, env, file, line::Int)
+        b = g(Base.get_world_counter(), LineNumberNode(line, file), env..., g.argnames...)
+        b isa CodeInfo && return b
+        return eval(b)
+    end
+else
+    function get_source(g::GeneratedFunctionStub, source::Method, env)
+        b = g(Base.get_world_counter(), source, env..., g.argnames...)
+        b isa CodeInfo && return b
+        return eval(b)
+    end
 end
 
 """
@@ -151,7 +159,11 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
             generator = false
         else
             if is_generated(method)
-                code = get_source(method.generator, lenv, method.file, Int(method.line))
+                code = @static if VERSION < v"1.12.0-DEV.1968"     # julia #57230
+                    get_source(method.generator, lenv, method.file, Int(method.line))
+                else
+                    get_source(method.generator, method, lenv)
+                end
                 generator = true
             else
                 code = get_source(method)
