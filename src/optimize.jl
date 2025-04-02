@@ -18,9 +18,9 @@ function lookup_stmt(stmts::Vector{Any}, @nospecialize arg)
         if isa(q, QuoteNode) && isa(q.value, Symbol)
             mod = lookup_stmt(stmts, arg.args[2])
             if isa(mod, GlobalRef)
-                mod = getproperty(mod.mod, mod.name)
+                mod = @invokelatest getglobal(mod.mod, mod.name)
             end
-            isa(mod, Module) && return getproperty(mod, q.value)
+            isa(mod, Module) && return @invokelatest getglobal(mod, q.value)
         end
     end
     return arg
