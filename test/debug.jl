@@ -81,7 +81,7 @@ end
                 oframe = frame = enter_call(func, args...; kwargs...)
                 frame = JuliaInterpreter.maybe_step_through_kwprep!(frame, false)
                 frame = JuliaInterpreter.maybe_step_through_wrapper!(frame)
-                @test JuliaInterpreter.hasarg(JuliaInterpreter.isidentical(QuoteNode(==)), frame.framecode.src.code)
+                @test JuliaInterpreter.hasarg(JuliaInterpreter.isidentical(QuoteNode(==)), frame.framecode.src.code) || JuliaInterpreter.hasarg(JuliaInterpreter.isidentical(GlobalRef(@__MODULE__, :(==))), frame.framecode.src.code)
                 f, pc = debug_command(frame, :n)
                 @test f === frame
                 @test isa(pc, Int)
@@ -426,10 +426,13 @@ end
 
         frame = JuliaInterpreter.enter_call(sort, a)
         frame = stepkw!(frame)
-        @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1 broken=VERSION≥v"1.11-"
+        @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1
 
         frame, pc = debug_command(frame, :s)
         frame, pc = debug_command(frame, :se)  # get past copymutable
+        if JuliaInterpreter.isbindingresolved_deprecated
+            frame, pc = debug_command(frame, :se)  # there's an extra line for the GlobalRef
+        end
         frame = stepkw!(frame)
         @test frame.pc > 4
 
@@ -437,6 +440,9 @@ end
         frame, pc = debug_command(frame, :se)
         frame, pc = debug_command(frame, :s)
         frame, pc = debug_command(frame, :se)  # get past copymutable
+        if JuliaInterpreter.isbindingresolved_deprecated
+            frame, pc = debug_command(frame, :se)  # there's an extra line for the GlobalRef
+        end
         frame = stepkw!(frame)
         @test frame.pc == JuliaInterpreter.nstatements(frame.framecode) - 1
     end

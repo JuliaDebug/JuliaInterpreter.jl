@@ -168,7 +168,7 @@ is_call_or_return(@nospecialize(node)) = is_call(node) || node isa ReturnNode
 is_dummy(bpref::BreakpointRef) = bpref.stmtidx == 0 && bpref.err === nothing
 
 function unpack_splatcall(stmt)
-    if isexpr(stmt, :call) && length(stmt.args) >= 3 && is_quotenode_egal(stmt.args[1], Core._apply_iterate)
+    if isexpr(stmt, :call) && length(stmt.args) >= 3 && (is_quotenode_egal(stmt.args[1], Core._apply_iterate) || is_global_ref(stmt.args[1], Core, :_apply_iterate))
         return true, stmt.args[3]
     end
     return false, nothing
@@ -184,6 +184,8 @@ end
 function is_bodyfunc(@nospecialize(arg))
     if isa(arg, QuoteNode)
         arg = arg.value
+    elseif isa(arg, GlobalRef)
+        arg = getproperty(arg.mod, arg.name)
     end
     if isa(arg, Function)
         fname = String((typeof(arg).name::Core.TypeName).name)

@@ -256,6 +256,7 @@ maybe_step_through_wrapper!(frame::Frame) = maybe_step_through_wrapper!(finish_a
 
 const kwhandler = Core.kwcall
 const kwextrastep = 0
+const kw_has_f_first = VERSION.major == 1 && VERSION.minor == 11
 
 """
     frame = maybe_step_through_kwprep!(recurse, frame)
@@ -273,21 +274,29 @@ function maybe_step_through_kwprep!(@nospecialize(recurse), frame::Frame, istopl
     pc, src = frame.pc, frame.framecode.src
     n = length(src.code)
     stmt = pc_expr(frame, pc)
+    if isbindingresolved_deprecated && !isa(stmt, Tuple{Symbol,Vararg{Symbol}}) && !is_empty_namedtuple(stmt) && n >= pc+1
+        pc += 1
+        stmt = pc_expr(frame, pc)
+    elseif kw_has_f_first && pc < n && is_empty_namedtuple(pc_expr(frame, pc+1)) && isa(stmt, QuoteNode)
+        pc = step_expr!(recurse, frame, istoplevel)
+        stmt = pc_expr(frame, pc)
+    end
     if isa(stmt, Tuple{Symbol,Vararg{Symbol}})
         # Check to see if we're creating a NamedTuple followed by kwfunc call
-        pccall = pc + 4 + kwextrastep
+        pccall = pc + 4 + kwextrastep + isbindingresolved_deprecated
         if pccall <= n
             stmt1 = src.code[pc+1]
             # We deliberately check isexpr(stmt, :call) rather than is_call(stmt): if it's
             # assigned to a local, it's *not* kwarg preparation.
-            if isexpr(stmt1, :call) && is_quotenode_egal(stmt1.args[1], Core.apply_type) && is_quoted_type(stmt1.args[2], :NamedTuple)
-                stmt4, stmt5 = src.code[pc+4], src.code[pc+5]
-                if isexpr(stmt4, :call) && is_quotenode_egal(stmt4.args[1], kwhandler)
+            if isexpr(stmt1, :call) && ((is_quotenode_egal(stmt1.args[1], Core.apply_type) && is_quoted_type(stmt1.args[2], :NamedTuple)) ||
+                                        (is_global_ref(stmt1.args[1], Core, :apply_type) && is_global_ref(stmt1.args[2], Core, :NamedTuple)))
+                stmt4, stmt5 = src.code[pc+4+isbindingresolved_deprecated], src.code[pc+5+isbindingresolved_deprecated]
+                if isexpr(stmt4, :call) && (is_quotenode_egal(stmt4.args[1], kwhandler) || is_global_ref(stmt4.args[1], Core, :kwcall))
                     while pc < pccall
                         pc = step_expr!(recurse, frame, istoplevel)
                     end
                     return frame
-                elseif isexpr(stmt5, :call) && is_quotenode_egal(stmt5.args[1], kwhandler) && pccall+1 <= n
+                elseif isexpr(stmt5, :call) && (is_quotenode_egal(stmt5.args[1], kwhandler) || is_global_ref(stmt5.args[1], Core, :kwcall)) && pccall+1 <= n
                     # This happens when the call is scoped by a module
                     pccall += 1
                     while pc < pccall
@@ -298,13 +307,13 @@ function maybe_step_through_kwprep!(@nospecialize(recurse), frame::Frame, istopl
                 end
             end
         end
-    elseif isexpr(stmt, :call) && is_quoted_type(stmt.args[1], :NamedTuple) && length(stmt.args) == 1
+    elseif is_empty_namedtuple(stmt)
         # Creating an empty NamedTuple, now split by type (no supplied kwargs vs kwargs...)
         if pc + 1 <= n
             stmt1 = src.code[pc+1]
             if isexpr(stmt1, :call)
                 f = stmt1.args[1]
-                if is_quotenode_egal(f, Base.pairs)
+                if is_quotenode_egal(f, Base.pairs) || is_global_ref(f, Base, :pairs)
                     # No supplied kwargs
                     pcsplat = pc + 3
                     if pcsplat <= n
@@ -327,14 +336,14 @@ function maybe_step_through_kwprep!(@nospecialize(recurse), frame::Frame, istopl
                             end
                         end
                     end
-                elseif is_quotenode_egal(f, Base.merge) && ((pccall = pc + 7) <= n)
+                elseif (is_quotenode_egal(f, Base.merge) || is_global_ref(f, Base, :merge)) && ((pccall = pc + 7 + 2*isbindingresolved_deprecated) <= n)
                     stmtk = src.code[pccall-1]
-                    if isexpr(stmtk, :call) && is_quotenode_egal(stmtk.args[1], kwhandler)
-                        for i = 1:4
+                    if isexpr(stmtk, :call) && (is_quotenode_egal(stmtk.args[1], kwhandler) || is_global_ref(stmtk.args[1], Core, :kwcall))
+                        for i = 1:4 + isbindingresolved_deprecated
                             pc = step_expr!(recurse, frame, istoplevel)
                         end
                         stmti = src.code[pc]
-                        if isexpr(stmti, :call) && is_quotenode_egal(stmti.args[1], #= deliberately not kwhandler =# Core.kwfunc)
+                        if isexpr(stmti, :call) && (is_quotenode_egal(stmti.args[1], #= deliberately not kwhandler =# Core.kwfunc) || is_global_ref(stmti.args[1], Core, :kwfunc))
                             pc = step_expr!(recurse, frame, istoplevel)
                         end
                     end
@@ -346,6 +355,17 @@ function maybe_step_through_kwprep!(@nospecialize(recurse), frame::Frame, istopl
 end
 maybe_step_through_kwprep!(frame::Frame, istoplevel::Bool=false) =
     maybe_step_through_kwprep!(finish_and_return!, frame, istoplevel)
+
+@static if isbindingresolved_deprecated
+    function is_empty_namedtuple(stmt)
+        isexpr(stmt, :call) && length(stmt.args) == 1 || return false
+        arg1 = stmt.args[1]
+        isa(arg1, GlobalRef) || return false
+        return arg1.name === :NamedTuple
+    end
+else
+    is_empty_namedtuple(stmt) = isexpr(stmt, :call) && is_quoted_type(stmt.args[1], :NamedTuple) && length(stmt.args) == 1
+end
 
 """
     ret = maybe_reset_frame!(recurse, frame, pc, rootistoplevel)
