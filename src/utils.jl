@@ -261,7 +261,7 @@ function linetable(arg, i::Integer; macro_caller::Bool=false, def=:var"n/a")::Un
     # TODO: decode the linetable at this frame efficiently by reimplementing this here
     nodes = Base.IRShow.buildLineInfoNode(lt, def, i)
     isempty(nodes) && return nothing
-    return nodes[1] # ignore all inlining / macro expansion / etc :(
+    return nodes[macro_caller ? 1 : end]
     else # VERSION < v"1.12.0-DEV.173"
     lin = lt[i]::Union{Expr,LineTypes}
     if macro_caller
@@ -442,60 +442,36 @@ function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
         0
     end
 
-    lt = linetable(framecode)
+    linetarget = line - offset
 
-    # Check if the exact line number exist
-    idxs = findall(entry::Union{LineInfoNode,LineNumberNode} -> entry.line + offset == line && entry.file == file, lt)
-    locs = codelocs(framecode)
-    if !isempty(idxs)
-        stmtidxs = Int[]
-        stmtidx = 1
-        while stmtidx <= length(locs)
-            loc = locs[stmtidx]
-            if loc in idxs
-                push!(stmtidxs, stmtidx)
-                stmtidx += 1
-                # Skip continous statements that are on the same line
-                while stmtidx <= length(locs) && loc == locs[stmtidx]
-                    stmtidx += 1
-                end
-            else
-                stmtidx += 1
-            end
-        end
-        return stmtidxs
+    lts = CodeTracking.linetable_scopes(framecode.src, scope)
+    for lt in lts
+        filter!(l -> l.file === file, lt) # filter out line scopes that do not match the file we are looking for
     end
 
-    # If the exact line number does not exist in the line table, take the one that is closest after that line
-    # restricted to the line range of the current scope.
-    scope = framecode.scope
-    range = (scope isa Method && !is_generated(scope)) ? compute_corrected_linerange(scope) : compute_linerange(framecode)
-    if line in range
-        closest = nothing
-        closest_idx = nothing
-        for (i, entry) in enumerate(lt)
-            entry = entry::Union{LineInfoNode,LineNumberNode}
-            if entry.file == file && entry.line in range && entry.line >= line
-                if closest === nothing
-                    closest = entry
-                    closest_idx = i
-                else
-                    if entry.line < closest.line
-                        closest = entry
-                        closest_idx = i
-                    end
-                end
-            end
+    stmtidxs = Int[] # will store the statement indices that match the line
+    first_in_block, block_recorded = nothing, false
+    for (i, lt) in enumerate(lts)
+        # If someone asks for a breakpoint on, e.g., `end`, there may not be a line that matches exactly.
+        # In this case, we should make sure that the scope encompasses the requested line and then return the first statement index
+        # immediately after.
+        if isempty(lt)
+            first_in_block = nothing   # start new block
+            continue
         end
-        if closest_idx !== nothing
-            idx = let closest_idx=closest_idx    # julia #15276
-                findfirst(i-> i==closest_idx, locs)
+        thisscope = first(lt)
+        if first_in_block === nothing && !iszero(thisscope.line)
+            first_in_block, block_recorded = thisscope.line, false
+        end
+        if !block_recorded   # only record the first match in a contiguous block
+            # if it's either an exact match or it's the first larger line in a block that spans the requested line, store it
+            if thisscope.line == linetarget || (thisscope.line > linetarget && something(first_in_block, typemax(typeof(thisscope.line))) < linetarget)
+                push!(stmtidxs, i)
+                block_recorded = true
             end
-            return idx === nothing ? nothing : Int[idx]
         end
     end
-
-    return nothing
+    return stmtidxs
 end
 
 ## Printing
