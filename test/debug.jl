@@ -203,6 +203,9 @@ end
         frame = JuliaInterpreter.enter_call(f, 2; b = 4)
         fr = JuliaInterpreter.maybe_step_through_wrapper!(frame)
         fr, pc = debug_command(fr, :nc)
+        if !isa(pc_expr(fr, pc), Core.ReturnNode)   # Julia 1.12 has an extra step for global lookup
+            fr, pc = debug_command(fr, :nc)
+        end
         debug_command(fr, :nc)
         @test get_return(frame) == 6
     end
@@ -395,6 +398,9 @@ end
     @testset "invokelatest" begin
         fr = JuliaInterpreter.enter_call(f_inv_latest, 2.0)
         fr, pc = JuliaInterpreter.debug_command(fr, :nc)
+        while is_getproperty(pc_expr(fr, pc).args[1])    # Julia 1.12 has more steps for global lookup
+            fr, pc = JuliaInterpreter.debug_command(fr, :nc)
+        end
         frame, pc = JuliaInterpreter.debug_command(fr, :s) # step into invokelatest
         @test frame.framecode.scope.sig == Tuple{typeof(f_inv),Real}
         JuliaInterpreter.debug_command(frame, :c)

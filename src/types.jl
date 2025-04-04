@@ -123,6 +123,13 @@ function is_breakpoint_expr(ex::Expr)
     q = ex.args[3]
     return isa(q, QuoteNode) && q.value === :__BREAKPOINT_MARKER__
 end
+
+@static if isbindingresolved_deprecated
+    is_breakpoint_marker(stmt) = is_global_ref(stmt, JuliaInterpreter, :__BREAK_POINT_MARKER__)
+else
+    is_breakpoint_marker(stmt) = stmt === __BREAK_POINT_MARKER__
+end
+
 function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
     if optimize
         src, methodtables = optimize!(copy(src), scope)
@@ -132,7 +139,7 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
     end
     breakpoints = Vector{BreakpointState}(undef, length(src.code))
     for (i, pc_expr) in enumerate(src.code)
-        if lookup_stmt(src.code, pc_expr) === __BREAK_POINT_MARKER__
+        if is_breakpoint_marker(lookup_stmt(src.code, pc_expr))
             breakpoints[i] = BreakpointState()
             src.code[i] = nothing
         end
