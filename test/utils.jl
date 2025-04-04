@@ -34,9 +34,12 @@ end
 struct Aborted    # for signaling that some statement or test blocks were interrupted
     at::Base.IRShow.LineInfoNode
 end
+const dummylin = length(fieldnames(Base.IRShow.LineInfoNode)) == 5 ? Base.IRShow.LineInfoNode(Main, nothing, :none, Int32(0), Int32(0)) :  # dummy lineinfo for fallback
+                                                                     Base.IRShow.LineInfoNode(nothing, :none, Int32(0))
 
 function Aborted(frame::Frame, pc)
     lineidx = JuliaInterpreter.codelocs(frame, pc)
+    lineidx == 0 && return Aborted(dummylin)  # fallback to a dummy lineinfo if no location found
     lineinfo = JuliaInterpreter.linetable(frame, lineidx; macro_caller=true)
     return Aborted(lineinfo)
 end
@@ -58,6 +61,9 @@ function evaluate_limited!(@nospecialize(recurse), frame::Frame, nstmts::Int, is
     while nstmts > 0
         shouldbreak(frame, pc) && return BreakpointRef(frame.framecode, pc), refnstmts[]
         stmt = pc_expr(frame, pc)
+        # uncomment the following to calibrate `nstmts` in test/limits.jl
+        # _lnn_ = Aborted(frame, pc).at
+        # _lnn_.file == Symbol("fake.jl") && _lnn_.line == 5 && isa(stmt, Core.GotoIfNot) && @show nstmts
         if isa(stmt, Expr)
             if stmt.head === :call && !isa(recurse, Compiled)
                 refnstmts[] = nstmts
