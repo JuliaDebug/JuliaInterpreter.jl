@@ -615,7 +615,10 @@ function f_mmap()
         @test b_mmap == x
     finally
         finalize(b_mmap)
-        rm(tmp)
+        Threads.@spawn begin
+            sleep(5)
+            rm(tmp)
+        end
     end
 end
 @interpret f_mmap()
