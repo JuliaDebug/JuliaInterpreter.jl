@@ -74,6 +74,7 @@ function finish_stack!(@nospecialize(recurse), frame::Frame, rootistoplevel::Boo
             end
         end
         pc += 1
+        @assert is_leaf(frame)
         frame.pc = pc
         shouldbreak(frame, pc) && return BreakpointRef(frame.framecode, pc)
     end
@@ -410,6 +411,7 @@ function unwind_exception(frame::Frame, @nospecialize(exc))
     while frame !== nothing
         if !isempty(frame.framedata.exception_frames)
             # Exception caught
+            @assert is_leaf(frame)
             frame.pc = frame.framedata.exception_frames[end]
             frame.framedata.last_exception[] = exc
             return frame

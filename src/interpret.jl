@@ -560,6 +560,7 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
                 rhs = eval_rhs(recurse, frame, node)
             end
         elseif isa(node, GotoNode)
+            @assert is_leaf(frame)
             return (frame.pc = node.label)
         elseif isa(node, GotoIfNot)
             arg = @lookup(frame, node.cond)
@@ -567,6 +568,7 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
                 throw(TypeError(nameof(frame), "if", Bool, arg))
             end
             if !arg
+                @assert is_leaf(frame)
                 return (frame.pc = node.dest)
             end
         elseif isa(node, ReturnNode)
@@ -596,6 +598,7 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
         lhs = SSAValue(pc)
         do_assignment!(frame, lhs, rhs)
     end
+    @assert is_leaf(frame)
     return (frame.pc = pc + 1)
 end
 
@@ -653,6 +656,7 @@ function handle_err(@nospecialize(recurse), frame::Frame, @nospecialize(err))
     end
     data.last_exception[] = err
     pc = @static VERSION >= v"1.11-" ? pop!(data.exception_frames) : data.exception_frames[end] # implicit :leave after https://github.com/JuliaLang/julia/pull/52245
+    @assert is_leaf(frame)
     frame.pc = pc
     return pc
 end

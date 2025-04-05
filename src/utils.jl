@@ -140,6 +140,14 @@ Tests whether `g` is equal to `GlobalRef(mod, name)`.
 """
 is_global_ref(@nospecialize(g), mod::Module, name::Symbol) = isa(g, GlobalRef) && g.mod === mod && g.name == name
 
+function is_global_ref_egal(@nospecialize(g), name::Symbol, @nospecialize(ref))
+    # Identifying GlobalRefs regardless of how the caller scopes them
+    isa(g, GlobalRef) || return false
+    g.name === name || return false
+    gref = getglobal(g.mod, g.name)
+    return gref === ref
+end
+
 is_quotenode(@nospecialize(q), @nospecialize(val)) = isa(q, QuoteNode) && q.value == val
 is_quotenode_egal(@nospecialize(q), @nospecialize(val)) = isa(q, QuoteNode) && q.value === val
 
