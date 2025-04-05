@@ -48,8 +48,9 @@ end
 end
 
 function return_from(frame::Frame)
-    recycle(frame)
+    oldframe = frame
     frame = caller(frame)
+    recycle(oldframe)
     frame === nothing || (frame.callee = nothing)
     return frame
 end
