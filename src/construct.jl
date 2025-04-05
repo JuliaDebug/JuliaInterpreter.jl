@@ -166,8 +166,8 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
         # Currenly, our strategy to deal with llvmcall can't handle parametric functions
         # (the "mini interpreter" runs in module scope, not method scope)
         if (!isempty(lenv) && (hasarg(isidentical(:llvmcall), code.code) ||
-                               hasarg(isidentical(Base.llvmcall), code.code) ||
-                               hasarg(a->is_global_ref(a, Base, :llvmcall), code.code))) ||
+                               hasarg(isidentical(Core.Intrinsics.llvmcall), code.code) ||
+                               hasarg(a->is_global_ref_egal(a, :llvmcall, Core.Intrinsics.llvmcall), code.code))) ||
                                hasarg(isidentical(:iolock_begin), code.code)
             return Compiled()
         end
