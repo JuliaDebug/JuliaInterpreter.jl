@@ -21,21 +21,21 @@ end
 
 _Typeof(x) = isa(x, Type) ? Type{x} : typeof(x)
 
-function to_function(@nospecialize(x))
-    isa(x, GlobalRef) ? invokelatest(getfield, x.mod, x.name) : x
+function to_function(@nospecialize(x), world)
+    isa(x, GlobalRef) ? invoke_in_world(world, getglobal, x.mod, x.name) : x
 end
 
 """
-    method = whichtt(tt)
+    method = whichtt(tt, world=default_world())
 
 Like `which` except it operates on the complete tuple-type `tt`,
 and doesn't throw when there is no matching method.
 """
-function whichtt(@nospecialize(tt))
+function whichtt(@nospecialize(tt), world=default_world())
     # TODO: provide explicit control over world age? In case we ever need to call "old" methods.
     # branch on https://github.com/JuliaLang/julia/pull/44515
     # for now, actual code execution doesn't ever need to consider overlayed method table
-    match, _ = Core.Compiler._findsup(tt, nothing, get_world_counter())
+    match, _ = Core.Compiler._findsup(tt, nothing, world)
     match === nothing && return nothing
     return match.method
 end

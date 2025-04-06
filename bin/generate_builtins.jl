@@ -95,7 +95,7 @@ function generate_fcall_nargs(fname, minarg, maxarg; requires_world::Bool=false)
                 argcall *= ", "
             end
         end
-        wrapper *= requires_world ? "return Some{Any}(Base.invoke_in_world(frame.world, $fname, $argcall)$annotation)" :
+        wrapper *= requires_world ? "return Some{Any}(invoke_in_world(frame.world, $fname, $argcall)$annotation)" :
                                     "return Some{Any}($fname($argcall)$annotation)"
         if nargs < maxarg
             wrapper *= "\n        elseif nargs == "
@@ -104,7 +104,7 @@ function generate_fcall_nargs(fname, minarg, maxarg; requires_world::Bool=false)
     wrapper *= "\n        else"
     # To throw the correct error
     if requires_world
-        wrapper *= "\n            return Some{Any}(Base.invoke_in_world(frame.world, $fname, getargs(args, frame)...)$annotation)"
+        wrapper *= "\n            return Some{Any}(invoke_in_world(frame.world, $fname, getargs(args, frame)...)$annotation)"
     else
         wrapper *= "\n            return Some{Any}($fname(getargs(args, frame)...)$annotation)"
     end
@@ -122,7 +122,7 @@ function generate_fcall(f, table, id)
     # A built-in with arbitrary or unknown number of arguments.
     # This will (unfortunately) use dynamic dispatch.
     if requires_world
-        return "return Some{Any}(Base.invoke_in_world(frame.world, $fname, getargs(args, frame)...))"
+        return "return Some{Any}(invoke_in_world(frame.world, $fname, getargs(args, frame)...))"
     end
     return "return Some{Any}($fname(getargs(args, frame)...))"
 end

@@ -130,16 +130,22 @@ else
     is_breakpoint_marker(stmt) = stmt === __BREAK_POINT_MARKER__
 end
 
-function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
+@static if isdefined(Base, :tls_world_age)
+    default_world() = Base.tls_world_age()
+else
+    default_world() = Base.get_world_counter()
+end
+
+function FrameCode(scope, src::CodeInfo; generator=false, optimize=true, world=default_world())
     if optimize
-        src, methodtables = optimize!(copy(src), scope)
+        src, methodtables = optimize!(copy(src), scope, world)
     else
         src = replace_coretypes!(copy(src))
         methodtables = Vector{Union{Compiled,DispatchableMethod}}(undef, length(src.code))
     end
     breakpoints = Vector{BreakpointState}(undef, length(src.code))
     for (i, pc_expr) in enumerate(src.code)
-        if is_breakpoint_marker(lookup_stmt(src.code, pc_expr))
+        if is_breakpoint_marker(lookup_stmt(src.code, pc_expr, world))
             breakpoints[i] = BreakpointState()
             src.code[i] = nothing
         end
@@ -263,8 +269,8 @@ mutable struct Frame
     # TODO: This is incompletely implemented
     world::UInt
 end
-function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing,
-               world=@static isdefined(Base, :tls_world_age) ? Base.tls_world_age() : Base.get_world_counter())
+function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing;
+               world=default_world())
     if length(junk_frames) > 0
         frame = pop!(junk_frames)
         frame.framecode = framecode
@@ -285,9 +291,9 @@ end
 
 Construct a `Frame` to evaluate `src` in module `mod`.
 """
-function Frame(mod::Module, src::CodeInfo; kwargs...)
-    framecode = FrameCode(mod, src; kwargs...)
-    return Frame(framecode, prepare_framedata(framecode, []))
+function Frame(mod::Module, src::CodeInfo; world=default_world(), kwargs...)
+    framecode = FrameCode(mod, src; world, kwargs...)
+    return Frame(framecode, prepare_framedata(framecode, []); world)
 end
 """
     frame = Frame(mod::Module, ex::Expr)

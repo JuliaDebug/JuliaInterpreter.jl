@@ -132,7 +132,7 @@ function prepare_args(@nospecialize(f), allargs, kwargs)
     return f, allargs
 end
 
-function prepare_framecode(method::Method, @nospecialize(argtypes); enter_generated=false)
+function prepare_framecode(method::Method, @nospecialize(argtypes); enter_generated=false, world)
     sig = method.sig
     if (method.module ∈ compiled_modules || method ∈ compiled_methods) && !(method ∈ interpreted_methods)
         return Compiled()
@@ -172,7 +172,7 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
                                hasarg(isidentical(:iolock_begin), code.code)
             return Compiled()
         end
-        framecode = FrameCode(method, code; generator=generator)
+        framecode = FrameCode(method, code; generator, world)
         if is_generated(method) && !enter_generated
             genframedict[(method, argtypes)] = framecode
         else
@@ -229,7 +229,7 @@ julia> argtypes
 Tuple{typeof(mymethod), Vector{Float64}}
 ```
 """
-function prepare_call(@nospecialize(f), allargs; enter_generated = false)
+function prepare_call(@nospecialize(f), allargs; enter_generated = false, world)
     # Can happen for thunks created by generated functions
     if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
         return nothing
@@ -247,13 +247,13 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
             return nothing
         end
     else
-        method = whichtt(argtypes)
+        method = whichtt(argtypes, world)
     end
     if method === nothing
         # Call it to generate the exact error
-        return f(allargs[2:end]...)
+        return invoke_in_world(world, f, allargs[2:end]...)
     end
-    ret = prepare_framecode(method, argtypes; enter_generated=enter_generated)
+    ret = prepare_framecode(method, argtypes; enter_generated, world)
     # Exceptional returns
     if ret === nothing
         # The generator threw an error. Let's generate the same error by calling it.
@@ -336,14 +336,14 @@ end
 Construct a new `Frame` for `framecode`, given lowered-code arguments `frameargs` and
 static parameters `lenv`. See [`JuliaInterpreter.prepare_call`](@ref) for information about how to prepare the inputs.
 """
-function prepare_frame(framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector, caller_will_catch_err::Bool=false)
+function prepare_frame(framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector, caller_will_catch_err::Bool=false; world)
     framedata = prepare_framedata(framecode, args, lenv, caller_will_catch_err)
-    return Frame(framecode, framedata)
+    return Frame(framecode, framedata; world)
 end
 
 function prepare_frame_caller(caller::Frame, framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector)
     caller_will_catch_err = !isempty(caller.framedata.exception_frames) || caller.framedata.caller_will_catch_err
-    caller.callee = frame = prepare_frame(framecode, args, lenv, caller_will_catch_err)
+    caller.callee = frame = prepare_frame(framecode, args, lenv, caller_will_catch_err; world=caller.world)
     copy!(frame.framedata.current_scopes, caller.framedata.current_scopes)
     frame.caller = caller
     return frame
@@ -392,7 +392,7 @@ mod = Main
 ex = :($(Expr(:toplevel, :(#= REPL[7]:6 =#), :(const threshold = 0.1))))
 ```
 
-`ExprSplitter` created `Main.Private` was created for you so that its internal expressions could be evaluated.
+`ExprSplitter` created `Main.Private` so that its internal expressions could be evaluated.
 `ExprSplitter` will check to see whether the module already exists and if so return it rather than
 try to create a new module with the same name.
 
@@ -436,8 +436,8 @@ See [`Frame(mod::Module, ex::Expr)`](@ref) for more information about frame crea
 """
 mutable struct ExprSplitter
     # Non-mutating fields
-    stack::Vector{Tuple{Module,Expr}}   # mod[i] is module of evaluation for
-    index::Vector{Int}    # next-to-handle argument index for :block or :toplevel exprs
+    const stack::Vector{Tuple{Module,Expr}}   # mod[i] is module of evaluation for
+    const index::Vector{Int}    # next-to-handle argument index for :block or :toplevel exprs
     # Mutating fields
     lnn::Union{LineNumberNode,Nothing}
 end
@@ -574,14 +574,14 @@ function Base.iterate(iter::ExprSplitter, state=nothing)
 end
 
 """
-    framecode, frameargs, lenv, argtypes = determine_method_for_expr(expr; enter_generated = false)
+    framecode, frameargs, lenv, argtypes = determine_method_for_expr(expr; enter_generated = false, world = default_world())
 
 Prepare all the information needed to execute a particular `:call` expression `expr`.
 For example, try `JuliaInterpreter.determine_method_for_expr(:(\$sum([1,2])))`.
 See [`JuliaInterpreter.prepare_call`](@ref) for information about the outputs.
 """
-function determine_method_for_expr(expr; enter_generated = false)
-    f = to_function(expr.args[1])
+function determine_method_for_expr(expr; enter_generated = false, world = default_world())
+    f = to_function(expr.args[1], world)
     allargs = expr.args
     # Extract keyword args
     kwargs = Expr(:parameters)
@@ -589,7 +589,7 @@ function determine_method_for_expr(expr; enter_generated = false)
         kwargs = splice!(allargs, 2)::Expr
     end
     f, allargs = prepare_args(f, allargs, kwargs.args)
-    return prepare_call(f, allargs; enter_generated=enter_generated)
+    return prepare_call(f, allargs; enter_generated, world)
 end
 
 """
@@ -626,11 +626,11 @@ T = Float64
 
 See [`enter_call`](@ref) for a similar approach not based on expressions.
 """
-function enter_call_expr(expr; enter_generated = false)
+function enter_call_expr(expr; enter_generated=false, world=default_world())
     clear_caches()
-    r = determine_method_for_expr(expr; enter_generated = enter_generated)
+    r = determine_method_for_expr(expr; enter_generated, world)
     if r !== nothing && !isa(r[1], Compiled)
-        return prepare_frame(Base.front(r)...)
+        return prepare_frame(Base.front(r)...; world)
     end
     nothing
 end
@@ -666,7 +666,7 @@ would be created by the generator.
 
 See [`enter_call_expr`](@ref) for a similar approach based on expressions.
 """
-function enter_call(@nospecialize(finfo), @nospecialize(args...); kwargs...)
+function enter_call(@nospecialize(finfo), @nospecialize(args...); world=default_world(), kwargs...)
     clear_caches()
     if isa(finfo, Tuple)
         f = finfo[1]
@@ -680,9 +680,9 @@ function enter_call(@nospecialize(finfo), @nospecialize(args...); kwargs...)
     if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
         error(f, " is a builtin or intrinsic")
     end
-    r = prepare_call(f, allargs; enter_generated=enter_generated)
+    r = prepare_call(f, allargs; enter_generated, world)
     if r !== nothing && !isa(r[1], Compiled)
-        return prepare_frame(Base.front(r)...)
+        return prepare_frame(Base.front(r)...; world)
     end
     return nothing
 end

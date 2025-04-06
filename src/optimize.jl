@@ -1,13 +1,13 @@
 const compiled_calls = Dict{Any,Any}()
 
 # Pre-frame-construction lookup
-function lookup_stmt(stmts::Vector{Any}, @nospecialize arg)
+function lookup_stmt(stmts::Vector{Any}, @nospecialize(arg), world)
     if isa(arg, SSAValue)
         arg = stmts[arg.id]
     end
     if isa(arg, QuoteNode)
         return arg.value
-    elseif isexpr(arg, :call, 3) && is_global_ref(arg.args[1], Base, :getproperty)
+    elseif isexpr(arg, :call, 3) && is_global_ref_egal(arg.args[1], :getproperty, Base.getproperty)
         # Starting with Julia 1.12, llvmcall looks like this:
         # julia> src.code[1:3]
         # 3-element Vector{Any}:
@@ -16,11 +16,11 @@ function lookup_stmt(stmts::Vector{Any}, @nospecialize arg)
         #  :(Base.getproperty(%2, :llvmcall))
         q = arg.args[3]
         if isa(q, QuoteNode) && isa(q.value, Symbol)
-            mod = lookup_stmt(stmts, arg.args[2])
+            mod = lookup_stmt(stmts, arg.args[2], world)
             if isa(mod, GlobalRef)
-                mod = @invokelatest getglobal(mod.mod, mod.name)
+                mod = invoke_in_world(world, getglobal, mod.mod, mod.name)
             end
-            isa(mod, Module) && return @invokelatest getglobal(mod, q.value)
+            isa(mod, Module) && return invoke_in_world(world, getglobal, mod, q.value)
         end
     end
     return arg
@@ -38,41 +38,41 @@ function smallest_ref(stmts, arg, idmin)
     return idmin
 end
 
-function lookup_global_ref(a::GlobalRef)
-    isbindingresolved_deprecated && return a
+function lookup_global_ref(a::GlobalRef, world)
+    isbindingresolved_deprecated && return a   # TODO: reenable this optimization once we can invalidate Frames
     if Base.isbindingresolved(a.mod, a.name) &&
-        (@invokelatest isdefined(a.mod, a.name)) &&
-        (@invokelatest isconst(a.mod, a.name))
-        return QuoteNode(@invokelatest getfield(a.mod, a.name))
+        (invoke_in_world(world, isdefined, a.mod, a.name) &&
+        isconst(a.mod, a.name))
+        return QuoteNode(invoke_in_world(world, getglobal, a.mod, a.name))
     end
     return a
 end
 
-function lookup_global_refs!(ex::Expr)
+function lookup_global_refs!(ex::Expr, world)
     if isexpr(ex, (:isdefined, :thunk, :toplevel, :method, :global, :const, :globaldecl))
         return nothing
     end
     for (i, a) in enumerate(ex.args)
         ex.head === :(=) && i == 1 && continue # Don't look up globalrefs on the LHS of an assignment (issue #98)
         if isa(a, GlobalRef)
-            ex.args[i] = lookup_global_ref(a)
+            ex.args[i] = lookup_global_ref(a, world)
         elseif isa(a, Expr)
-            lookup_global_refs!(a)
+            lookup_global_refs!(a, world)
         end
     end
     return nothing
 end
 
-function lookup_getproperties(code::Vector{Any}, @nospecialize a)
+function lookup_getproperties(code::Vector{Any}, @nospecialize(a), world)
     isexpr(a, :call) || return a
     length(a.args) == 3 || return a
-    arg1 = lookup_stmt(code, a.args[1])
+    arg1 = lookup_stmt(code, a.args[1], world)
     arg1 === Base.getproperty || return a
-    arg2 = lookup_stmt(code, a.args[2])
+    arg2 = lookup_stmt(code, a.args[2], world)
     arg2 isa Module || return a
-    arg3 = lookup_stmt(code, a.args[3])
+    arg3 = lookup_stmt(code, a.args[3], world)
     arg3 isa Symbol || return a
-    return lookup_global_ref(GlobalRef(arg2, arg3))
+    return lookup_global_ref(GlobalRef(arg2, arg3), world)
 end
 
 # HACK This isn't optimization really, but necessary to bypass llvmcall and foreigncall
@@ -93,7 +93,7 @@ Currently it looks up `GlobalRef`s (for which it needs `mod` to know the scope i
 which this will run) and ensures that no statement includes nested `:call` expressions
 (splitting them out into multiple SSA-form statements if needed).
 """
-function optimize!(code::CodeInfo, scope)
+function optimize!(code::CodeInfo, scope, world)
     mod = moduleof(scope)
     evalmod = mod == Core.Compiler ? Core.Compiler : CompiledCalls
     sparams = scope isa Method ? sparam_syms(scope) : Symbol[]
@@ -106,13 +106,13 @@ function optimize!(code::CodeInfo, scope)
     ## Replace GlobalRefs with QuoteNodes
     for (i, stmt) in enumerate(code.code)
         if isa(stmt, GlobalRef)
-            code.code[i] = lookup_global_ref(stmt)
+            code.code[i] = lookup_global_ref(stmt, world)
         elseif isa(stmt, Expr)
             if stmt.head === :call && stmt.args[1] === :cglobal  # cglobal requires literals
                 continue
             else
-                lookup_global_refs!(stmt)
-                code.code[i] = lookup_getproperties(code.code, stmt)
+                lookup_global_refs!(stmt, world)
+                code.code[i] = lookup_getproperties(code.code, stmt, world)
             end
         end
     end
@@ -130,15 +130,15 @@ function optimize!(code::CodeInfo, scope)
             if stmt.head === :call
                 # Check for :llvmcall
                 arg1 = stmt.args[1]
-                larg1 = lookup_stmt(code.code, arg1)
+                larg1 = lookup_stmt(code.code, arg1, world)
                 if (arg1 === :llvmcall || larg1 === Base.llvmcall || is_global_ref_egal(larg1, :llvmcall, Core.Intrinsics.llvmcall)) && isempty(sparams) && scope isa Method
                     # Call via `invokelatest` to avoid compiling it until we need it
-                    @invokelatest build_compiled_llvmcall!(stmt, code, idx, evalmod)
+                    build_compiled_llvmcall!(stmt, code, idx, evalmod, world)
                     methodtables[idx] = Compiled()
                 end
             elseif stmt.head === :foreigncall && scope isa Method
                 # Call via `invokelatest` to avoid compiling it until we need it
-                @invokelatest build_compiled_foreigncall!(stmt, code, sparams, evalmod)
+                build_compiled_foreigncall!(stmt, code, sparams, evalmod, world)
                 methodtables[idx] = Compiled()
             end
         end
@@ -166,10 +166,10 @@ function parametric_type_to_expr(@nospecialize(t::Type))
     return t
 end
 
-function build_compiled_llvmcall!(stmt::Expr, code::CodeInfo, idx::Int, evalmod::Module)
+function build_compiled_llvmcall!(stmt::Expr, code::CodeInfo, idx::Int, evalmod::Module, world)
     # Run a mini-interpreter to extract the types
-    framecode = FrameCode(CompiledCalls, code; optimize=false)
-    frame = Frame(framecode, prepare_framedata(framecode, []))
+    framecode = FrameCode(CompiledCalls, code; optimize=false, world)
+    frame = Frame(framecode, prepare_framedata(framecode, []); world)
     idxstart = idx
     for i = 2:4
         idxstart = smallest_ref(code.code, stmt.args[i], idxstart)
@@ -204,11 +204,11 @@ function build_compiled_llvmcall!(stmt::Expr, code::CodeInfo, idx::Int, evalmod:
 end
 
 # Handle :llvmcall & :foreigncall (issue #28)
-function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector{Symbol}, evalmod::Module)
+function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector{Symbol}, evalmod::Module, world::UInt)
     TVal = evalmod == Core.Compiler ? Core.Compiler.Val : Val
     cfuncarg = stmt.args[1]
     while isa(cfuncarg, SSAValue)
-        cfuncarg = lookup_stmt(code.code, cfuncarg)
+        cfuncarg = lookup_stmt(code.code, cfuncarg, world)
     end
     RetType, ArgType = stmt.args[2], stmt.args[3]::SimpleVector
 

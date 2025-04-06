@@ -1,5 +1,5 @@
 using Base.Meta
-import Base: +, -, convert, isless, get_world_counter, mapany, ntupleany, invokelatest
+import Base: +, -, convert, isless, get_world_counter, mapany, ntupleany, invokelatest, invoke_in_world
 using Core: CodeInfo, SimpleVector, LineInfoNode, GotoNode, GotoIfNot, ReturnNode,
             GeneratedFunctionStub, MethodInstance, NewvarNode, TypeName
 
