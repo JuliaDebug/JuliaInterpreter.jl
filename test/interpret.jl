@@ -764,7 +764,7 @@ function run_foobar()
 end
 @testset "unreachable worlds" begin
     interpret, compiled = run_foobar()
-    @test_broken interpret == compiled == 42
+    @test interpret == compiled == 42
 end
 
 @testset "issue #479" begin

@@ -260,7 +260,7 @@ function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr:
     call_expr = ret
     fargs = collect_args(recurse, frame, call_expr)
     if fargs[1] === Core.eval
-        return invoke_in_world(Core.eval, fargs[2], fargs[3])  # not a builtin, but worth treating specially
+        return invoke_in_world(frame.world, Core.eval, fargs[2], fargs[3])  # not a builtin, but worth treating specially
     elseif fargs[1] === Base.rethrow
         err = length(fargs) > 1 ? fargs[2] : frame.framedata.last_exception[]
         throw(err)
@@ -422,7 +422,7 @@ function check_isdefined(frame::Frame, @nospecialize(node))
     elseif isa(node, GlobalRef)
         return invoke_in_world(frame.world, isdefined, node.mod, node.name)
     elseif isa(node, Symbol)
-        return invoke_in_world(isdefined, moduleof(frame), node)
+        return invoke_in_world(frame.world, isdefined, moduleof(frame), node)
     else # QuoteNode or other implicitly quoted object
         return true
     end
@@ -524,7 +524,7 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
                         Core.eval(moduleof(frame), Expr(:block, Expr(node.head, g), nothing))
                     end
                 elseif node.head === :thunk
-                    newframe = Frame(moduleof(frame), node.args[1]::CodeInfo; world=frame.world)
+                    newframe = Frame(moduleof(frame), node.args[1]::CodeInfo; world=Base.get_world_counter())
                     if isa(recurse, Compiled)
                         finish!(recurse, newframe, true)
                     else

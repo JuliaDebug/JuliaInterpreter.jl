@@ -266,8 +266,7 @@ mutable struct Frame
     caller::Union{Frame,Nothing}
     callee::Union{Frame,Nothing}
     last_codeloc::Int
-    # TODO: This is incompletely implemented
-    world::UInt
+    world::UInt        # the analog of `current_task().world_age` (a hidden field only accessible from C)
 end
 function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing;
                world=default_world())
@@ -303,9 +302,9 @@ Construct a `Frame` to evaluate `ex` in module `mod`.
 This constructor can error, for example if lowering `ex` results in an `:error` or `:incomplete`
 expression, or if it otherwise fails to return a `:thunk`.
 """
-function Frame(mod::Module, ex::Expr)
+function Frame(mod::Module, ex::Expr; kwargs...)
     lwr = Meta.lower(mod, ex)
-    isexpr(lwr, :thunk) && return Frame(mod, lwr.args[1])
+    isexpr(lwr, :thunk) && return Frame(mod, lwr.args[1]; kwargs...)
     if isexpr(lwr, :error) || isexpr(lwr, :incomplete)
         throw(ArgumentError("lowering returned an error, $lwr"))
     end
