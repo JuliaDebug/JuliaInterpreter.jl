@@ -20,7 +20,8 @@ end
 close(io)
 include(tmppath)
 
-using JuliaInterpreter, CodeTracking, Test
+# Don't move these to the top, because line numbers matter for the tests below
+using JuliaInterpreter, CodeTracking, Test, Logging
 
 function stacklength(frame)
     n = 1
@@ -215,7 +216,7 @@ struct Squarer end
     end
     fr, bp = @interpret f_outer_bp(3)
     @test leaf(fr).framecode.scope.name === :g_inner_bp
-    @test bp.stmtidx == (@static VERSION >= v"1.11-" ? 4 : 3)
+    @test bp.stmtidx == (@static VERSION >= v"1.12-" ? 5 : VERSION >= v"1.11-" ? 4 : 3)
 
     # Breakpoints on types
     remove()
@@ -247,11 +248,11 @@ mktemp() do path, io
     include(path)
     frame, bp = @interpret somefunc(2, 3)
     @test bp isa BreakpointRef
-    @test JuliaInterpreter.whereis(frame) == (path, 3)
+    @test whereis(frame) == (path, 3)
     breakpoint(path, 2)
     frame, bp = @interpret somefunc(2, 3)
     @test bp isa BreakpointRef
-    @test JuliaInterpreter.whereis(frame) == (path, 2)
+    @test whereis(frame) == (path, 2)
     remove()
     # Test relative paths
     mktempdir(dirname(path)) do tmp
@@ -259,13 +260,13 @@ mktemp() do path, io
             breakpoint(joinpath("..", basename(path)), 3)
             frame, bp = @interpret somefunc(2, 3)
             @test bp isa BreakpointRef
-            @test JuliaInterpreter.whereis(frame) == (path, 3)
+            @test whereis(frame) == (path, 3)
             remove()
             breakpoint(joinpath("..", basename(path)), 3)
             cd(homedir()) do
                 frame, bp = @interpret somefunc(2, 3)
                 @test bp isa BreakpointRef
-                @test JuliaInterpreter.whereis(frame) == (path, 3)
+                @test whereis(frame) == (path, 3)
             end
         end
     end
@@ -302,7 +303,7 @@ using Dates
         breakpoint(f, l)
         frame, bp = @interpret now() - Month(2)
         @test bp isa BreakpointRef
-        @test JuliaInterpreter.whereis(frame)[2] == l
+        @test whereis(frame)[2] == l
     end
 end
 
@@ -315,7 +316,7 @@ end
         breakpoint(f, l)
         frame, bp = @interpret sin(2.0)
         @test bp isa BreakpointRef
-        @test JuliaInterpreter.whereis(frame)[2] == l
+        @test whereis(frame)[2] == l
     end
 end
 
@@ -499,7 +500,7 @@ end
     bp = breakpoint(@__FILE__, ln + 4)
     frame, bpref = @interpret f_emptylines()
     @test bpref isa BreakpointRef
-    @test JuliaInterpreter.whereis(frame) == (@__FILE__, ln + 6)
+    @test whereis(frame) == (@__FILE__, ln + 6)
     remove(bp)
 
     # Don't break if the line is outside the function
@@ -518,23 +519,27 @@ end
     frame = JuliaInterpreter.enter_call(f_macro)
     file_logging = String(only(methods(var"@info")).file)
     line_logging = 0
-    for entry in frame.framecode.src.linetable
-        if entry.file === Symbol(file_logging)
-            line_logging = entry.line
-            break
+    lts = CodeTracking.linetable_scopes(JuliaInterpreter.scopeof(frame))
+    for lt in lts
+        for entry in lt
+            if entry.file === Symbol(file_logging)
+                line_logging = entry.line
+                break
+            end
         end
+        line_logging > 0 && break
     end
+    @assert line_logging > 0
     bp_log = breakpoint(file_logging, line_logging)
     with_logger(NullLogger()) do
         frame, bp = @interpret f_macro()
         @test bp isa BreakpointRef
-        file, ln = JuliaInterpreter.whereis(frame)
+        file, ln = whereis(frame)
         @test ln == line_logging
         @test basename(file) == basename(file_logging)
         bp = JuliaInterpreter.finish_stack!(frame)
         @test bp isa BreakpointRef
-        frame = leaf(frame)
-        ret = JuliaInterpreter.finish_stack!(frame)
+        ret = JuliaInterpreter.finish_stack!(leaf(frame))
         @test ret == 2
     end
 
@@ -565,14 +570,14 @@ end
 
         with_logger(NullLogger()) do
             frame, bp = @interpret f_check(1)
-            file, ln = JuliaInterpreter.whereis(frame)
+            file, ln = whereis(frame)
             @test file == path # Should not have stopped in logging.jl at line `line_logging`
             @test ln == line_logging
             remove(bp_f)
             @test (@interpret f_check(1)) == 1
             breakpoint(f_check, line_logging)
             frame, bp = @interpret f_check(1)
-            file, ln = JuliaInterpreter.whereis(frame)
+            file, ln = whereis(frame)
             @test file == path # Should not have stopped in logging.jl at line `line_logging`
             @test ln == line_logging
         end
