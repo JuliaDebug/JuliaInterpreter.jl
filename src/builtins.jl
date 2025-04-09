@@ -99,7 +99,11 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     elseif f === Core._structtype
         return Some{Any}(Core._structtype(getargs(args, frame)...))
     elseif f === Core._svec_ref
-        return Some{Any}(Core._svec_ref(getargs(args, frame)...))
+        if nargs == 2
+            return Some{Any}(Core._svec_ref(@lookup(frame, args[2]), @lookup(frame, args[3])))
+        else
+            return Some{Any}(Core._svec_ref(getargs(args, frame)...))
+        end
     elseif f === Core._typebody!
         return Some{Any}(Core._typebody!(getargs(args, frame)...))
     elseif f === Core._typevar
