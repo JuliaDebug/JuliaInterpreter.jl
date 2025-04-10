@@ -15,12 +15,16 @@ function lookup_stmt(stmts::Vector{Any}, @nospecialize arg)
         #  :(Base.getproperty(%1, :Intrinsics))
         #  :(Base.getproperty(%2, :llvmcall))
         q = arg.args[3]
-        if isa(q, QuoteNode) && isa(q.value, Symbol)
+        if isa(q, QuoteNode) && (qval = q.value; qval isa Symbol)
             mod = lookup_stmt(stmts, arg.args[2])
             if isa(mod, GlobalRef)
                 mod = @invokelatest getglobal(mod.mod, mod.name)
             end
-            isa(mod, Module) && return @invokelatest getglobal(mod, q.value)
+            if isa(mod, Module)
+                if @invokelatest isdefinedglobal(mod, qval)
+                    return @invokelatest getglobal(mod, qval)
+                end
+            end
         end
     end
     return arg
