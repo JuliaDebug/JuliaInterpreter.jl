@@ -348,6 +348,7 @@ function evaluate_overlayed_methoddef(frame::Frame, node::Expr, mt::Core.MethodT
 end
 
 function extract_method_table(frame::Frame, node::Expr)
+    isexpr(node, :method, 3) || return nothing
     arg = node.args[1]
     isa(arg, Core.MethodTable) && return arg
     if !isa(arg, Symbol) && !isa(arg, GlobalRef)

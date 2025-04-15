@@ -606,10 +606,13 @@ end
 end
 
 @testset "External method tables" begin
-    Base.eval(Toplevel, quote
+    ex = quote
         external_foo() = 1
         Base.Experimental.@MethodTable method_table
-    end)
+    end
+    frame = Frame(Toplevel, ex)
+    JuliaInterpreter.finish!(frame, true)
+
     nmethods_in_overlay() = length(Base.MethodList(Toplevel.method_table).ms)
     @test nmethods_in_overlay() == 0
 
