@@ -313,6 +313,8 @@ evaluate_call!(frame::Frame, call_expr::Expr; kwargs...) = evaluate_call!(finish
 
 # The following come up only when evaluating toplevel code
 function evaluate_methoddef(frame::Frame, node::Expr)
+    mt = extract_method_table(frame, node)
+    mt !== nothing && return evaluate_overlayed_methoddef(frame, node, mt)
     f = node.args[1]
     if f isa Symbol || f isa GlobalRef
         mod = f isa Symbol ? moduleof(frame) : f.mod
@@ -332,9 +334,26 @@ function evaluate_methoddef(frame::Frame, node::Expr)
     length(node.args) == 1 && return f
     sig = @lookup(frame, node.args[2])::SimpleVector
     body = @lookup(frame, node.args[3])::Union{CodeInfo, Expr}
-    # branching on https://github.com/JuliaLang/julia/pull/41137
     ccall(:jl_method_def, Cvoid, (Any, Ptr{Cvoid}, Any, Any), sig, C_NULL, body, moduleof(frame)::Module)
     return f
+end
+
+function evaluate_overlayed_methoddef(frame::Frame, node::Expr, mt::Core.MethodTable)
+    sig = @lookup(frame, node.args[2])::SimpleVector
+    body = @lookup(frame, node.args[3])::Union{CodeInfo, Expr}
+    ccall(:jl_method_def, Cvoid, (Any, Any, Any, Any), sig, mt, body, moduleof(frame)::Module)
+    return mt
+end
+
+function extract_method_table(frame::Frame, node::Expr)
+    arg = node.args[1]
+    isa(arg, Core.MethodTable) && return arg
+    isa(arg, Symbol) || isa(arg, GlobalRef) || return nothing
+    mod, name = isa(arg, Symbol) ? (moduleof(frame), arg) : (arg.mod, arg.name)
+    @invokelatest(isdefined(mod, name)) || return nothing
+    value = Core.eval(mod, name)
+    isa(value, Core.MethodTable) && return value
+    return nothing
 end
 
 function do_assignment!(frame::Frame, @nospecialize(lhs), @nospecialize(rhs))
