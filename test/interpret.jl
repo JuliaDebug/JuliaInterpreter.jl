@@ -415,7 +415,7 @@ end
 
     function g_gf()
         eval(:(z = 2))
-        return z
+        return @invokelatest(@__MODULE__().z)
     end
     @test @interpret g_gf() == 2
 
@@ -461,13 +461,13 @@ file, line = JuliaInterpreter.whereis(fr)
 @test line == (@__LINE__() - 4)
 
 # Test path to files in stdlib
-fr = JuliaInterpreter.enter_call(Test.eval, 1)
+fr = JuliaInterpreter.enter_call(rand)
 file, line = JuliaInterpreter.whereis(fr)
 @test isfile(file)
 @static if VERSION < v"1.12.0-DEV.173"
 @test isfile(JuliaInterpreter.getfile(fr.framecode.src.linetable[1]))
 end
-@test occursin(contractuser(Sys.STDLIB), repr(fr))
+@test occursin(joinpath(contractuser(Sys.STDLIB), "Random"), repr(fr))
 
 # Test undef sparam (https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/165)
 function foo(x::T) where {T <: AbstractString, S <: AbstractString}
