@@ -350,7 +350,11 @@ end
 function extract_method_table(frame::Frame, node::Expr)
     arg = node.args[1]
     isa(arg, Core.MethodTable) && return arg
-    isa(arg, Symbol) || isa(arg, GlobalRef) || return nothing
+    if !isa(arg, Symbol) && !isa(arg, GlobalRef)
+        value = Core.eval(moduleof(frame), arg)
+        isa(value, Core.MethodTable) && return value
+        return nothing
+    end
     mod, name = isa(arg, Symbol) ? (moduleof(frame), arg) : (arg.mod, arg.name)
     @invokelatest(isdefined(mod, name)) || return nothing
     value = Core.eval(mod, name)

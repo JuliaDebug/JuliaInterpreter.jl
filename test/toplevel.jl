@@ -618,8 +618,13 @@ end
     JuliaInterpreter.finish!(frame, true)
     @test nmethods_in_overlay() == 1
 
-    ex = :(Base.Experimental.@overlay $(Toplevel.method_table) foo(x; y = 3) = 3 + y)
+    ex = :(Base.Experimental.@overlay $(Toplevel.method_table) external_foo(x; y = 3) = 3 + y)
     frame = Frame(Toplevel, ex)
     JuliaInterpreter.finish!(frame, true)
-    @test nmethods_in_overlay() == 3 # `foo(x)` and `kwcall` methods were added
+    @test nmethods_in_overlay() == 3 # `external_foo(x)` and `kwcall` methods were added
+
+    ex = :(Base.Experimental.@overlay getproperty(@__MODULE__, :method_table) external_foo(x::Int) = 4)
+    frame = Frame(Toplevel, ex)
+    JuliaInterpreter.finish!(frame, true)
+    @test nmethods_in_overlay() == 4
 end
