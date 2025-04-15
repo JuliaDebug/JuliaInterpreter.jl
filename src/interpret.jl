@@ -339,6 +339,8 @@ function evaluate_methoddef(frame::Frame, node::Expr)
 end
 
 function evaluate_overlayed_methoddef(frame::Frame, node::Expr, mt::Core.MethodTable)
+    # Overlaying an empty function such as `function f end` is not legal, and `f` must
+    # already be defined so we don't need to do as much work as in `evaluate_methoddef`.
     sig = @lookup(frame, node.args[2])::SimpleVector
     body = @lookup(frame, node.args[3])::Union{CodeInfo, Expr}
     ccall(:jl_method_def, Cvoid, (Any, Any, Any, Any), sig, mt, body, moduleof(frame)::Module)
