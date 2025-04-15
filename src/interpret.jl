@@ -334,20 +334,17 @@ function evaluate_methoddef(frame::Frame, node::Expr)
     length(node.args) == 1 && return f
     sig = @lookup(frame, node.args[2])::SimpleVector
     body = @lookup(frame, node.args[3])::Union{CodeInfo, Expr}
-    RT = method_def_return_type()
-    return ccall(:jl_method_def, Any, (Any, Ptr{Cvoid}, Any, Any), sig, C_NULL, body, moduleof(frame)::Module)::RT
+    method = ccall(:jl_method_def, Any, (Any, Ptr{Cvoid}, Any, Any), sig, C_NULL, body, moduleof(frame)::Module)::Method
+    return method
 end
-
-# see https://github.com/JuliaLang/julia/pull/58076
-method_def_return_type() = @static VERSION ≥ v"1.13.0-DEV.388" ? Method : Nothing
 
 function evaluate_overlayed_methoddef(frame::Frame, node::Expr, mt::Core.MethodTable)
     # Overlaying an empty function such as `function f end` is not legal, and `f` must
     # already be defined so we don't need to do as much work as in `evaluate_methoddef`.
     sig = @lookup(frame, node.args[2])::SimpleVector
     body = @lookup(frame, node.args[3])::Union{CodeInfo, Expr}
-    RT = method_def_return_type()
-    return ccall(:jl_method_def, Any, (Any, Any, Any, Any), sig, mt, body, moduleof(frame)::Module)::RT
+    method = ccall(:jl_method_def, Any, (Any, Any, Any, Any), sig, mt, body, moduleof(frame)::Module)::Method
+    return method
 end
 
 function extract_method_table(frame::Frame, node::Expr)
