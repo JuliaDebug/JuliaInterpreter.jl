@@ -338,7 +338,7 @@ function evaluate_methoddef(frame::Frame, node::Expr)
     return method
 end
 
-function evaluate_overlayed_methoddef(frame::Frame, node::Expr, mt::Core.MethodTable)
+function evaluate_overlayed_methoddef(frame::Frame, node::Expr, mt::MethodTable)
     # Overlaying an empty function such as `function f end` is not legal, and `f` must
     # already be defined so we don't need to do as much work as in `evaluate_methoddef`.
     sig = @lookup(frame, node.args[2])::SimpleVector
@@ -347,19 +347,20 @@ function evaluate_overlayed_methoddef(frame::Frame, node::Expr, mt::Core.MethodT
     return method
 end
 
-function extract_method_table(frame::Frame, node::Expr)
+function extract_method_table(frame::Frame, node::Expr; eval = true)
     isexpr(node, :method, 3) || return nothing
     arg = node.args[1]
-    isa(arg, Core.MethodTable) && return arg
+    isa(arg, MethodTable) && return arg
     if !isa(arg, Symbol) && !isa(arg, GlobalRef)
+        eval || return nothing
         value = Core.eval(moduleof(frame), arg)
-        isa(value, Core.MethodTable) && return value
+        isa(value, MethodTable) && return value
         return nothing
     end
     mod, name = isa(arg, Symbol) ? (moduleof(frame), arg) : (arg.mod, arg.name)
     @invokelatest(isdefined(mod, name)) || return nothing
     value = Core.eval(mod, name)
-    isa(value, Core.MethodTable) && return value
+    isa(value, MethodTable) && return value
     return nothing
 end
 
