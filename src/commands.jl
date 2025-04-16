@@ -178,13 +178,30 @@ function next_line!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false
 end
 function _next_line!(@nospecialize(recurse), frame::Frame, istoplevel, initialline::Int, initialfile::String)
     predicate(frame) = is_return(pc_expr(frame)) || (linenumber(frame) != initialline || getfile(frame) != initialfile)
-
     pc = next_until!(predicate, recurse, frame, istoplevel)
     (pc === nothing || isa(pc, BreakpointRef)) && return pc
     maybe_step_through_kwprep!(recurse, frame, istoplevel)
-    maybe_next_call!(recurse, frame, istoplevel)
+    maybe_next_until!(is_next_stop, recurse, frame, istoplevel)
 end
 next_line!(frame::Frame, istoplevel::Bool=false) = next_line!(finish_and_return!, frame, istoplevel)
+
+function is_next_stop(frame::Frame)
+    expr = pc_expr(frame)
+    return is_call(expr) || is_assignment(frame) || is_return(expr) || is_gotoifnot(expr) || expr isa Core.GotoNode
+end
+
+function is_assignment(frame::Frame)
+    expr = pc_expr(frame)
+    isexpr(expr, :(=)) || return false
+    var = expr.args[1]
+    if var isa SlotNumber
+        # assignment to a local variable
+        return frame.framecode.src.slotnames[var.id] !== Symbol("")
+    else
+        # assignment to a global variable
+        return true
+    end
+end
 
 """
     pc = until_line!(recurse, frame, line=nothing istoplevel=false)
