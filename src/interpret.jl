@@ -2,7 +2,7 @@ isassign(frame::Frame) = isassign(frame, frame.pc)
 isassign(frame::Frame, pc::Int) = (pc in frame.framecode.used)
 
 lookup_var(frame::Frame, val::SSAValue) = frame.framedata.ssavalues[val.id]
-lookup_var(frame::Frame, ref::GlobalRef) = invokelatest(getfield, ref.mod, ref.name)
+lookup_var(frame::Frame, ref::GlobalRef) = @invokelatest getglobal(ref.mod, ref.name)
 function lookup_var(frame::Frame, slot::SlotNumber)
     val = frame.framedata.locals[slot.id]
     val !== nothing && return val.value
@@ -225,7 +225,7 @@ end
 
 function native_call(fargs::Vector{Any}, frame::Frame)
     f = popfirst!(fargs) # now it's really just `args`
-    if (@static isdefined(Core.IR, :EnterNode) && true)
+    if (@static isdefinedglobal(Core.IR, :EnterNode) && true)
         newscope = Core.current_scope()
         if newscope !== nothing || !isempty(frame.framedata.current_scopes)
             for scope in frame.framedata.current_scopes
@@ -322,7 +322,7 @@ function evaluate_methoddef(frame::Frame, node::Expr)
         else
             # TODO: This logic isn't fully correct, but it's been used for a long
             # time, so let's leave it for now.
-            if Base.isbindingresolved(mod, name) && @invokelatest isdefined(mod, name)  # `isdefined` accesses the binding, making it impossible to create a new one
+            if Base.isbindingresolved(mod, name) && @invokelatest isdefinedglobal(mod, name)  # `isdefinedglobal` accesses the binding, making it impossible to create a new one
                 f = @invokelatest getfield(mod, name)
             else
                 f = Core.eval(mod, Expr(:function, name))  # create a new function
@@ -414,9 +414,9 @@ function check_isdefined(frame::Frame, @nospecialize(node))
     elseif isexpr(node, :static_parameter)
         return isassigned(data.sparams, node.args[1]::Int)
     elseif isa(node, GlobalRef)
-        return isdefined(node.mod, node.name)
+        return isdefinedglobal(node.mod, node.name)
     elseif isa(node, Symbol)
-        return isdefined(moduleof(frame), node)
+        return isdefinedglobal(moduleof(frame), node)
     else # QuoteNode or other implicitly quoted object
         return true
     end
@@ -578,7 +578,7 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
         elseif istoplevel && isa(node, LineNumberNode)
         elseif istoplevel && isa(node, Symbol)
             rhs = invokelatest(getfield, moduleof(frame), node)
-        elseif @static (isdefined(Core.IR, :EnterNode) && true) && isa(node, Core.IR.EnterNode)
+        elseif @static (isdefinedglobal(Core.IR, :EnterNode) && true) && isa(node, Core.IR.EnterNode)
             rhs = node.catch_dest
             push!(data.exception_frames, rhs)
             if isdefined(node, :scope)

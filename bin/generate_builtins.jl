@@ -61,7 +61,7 @@ function scopedname(f)
     tn = typeof(f).name
     Base.isexported(tn.module, Symbol(fstr)) && return fstr
     fsym = Symbol(fstr)
-    isdefined(tn.module, fsym) && return string(tn.module) * '.' * fstr
+    isdefinedglobal(tn.module, fsym) && return string(tn.module) * '.' * fstr
     return "Base." * fstr
 end
 
@@ -75,7 +75,7 @@ function nargs(f, table, id)
     end
     # Specialize ~arrayref and arrayset~ memoryrefnew for small numbers of arguments
     # TODO: how about other memory intrinsics?
-    if (@static isdefined(Core, :memoryrefnew) ? f == Core.memoryrefnew : f == Core.memoryref)
+    if (@static isdefinedglobal(Core, :memoryrefnew) ? f == Core.memoryrefnew : f == Core.memoryref)
         maxarg = 5
     end
     return minarg, maxarg
@@ -249,7 +249,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         elseif f === Core.current_scope
             print(io,
 """
-    elseif @static isdefined(Core, :current_scope) && f === Core.current_scope
+    elseif @static isdefinedglobal(Core, :current_scope) && f === Core.current_scope
         if nargs == 0
             currscope = Core.current_scope()
             for scope in frame.framedata.current_scopes
@@ -271,7 +271,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             end
             print(io,
 """
-    $head @static isdefined($(ft.name.module), $(repr(nameof(f)))) && f === $fname
+    $head @static isdefinedglobal($(ft.name.module), $(repr(nameof(f)))) && f === $fname
         $fcall
 """)
         else
@@ -326,7 +326,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         rname = repr(name)
         print(io,
 """
-    elseif @static (isdefined($mod, $rname) && $_scopedname isa Core.Builtin) && f === $_scopedname
+    elseif @static (isdefinedglobal($mod, $rname) && $_scopedname isa Core.Builtin) && f === $_scopedname
         $fcall
 """)
     end
@@ -335,7 +335,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     minmin, maxmax = typemax(Int), 0
     for fsym in names(Core.Intrinsics)
         fsym === :Intrinsics && continue
-        isdefined(Base, fsym) || continue
+        isdefinedglobal(Base, fsym) || continue
         f = getfield(Base, fsym)
         id = reinterpret(Int32, f) + 1
         minarg, maxarg = nargs(f, Core.Compiler.T_IFUNC, id)

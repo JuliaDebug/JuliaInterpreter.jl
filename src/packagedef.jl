@@ -22,7 +22,11 @@ const SlotNamesType = Vector{Symbol}
 
 append_any(@nospecialize x...) = append!([], Core.svec((x...)...))
 
-@static if isdefined(Base, :ScopedValues)
+@static if !@isdefined(isdefinedglobal)
+    const isdefinedglobal = Core.isdefined
+end
+
+@static if isdefinedglobal(Base, :ScopedValues)
     using Base: ScopedValues.Scope
 else
     const Scope = Any
@@ -84,7 +88,7 @@ function set_compiled_methods()
     end
 
     # Does an atomic operation via llvmcall (this fixes #354)
-    @static if isdefined(Base, :load_state_acquire) # VERSION < v"1.12-"
+    @static if isdefinedglobal(Base, :load_state_acquire) # VERSION < v"1.12-"
     for m in methods(Base.load_state_acquire)
         push!(compiled_methods, m)
     end

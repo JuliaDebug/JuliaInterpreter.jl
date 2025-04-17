@@ -2,8 +2,9 @@ using JuliaInterpreter
 using Test, InteractiveUtils, CodeTracking
 using Mmap
 using LinearAlgebra
+using JuliaInterpreter: isdefinedglobal
 
-if !isdefined(@__MODULE__, :runframe)
+if !isdefinedglobal(@__MODULE__, :runframe)
     include("utils.jl")
 end
 
@@ -954,6 +955,6 @@ end
 func_arrayref(a, i) = Core.arrayref(true, a, i)
 @test 2 == @interpret func_arrayref([1,2,3], 2)
 
-@static if isdefined(Base, :ScopedValues)
+@static if isdefinedglobal(Base, :ScopedValues)
 @testset "interpret_scopedvalues.jl" include("interpret_scopedvalues.jl")
 end
