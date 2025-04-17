@@ -45,7 +45,7 @@ end
 function lookup_global_ref(a::GlobalRef)
     isbindingresolved_deprecated && return a
     if Base.isbindingresolved(a.mod, a.name) &&
-        (@invokelatest isdefined(a.mod, a.name)) &&
+        (@invokelatest isdefinedglobal(a.mod, a.name)) &&
         (@invokelatest isconst(a.mod, a.name))
         return QuoteNode(@invokelatest getfield(a.mod, a.name))
     end
@@ -324,7 +324,7 @@ function replace_coretypes_list!(list::AbstractVector; rev::Bool=false)
             if rval !== val
                 list[i] = ReturnNode(rval)
             end
-        elseif @static (isdefined(Core.IR, :EnterNode) && true) && isa(stmt, Core.IR.EnterNode)
+        elseif @static (isdefinedglobal(Core.IR, :EnterNode) && true) && isa(stmt, Core.IR.EnterNode)
             if isdefined(stmt, :scope)
                 rscope = rep(stmt.scope, rev)
                 if rscope !== stmt.scope

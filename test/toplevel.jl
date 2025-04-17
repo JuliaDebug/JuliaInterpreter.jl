@@ -1,4 +1,6 @@
-if !isdefined(@__MODULE__, :read_and_parse)
+using JuliaInterpreter: isdefinedglobal
+
+if !isdefinedglobal(@__MODULE__, :read_and_parse)
     include("utils.jl")
 end
 
@@ -46,8 +48,8 @@ end
         end
         """)
     modexs = collect(ExprSplitter(JIVisible, ex))
-    @test isdefined(JIVisible, :OuterModDocstring)
-    @test isdefined(JIVisible.OuterModDocstring, :InnerModDocstring)
+    @test isdefinedglobal(JIVisible, :OuterModDocstring)
+    @test isdefinedglobal(JIVisible.OuterModDocstring, :InnerModDocstring)
 
     # issue #538
     @test !JuliaInterpreter.is_doc_expr(:(Core.@doc "string"))
@@ -60,10 +62,10 @@ end
     m, ex = first(modexs)       # FIXME don't use index in tests
     @test !JuliaInterpreter.is_doc_expr(ex.args[2])
 
-    @test !isdefined(Main, :JIInvisible)
+    @test !isdefinedglobal(Main, :JIInvisible)
     collect(ExprSplitter(JIVisible, :(module JIInvisible f() = 1 end)))  # this looks up JIInvisible rather than create it
-    @test !isdefined(Main, :JIInvisible)
-    @test  isdefined(JIVisible, :JIInvisible)
+    @test !isdefinedglobal(Main, :JIInvisible)
+    @test  isdefinedglobal(JIVisible, :JIInvisible)
     mktempdir() do path
         push!(LOAD_PATH, path)
         open(joinpath(path, "TmpPkg1.jl"), "w") do io
@@ -82,15 +84,15 @@ end
         end
         @eval using TmpPkg1
         # Every package is technically parented in Main but the name may not be visible in Main
-        @test @eval isdefined(@__MODULE__, :TmpPkg1)
-        @test @eval !isdefined(@__MODULE__, :TmpPkg2)
+        @test @eval isdefinedglobal(@__MODULE__, :TmpPkg1)
+        @test @eval !isdefinedglobal(@__MODULE__, :TmpPkg2)
         collect(ExprSplitter(@__MODULE__, quote
                 module TmpPkg2
                 f() = 2
                 end
             end))
-        @test @eval isdefined(@__MODULE__, :TmpPkg1)
-        @test @eval !isdefined(@__MODULE__, :TmpPkg2)
+        @test @eval isdefinedglobal(@__MODULE__, :TmpPkg1)
+        @test @eval !isdefinedglobal(@__MODULE__, :TmpPkg2)
     end
 
     # Revise issue #718
@@ -188,7 +190,7 @@ module Toplevel end
     @test Toplevel.paramtype(Vector) == Toplevel.NoParam
     @test Toplevel.Inner.g() == 5
     @test Toplevel.Inner.InnerInner.g() == 6
-    @test isdefined(Toplevel, :Beat)
+    @test isdefinedglobal(Toplevel, :Beat)
     @test Toplevel.Beat <: Toplevel.DatesMod.Period
 
     @test @interpret(Toplevel.f1(0)) == 1
@@ -247,7 +249,7 @@ module Toplevel end
     @test @interpret(Toplevel.Inner.g()) == 5
     @test @interpret(Toplevel.Inner.InnerInner.g()) == 6
     # FIXME: even though they pass, these tests break Test!
-    # @test @interpret(isdefined(Toplevel, :Beat))
+    # @test @interpret(isdefinedglobal(Toplevel, :Beat))
     # @test @interpret(Toplevel.Beat <: Toplevel.DatesMod.Period)
 
     # Check that nested expressions are handled appropriately (module-in-block, internal `using`)
@@ -495,7 +497,7 @@ end
         JuliaInterpreter.finish!(frame, true)
     end
     Core.eval(Toplevel, :(using .NonFrame))
-    @test isdefined(Toplevel, :nffoo)
+    @test isdefinedglobal(Toplevel, :nffoo)
 end
 
 @testset "LOAD_PATH and modules" begin
