@@ -625,7 +625,6 @@ end
 
 # parametric llvmcall (issues #112 and #288)
 module VecTest
-    using Tensors
     const Vec{N,T} = NTuple{N,VecElement{T}}
     # The following test mimic SIMD.jl
     const _llvmtypes = Dict{DataType, String}(
@@ -646,7 +645,7 @@ module VecTest
             Core.getfield(Base, :llvmcall)($exp, Vec{$N, $T}, Tuple{Vec{$N, $T}, Vec{$N, $T}}, x, y)
         end
     end
-    f() = 1.0 * one(Tensor{2,3})
+    f(a) = vecadd(a, a)
 end
 let
     # NOTE we need to make sure this code block is compiled, since vecadd is generated function,
@@ -654,8 +653,8 @@ let
     Base.Experimental.@force_compile
     a = (VecElement{Float64}(1.0), VecElement{Float64}(2.0))
     @test @interpret(VecTest.vecadd(a, a)) == VecTest.vecadd(a, a)
+    @test @interpret(VecTest.f(a)) == VecTest.f(a)
 end
-@test @interpret(VecTest.f()) == [1 0 0; 0 1 0; 0 0 1]
 
 # Test exception type for undefined variables
 f_undefvar() = s = s + 1
