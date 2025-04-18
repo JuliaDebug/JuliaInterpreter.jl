@@ -626,7 +626,7 @@ end
 # parametric llvmcall (issues #112 and #288)
 module VecTest
     using Tensors
-    Vec{N,T} = NTuple{N,VecElement{T}}
+    const Vec{N,T} = NTuple{N,VecElement{T}}
     # The following test mimic SIMD.jl
     const _llvmtypes = Dict{DataType, String}(
         Float64 => "double",
