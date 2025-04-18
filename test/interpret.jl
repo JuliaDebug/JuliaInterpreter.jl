@@ -416,7 +416,7 @@ end
 
     function g_gf()
         eval(:(z = 2))
-        return z
+        return @invokelatest(@__MODULE__().z)
     end
     @test @interpret g_gf() == 2
 
@@ -462,13 +462,13 @@ file, line = JuliaInterpreter.whereis(fr)
 @test line == (@__LINE__() - 4)
 
 # Test path to files in stdlib
-fr = JuliaInterpreter.enter_call(Test.eval, 1)
+fr = JuliaInterpreter.enter_call(rand)
 file, line = JuliaInterpreter.whereis(fr)
 @test isfile(file)
 @static if VERSION < v"1.12.0-DEV.173"
 @test isfile(JuliaInterpreter.getfile(fr.framecode.src.linetable[1]))
 end
-@test occursin(contractuser(Sys.STDLIB), repr(fr))
+@test occursin(joinpath(contractuser(Sys.STDLIB), "Random"), repr(fr))
 
 # Test undef sparam (https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/165)
 function foo(x::T) where {T <: AbstractString, S <: AbstractString}
@@ -626,8 +626,7 @@ end
 
 # parametric llvmcall (issues #112 and #288)
 module VecTest
-    using Tensors
-    Vec{N,T} = NTuple{N,VecElement{T}}
+    const Vec{N,T} = NTuple{N,VecElement{T}}
     # The following test mimic SIMD.jl
     const _llvmtypes = Dict{DataType, String}(
         Float64 => "double",
@@ -647,7 +646,7 @@ module VecTest
             Core.getfield(Base, :llvmcall)($exp, Vec{$N, $T}, Tuple{Vec{$N, $T}, Vec{$N, $T}}, x, y)
         end
     end
-    f() = 1.0 * one(Tensor{2,3})
+    f(a) = vecadd(a, a)
 end
 let
     # NOTE we need to make sure this code block is compiled, since vecadd is generated function,
@@ -655,8 +654,8 @@ let
     Base.Experimental.@force_compile
     a = (VecElement{Float64}(1.0), VecElement{Float64}(2.0))
     @test @interpret(VecTest.vecadd(a, a)) == VecTest.vecadd(a, a)
+    @test @interpret(VecTest.f(a)) == VecTest.f(a)
 end
-@test @interpret(VecTest.f()) == [1 0 0; 0 1 0; 0 0 1]
 
 # Test exception type for undefined variables
 f_undefvar() = s = s + 1

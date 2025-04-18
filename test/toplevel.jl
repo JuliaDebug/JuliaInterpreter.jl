@@ -606,3 +606,30 @@ end
     end
     @test length(modexs) == 2     # FIXME don't use index in tests
 end
+
+@testset "External method tables" begin
+    ex = quote
+        external_foo() = 1
+        Base.Experimental.@MethodTable method_table
+    end
+    frame = Frame(Toplevel, ex)
+    JuliaInterpreter.finish!(frame, true)
+
+    nmethods_in_overlay() = length(Base.MethodList(Toplevel.method_table).ms)
+    @test nmethods_in_overlay() == 0
+
+    ex = :(Base.Experimental.@overlay method_table external_foo() = 2)
+    frame = Frame(Toplevel, ex)
+    JuliaInterpreter.finish!(frame, true)
+    @test nmethods_in_overlay() == 1
+
+    ex = :(Base.Experimental.@overlay $(Toplevel.method_table) external_foo(x; y = 3) = 3 + y)
+    frame = Frame(Toplevel, ex)
+    JuliaInterpreter.finish!(frame, true)
+    @test nmethods_in_overlay() == 3 # `external_foo(x)` and `kwcall` methods were added
+
+    ex = :(Base.Experimental.@overlay getproperty(@__MODULE__, :method_table) external_foo(x::Int) = 4)
+    frame = Frame(Toplevel, ex)
+    JuliaInterpreter.finish!(frame, true)
+    @test nmethods_in_overlay() == 4
+end
