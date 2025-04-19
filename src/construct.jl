@@ -229,7 +229,9 @@ julia> argtypes
 Tuple{typeof(mymethod), Vector{Float64}}
 ```
 """
-function prepare_call(@nospecialize(f), allargs; enter_generated = false)
+function prepare_call(@nospecialize(f), allargs;
+                      enter_generated::Bool=false,
+                      method_table::Union{Nothing,MethodTable}=nothing)
     # Can happen for thunks created by generated functions
     if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
         return nothing
@@ -247,13 +249,13 @@ function prepare_call(@nospecialize(f), allargs; enter_generated = false)
             return nothing
         end
     else
-        method = whichtt(argtypes)
+        method = whichtt(argtypes, method_table)
     end
     if method === nothing
         # Call it to generate the exact error
         return f(allargs[2:end]...)
     end
-    ret = prepare_framecode(method, argtypes; enter_generated=enter_generated)
+    ret = prepare_framecode(method, argtypes; enter_generated)
     # Exceptional returns
     if ret === nothing
         # The generator threw an error. Let's generate the same error by calling it.
@@ -580,7 +582,9 @@ Prepare all the information needed to execute a particular `:call` expression `e
 For example, try `JuliaInterpreter.determine_method_for_expr(:(\$sum([1,2])))`.
 See [`JuliaInterpreter.prepare_call`](@ref) for information about the outputs.
 """
-function determine_method_for_expr(expr; enter_generated = false)
+function determine_method_for_expr(expr::Expr;
+                                   enter_generated::Bool=false,
+                                   method_table::Union{Nothing,MethodTable}=nothing)
     f = to_function(expr.args[1])
     allargs = expr.args
     # Extract keyword args
@@ -589,7 +593,7 @@ function determine_method_for_expr(expr; enter_generated = false)
         kwargs = splice!(allargs, 2)::Expr
     end
     f, allargs = prepare_args(f, allargs, kwargs.args)
-    return prepare_call(f, allargs; enter_generated=enter_generated)
+    return prepare_call(f, allargs; enter_generated, method_table)
 end
 
 """
@@ -626,9 +630,11 @@ T = Float64
 
 See [`enter_call`](@ref) for a similar approach not based on expressions.
 """
-function enter_call_expr(expr; enter_generated = false)
+function enter_call_expr(expr::Expr;
+                         enter_generated::Bool=false,
+                         method_table::Union{Nothing,MethodTable}=nothing)
     clear_caches()
-    r = determine_method_for_expr(expr; enter_generated = enter_generated)
+    r = determine_method_for_expr(expr; enter_generated, method_table)
     if r !== nothing && !isa(r[1], Compiled)
         return prepare_frame(Base.front(r)...)
     end
@@ -666,7 +672,9 @@ would be created by the generator.
 
 See [`enter_call_expr`](@ref) for a similar approach based on expressions.
 """
-function enter_call(@nospecialize(finfo), @nospecialize(args...); kwargs...)
+function enter_call(@nospecialize(finfo), @nospecialize(args...);
+                    method_table::Union{Nothing,MethodTable}=nothing,
+                    kwargs...)
     clear_caches()
     if isa(finfo, Tuple)
         f = finfo[1]
@@ -680,7 +688,7 @@ function enter_call(@nospecialize(finfo), @nospecialize(args...); kwargs...)
     if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
         error(f, " is a builtin or intrinsic")
     end
-    r = prepare_call(f, allargs; enter_generated=enter_generated)
+    r = prepare_call(f, allargs; enter_generated, method_table)
     if r !== nothing && !isa(r[1], Compiled)
         return prepare_frame(Base.front(r)...)
     end

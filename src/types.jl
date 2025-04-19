@@ -1,3 +1,5 @@
+method_table(@nospecialize recurse) = nothing
+
 """
 `Compiled` is a trait indicating that any `:call` expressions should be evaluated
 using Julia's normal compiled-code evaluation. The alternative is to pass `stack=Frame[]`,

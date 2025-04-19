@@ -958,3 +958,26 @@ func_arrayref(a, i) = Core.arrayref(true, a, i)
 @static if isdefinedglobal(Base, :ScopedValues)
 @testset "interpret_scopedvalues.jl" include("interpret_scopedvalues.jl")
 end
+
+function func_overlay end
+function func_overlay(x)
+    return sin(x)
+end
+Base.Experimental.@MethodTable ex_method_table
+Base.Experimental.@overlay ex_method_table func_overlay(x) = cos(x)
+struct OverlayInterpreter end
+(::OverlayInterpreter)(::OverlayInterpreter, newframe::JuliaInterpreter.Frame, istoplevel) =
+    JuliaInterpreter.finish_and_return!(OverlayInterpreter(), newframe, istoplevel)
+JuliaInterpreter.method_table(::OverlayInterpreter) = ex_method_table
+
+@testset "Interpret overlay method" begin
+    let frame = JuliaInterpreter.Frame(@__MODULE__, :(func_overlay(42.0)))
+        @test JuliaInterpreter.finish_and_return!(frame, true) == sin(42.0)
+    end
+    let frame = JuliaInterpreter.Frame(@__MODULE__, :(func_overlay(42.0)))
+        @test JuliaInterpreter.finish_and_return!(OverlayInterpreter(), frame, true) == cos(42.0)
+    end
+    let frame = JuliaInterpreter.enter_call(func_overlay, 42.0; method_table=ex_method_table)
+        @test JuliaInterpreter.finish_and_return!(OverlayInterpreter(), frame) == cos(42.0)
+    end
+end
