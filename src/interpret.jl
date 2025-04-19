@@ -260,7 +260,9 @@ function evaluate_call!(interp::Interpreter, frame::Frame, call_expr::Expr, ente
         lenv === nothing && return framecode  # this was a Builtin
         fargs = fargs_pruned
     else
-        framecode, lenv = get_call_framecode(fargs, frame.framecode, frame.pc; enter_generated=enter_generated)
+        method_table = JuliaInterpreter.method_table(interp)
+        framecode, lenv = get_call_framecode(fargs, frame.framecode, frame.pc;
+                                             enter_generated, method_table)
         if lenv === nothing
             if isa(framecode, Compiled)
                 return native_call(fargs, frame)

@@ -39,6 +39,14 @@ redefined as a completely different type in v0.11 or later.
 const Compiled = NonRecursiveInterpreter # for backward compatibility
 Base.similar(::Compiled, sz) = Compiled()  # to support similar(stack, 0)
 
+"""
+    method_table(interpreter::Interpreter) -> mt::Union{Nothing,MethodTable}
+
+Configures the method table used for method lookups performed by the interpreter.
+Uses the global method table by default.
+"""
+method_table(::Interpreter) = nothing
+
 # Our own replacements for Core types. We need to do this to ensure we can tell the difference
 # between "data" (Core types) and "code" (our types) if we step into Core.Compiler
 struct SSAValue

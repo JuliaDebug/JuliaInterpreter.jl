@@ -975,3 +975,25 @@ end
     @test_throws "Invalid @interpret call" macroexpand(@__MODULE__, :(@interpret interp sin(42)))
     @test_throws "Invalid @interpret call" macroexpand(@__MODULE__, :(@interpret _interp_=RecursiveInterpreter() sin(42)))
 end
+
+function func_overlay end
+func_overlay(x) = sin(x)
+call_func_overlay(x) = func_overlay(x)
+Base.Experimental.@MethodTable ex_method_table
+Base.Experimental.@overlay ex_method_table func_overlay(x) = cos(x)
+struct OverlayInterpreter <: Interpreter end
+JuliaInterpreter.method_table(::OverlayInterpreter) = ex_method_table
+
+@testset "Interpret overlay method" begin
+    let frame = JuliaInterpreter.Frame(@__MODULE__, :(func_overlay(42.0)))
+        @test JuliaInterpreter.finish_and_return!(frame, true) == sin(42.0)
+    end
+    @test sin(42.0) == @interpret call_func_overlay(42.0)
+    let frame = JuliaInterpreter.Frame(@__MODULE__, :(func_overlay(42.0)))
+        @test JuliaInterpreter.finish_and_return!(OverlayInterpreter(), frame, true) == cos(42.0)
+    end
+    let frame = JuliaInterpreter.enter_call(func_overlay, 42.0; method_table=ex_method_table)
+        @test JuliaInterpreter.finish_and_return!(OverlayInterpreter(), frame) == cos(42.0)
+    end
+    @test cos(42.0) == @interpret interp=OverlayInterpreter() call_func_overlay(42.0)
+end
