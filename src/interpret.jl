@@ -274,7 +274,9 @@ function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr:
         lenv === nothing && return framecode  # this was a Builtin
         fargs = fargs_pruned
     else
-        framecode, lenv = get_call_framecode(fargs, frame.framecode, frame.pc; enter_generated=enter_generated)
+        method_table = JuliaInterpreter.method_table(recurse)
+        framecode, lenv = get_call_framecode(fargs, frame.framecode, frame.pc;
+                                             enter_generated, method_table)
         if lenv === nothing
             if isa(framecode, Compiled)
                 return native_call(fargs, frame)

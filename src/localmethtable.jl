@@ -7,7 +7,9 @@ Return the framecode and environment for a call specified by `fargs = [f, args..
 `parentframecode` is the caller, and `idx` is the program-counter index.
 If possible, `framecode` will be looked up from the local method tables of `parentframe`.
 """
-function get_call_framecode(fargs::Vector{Any}, parentframe::FrameCode, idx::Int; enter_generated::Bool=false)
+function get_call_framecode(fargs::Vector{Any}, parentframe::FrameCode, idx::Int;
+                            enter_generated::Bool=false,
+                            method_table::Union{Nothing,MethodTable}=nothing)
     nargs = length(fargs)  # includes f as the first "argument"
     # Determine whether we can look up the appropriate framecode in the local method table
     if isassigned(parentframe.methodtables, idx)  # if this is the first call, this may not yet be set
@@ -60,7 +62,7 @@ function get_call_framecode(fargs::Vector{Any}, parentframe::FrameCode, idx::Int
     end
     # We haven't yet encountered this argtype combination and need to look it up by dispatch
     fargs[1] = f = to_function(fargs[1])
-    ret = prepare_call(f, fargs; enter_generated=enter_generated)
+    ret = prepare_call(f, fargs; enter_generated, method_table)
     ret === nothing && return invokelatest(f, fargs[2:end]...), nothing
     is_compiled = isa(ret[1], Compiled)
     local framecode
