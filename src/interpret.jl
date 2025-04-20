@@ -78,7 +78,7 @@ end
 # and hence our re-use of the `callargs` field of Frame would introduce
 # bugs. Since these nodes use a very limited repertoire of calls, we can special-case
 # this quite easily.
-function lookup_or_eval(@nospecialize(recurse), frame::Frame, @nospecialize(node))
+function lookup_or_eval(interp::Interpreter, frame::Frame, @nospecialize(node))
     if isa(node, SSAValue)
         return lookup_var(frame, node)
     elseif isa(node, SlotNumber)
@@ -92,7 +92,7 @@ function lookup_or_eval(@nospecialize(recurse), frame::Frame, @nospecialize(node
     elseif isa(node, Expr)
         ex = Expr(node.head)
         for arg in node.args
-            push!(ex.args, lookup_or_eval(recurse, frame, arg))
+            push!(ex.args, lookup_or_eval(interp, frame, arg))
         end
         if ex.head === :call
             f = ex.args[1]
@@ -126,7 +126,7 @@ function lookup_or_eval(@nospecialize(recurse), frame::Frame, @nospecialize(node
     elseif isa(node, Type)
         return node
     end
-    return eval_rhs(recurse, frame, node)
+    return eval_rhs(interp, frame, node)
 end
 
 function resolvefc(frame::Frame, @nospecialize(expr))
@@ -149,13 +149,13 @@ function resolvefc(frame::Frame, @nospecialize(expr))
     @invokelatest error("unexpected ccall to ", expr)
 end
 
-function collect_args(@nospecialize(recurse), frame::Frame, call_expr::Expr; isfc::Bool=false)
+function collect_args(interp::Interpreter, frame::Frame, call_expr::Expr; isfc::Bool=false)
     args = frame.framedata.callargs
     resize!(args, length(call_expr.args))
     args[1] = isfc ? resolvefc(frame, call_expr.args[1]) : lookup(frame, call_expr.args[1])
     for i = 2:length(args)
         if isexpr(call_expr.args[i], :call)
-            args[i] = lookup_or_eval(recurse, frame, call_expr.args[i])
+            args[i] = lookup_or_eval(interp, frame, call_expr.args[i])
         else
             args[i] = lookup(frame, call_expr.args[i])
         end
@@ -164,13 +164,13 @@ function collect_args(@nospecialize(recurse), frame::Frame, call_expr::Expr; isf
 end
 
 """
-    ret = evaluate_foreigncall(recurse, frame::Frame, call_expr)
+    ret = evaluate_foreigncall(interp, frame::Frame, call_expr)
 
 Evaluate a `:foreigncall` (from a `ccall`) statement `callexpr` in the context of `frame`.
 """
-function evaluate_foreigncall(@nospecialize(recurse), frame::Frame, call_expr::Expr)
+function evaluate_foreigncall(interp::Interpreter, frame::Frame, call_expr::Expr)
     head = call_expr.head
-    args = collect_args(recurse, frame, call_expr; isfc = head === :foreigncall)
+    args = collect_args(interp, frame, call_expr; isfc = head === :foreigncall)
     for i = 2:length(args)
         arg = args[i]
         args[i] = isa(arg, Symbol) ? QuoteNode(arg) : arg
@@ -200,11 +200,11 @@ function evaluate_foreigncall(@nospecialize(recurse), frame::Frame, call_expr::E
 end
 
 # We have to intercept ccalls / llvmcalls before we try it as a builtin
-function bypass_builtins(@nospecialize(recurse), frame::Frame, call_expr::Expr, pc::Int)
+function bypass_builtins(interp::Interpreter, frame::Frame, call_expr::Expr, pc::Int)
     if isassigned(frame.framecode.methodtables, pc)
         tme = frame.framecode.methodtables[pc]
         if isa(tme, Compiled)
-            fargs = collect_args(recurse, frame, call_expr)
+            fargs = collect_args(interp, frame, call_expr)
             f = to_function(fargs[1])
             fmod = parentmodule(f)::Module
             if fmod === JuliaInterpreter.CompiledCalls || fmod === Core.Compiler
@@ -233,25 +233,25 @@ function native_call(fargs::Vector{Any}, frame::Frame)
     return @invokelatest f(fargs...)
 end
 
-function evaluate_call_compiled!(::Compiled, frame::Frame, call_expr::Expr; enter_generated::Bool=false)
+function evaluate_call!(interp::Compiled, frame::Frame, call_expr::Expr, enter_generated::Bool=false)
     # @assert !enter_generated
     pc = frame.pc
-    ret = bypass_builtins(Compiled(), frame, call_expr, pc)
+    ret = bypass_builtins(interp, frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
     ret = maybe_evaluate_builtin(frame, call_expr, false)
     isa(ret, Some{Any}) && return ret.value
-    fargs = collect_args(Compiled(), frame, call_expr)
+    fargs = collect_args(interp, frame, call_expr)
     return native_call(fargs, frame)
 end
 
-function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr::Expr; enter_generated::Bool=false)
+function evaluate_call!(interp::Interpreter, frame::Frame, call_expr::Expr, enter_generated::Bool=false)
     pc = frame.pc
-    ret = bypass_builtins(recurse, frame, call_expr, pc)
+    ret = bypass_builtins(interp, frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
     ret = maybe_evaluate_builtin(frame, call_expr, true)
     isa(ret, Some{Any}) && return ret.value
     call_expr = ret
-    fargs = collect_args(recurse, frame, call_expr)
+    fargs = collect_args(interp, frame, call_expr)
     if fargs[1] === Core.eval
         return Core.eval(fargs[2], fargs[3])  # not a builtin, but worth treating specially
     elseif fargs[1] === Base.rethrow
@@ -281,12 +281,7 @@ function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr:
     npc = newframe.pc
     shouldbreak(newframe, npc) && return BreakpointRef(newframe.framecode, npc)
     # if the following errors, handle_err will pop the stack and recycle newframe
-    if recurse === finish_and_return!
-        # Optimize this case to avoid dynamic dispatch
-        ret = finish_and_return!(finish_and_return!, newframe, false)
-    else
-        ret = recurse(recurse, newframe, false)
-    end
+    ret = finish_and_return!(interp, newframe, false)
     isa(ret, BreakpointRef) && return ret
     frame.callee = nothing
     return_from(newframe)
@@ -294,17 +289,16 @@ function evaluate_call_recurse!(@nospecialize(recurse), frame::Frame, call_expr:
 end
 
 """
-    ret = evaluate_call!(Compiled(), frame::Frame, call_expr)
-    ret = evaluate_call!(recurse,    frame::Frame, call_expr)
+    ret = evaluate_call!(interp::Interpreter, frame::Frame, call_expr::Expr, enter_generated::Bool=false)
+    ret = evaluate_call!(frame::Frame, call_expr::Expr, enter_generated::Bool=false)
 
 Evaluate a `:call` expression `call_expr` in the context of `frame`.
 The first causes it to be executed using Julia's normal dispatch (compiled code),
 whereas the second recurses in via the interpreter.
-`recurse` has a default value of [`JuliaInterpreter.finish_and_return!`](@ref).
+`interp` has a default value of [`RecursiveInterpreter`](@ref).
 """
-evaluate_call!(::Compiled, frame::Frame, call_expr::Expr; kwargs...) = evaluate_call_compiled!(Compiled(), frame, call_expr; kwargs...)
-evaluate_call!(@nospecialize(recurse), frame::Frame, call_expr::Expr; kwargs...) = evaluate_call_recurse!(recurse, frame, call_expr; kwargs...)
-evaluate_call!(frame::Frame, call_expr::Expr; kwargs...) = evaluate_call!(finish_and_return!, frame, call_expr; kwargs...)
+evaluate_call!(frame::Frame, call_expr::Expr, enter_generated::Bool=false) =
+    evaluate_call!(RecursiveInterpreter(), frame, call_expr, enter_generated)
 
 # The following come up only when evaluating toplevel code
 function evaluate_methoddef(frame::Frame, node::Expr)
@@ -388,7 +382,7 @@ function maybe_assign!(frame::Frame, @nospecialize(stmt), @nospecialize(val))
 end
 maybe_assign!(frame::Frame, @nospecialize(val)) = maybe_assign!(frame, pc_expr(frame), val)
 
-function eval_rhs(@nospecialize(recurse), frame::Frame, node::Expr)
+function eval_rhs(interp::Interpreter, frame::Frame, node::Expr)
     head = node.head
     if head === :new
         args = Any[lookup(frame, arg) for arg in node.args]
@@ -403,11 +397,9 @@ function eval_rhs(@nospecialize(recurse), frame::Frame, node::Expr)
     elseif head === :isdefined
         return check_isdefined(frame, node.args[1])
     elseif head === :call
-        # here it's crucial to avoid dynamic dispatch
-        isa(recurse, Compiled) && return evaluate_call_compiled!(recurse, frame, node)
-        return evaluate_call_recurse!(recurse, frame, node)
+        return evaluate_call!(interp, frame, node)
     elseif head === :foreigncall || head === :cfunction
-        return evaluate_foreigncall(recurse, frame, node)
+        return evaluate_foreigncall(interp, frame, node)
     elseif head === :copyast
         val = (node.args[1]::QuoteNode).value
         return isa(val, Expr) ? copy(val) : val
@@ -471,7 +463,7 @@ end
 # in `step_expr!`
 const _location = Dict{Tuple{Method,Int},Int}()
 
-function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), istoplevel::Bool)
+function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), istoplevel::Bool)
     pc, code, data = frame.pc, frame.framecode, frame.framedata
     # if !is_leaf(frame)
     #     show_stackloc(frame)
@@ -491,7 +483,7 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
             if node.head === :(=)
                 lhs, rhs = node.args
                 if isa(rhs, Expr)
-                    rhs = eval_rhs(recurse, frame, rhs)
+                    rhs = eval_rhs(interp, frame, rhs)
                 else
                     rhs = lookup(frame, rhs)
                 end
@@ -537,12 +529,12 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
                     end
                 elseif node.head === :thunk
                     newframe = Frame(moduleof(frame), node.args[1]::CodeInfo)
-                    if isa(recurse, Compiled)
-                        finish!(recurse, newframe, true)
+                    if isa(interp, Compiled)
+                        finish!(interp, newframe, true)
                     else
                         newframe.caller = frame
                         frame.callee = newframe
-                        finish!(recurse, newframe, true)
+                        finish!(interp, newframe, true)
                         frame.callee = nothing
                     end
                     return_from(newframe)
@@ -559,7 +551,7 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
                               end
                               newframe = ($Frame)(mod, ex)
                               while true
-                                  ($through_methoddef_or_done!)($recurse, newframe) === nothing && break
+                                  ($through_methoddef_or_done!)($interp, newframe) === nothing && break
                               end
                               $return_from(newframe)
                           end)))
@@ -570,12 +562,12 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
                 elseif node.head === :latestworld
                     frame.world = Base.get_world_counter()
                 else
-                    rhs = eval_rhs(recurse, frame, node)
+                    rhs = eval_rhs(interp, frame, node)
                 end
             elseif node.head === :thunk || node.head === :toplevel
                 error("this frame needs to be run at top level")
             else
-                rhs = eval_rhs(recurse, frame, node)
+                rhs = eval_rhs(interp, frame, node)
             end
         elseif isa(node, GotoNode)
             @assert is_leaf(frame)
@@ -606,7 +598,7 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
             rhs = lookup(frame, node)
         end
     catch err
-        return handle_err(recurse, frame, err)
+        return handle_err(interp, frame, err)
     end
     @isdefined(rhs) && isa(rhs, BreakpointRef) && return rhs
     if isassign(frame, pc)
@@ -621,25 +613,24 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
 end
 
 """
-    pc = step_expr!(recurse, frame, istoplevel=false)
+    pc = step_expr!(interp::Interpreter, frame, istoplevel=false)
     pc = step_expr!(frame, istoplevel=false)
 
 Execute the next statement in `frame`. `pc` is the new program counter, or `nothing`
 if execution terminates, or a [`BreakpointRef`](@ref) if execution hits a breakpoint.
 
-`recurse` controls call evaluation; `recurse = Compiled()` evaluates :call expressions
-by normal dispatch. The default value `recurse = finish_and_return!` will use recursive
+`interp` controls call evaluation; `interp = Compiled()` evaluates :call expressions
+by normal dispatch. The default value `interp = RecursiveInterpreter()` will use recursive
 interpretation.
 
 If you are evaluating `frame` at module scope you should pass `istoplevel=true`.
 """
-step_expr!(@nospecialize(recurse), frame::Frame, istoplevel::Bool=false) =
-    step_expr!(recurse, frame, pc_expr(frame), istoplevel)
-step_expr!(frame::Frame, istoplevel::Bool=false) =
-    step_expr!(finish_and_return!, frame, istoplevel)
+step_expr!(interp::Interpreter, frame::Frame, istoplevel::Bool=false) =
+    step_expr!(interp, frame, pc_expr(frame), istoplevel)
+step_expr!(frame::Frame, istoplevel::Bool=false) = step_expr!(RecursiveInterpreter(), frame, istoplevel)
 
 """
-    loc = handle_err(recurse, frame, err)
+    loc = handle_err(interp, frame, err)
 
 Deal with an error `err` that arose while evaluating `frame`. There are one of three
 behaviors:
@@ -650,7 +641,7 @@ behaviors:
   `loc` is a `BreakpointRef`;
 - otherwise, `err` gets rethrown.
 """
-function handle_err(@nospecialize(recurse), frame::Frame, @nospecialize(err))
+function handle_err(::Interpreter, frame::Frame, @nospecialize(err))
     data = frame.framedata
     err_will_be_thrown_to_top_level = isempty(data.exception_frames) && !data.caller_will_catch_err
     if break_on_throw[] || (break_on_error[] && err_will_be_thrown_to_top_level)
@@ -682,15 +673,16 @@ end
 lookup_return(frame::Frame, node::ReturnNode) = lookup(frame, node.val)
 
 """
-    ret = get_return(frame)
+    ret = get_return(interp, frame)
 
 Get the return value of `frame`. Throws an error if `frame.pc` does not point to a `return` expression.
 `frame` must have already been executed so that the return value has been computed (see,
 e.g., [`JuliaInterpreter.finish!`](@ref)).
 """
-function get_return(frame)
+function get_return(interp::Interpreter, frame::Frame)
     node = pc_expr(frame)
     is_return(node) || @invokelatest error("expected return statement, got ", node)
     return lookup_return(frame, node)
 end
+get_return(frame::Frame) = get_return(RecursiveInterpreter(), frame)
 get_return(t::Tuple{Module,Expr,Frame}) = get_return(t[end])

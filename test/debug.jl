@@ -7,7 +7,7 @@ const ALL_COMMANDS = (:n, :s, :c, :finish, :nc, :se, :si, :until)
 
 function step_through_command(fr::Frame, cmd::Symbol)
     while true
-        ret = JuliaInterpreter.debug_command(JuliaInterpreter.finish_and_return!, fr, cmd)
+        ret = JuliaInterpreter.debug_command(fr, cmd)
         ret == nothing && break
         fr, pc = ret
     end
@@ -336,7 +336,7 @@ end
         try
             break_on(:error)
             fr = JuliaInterpreter.enter_call(f_outer)
-            fr, pc = debug_command(JuliaInterpreter.finish_and_return!, fr, :finish)
+            fr, pc = debug_command(fr, :finish)
             @test fr.framecode.scope.name === :error
 
             fundef() = undef_func()

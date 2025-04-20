@@ -1,9 +1,30 @@
 """
-`Compiled` is a trait indicating that any `:call` expressions should be evaluated
-using Julia's normal compiled-code evaluation. The alternative is to pass `stack=Frame[]`,
-which will cause all calls to be evaluated via the interpreter.
+    abstract type Interpreter end
+
+The abstract type that all interpreters should subtype.
+It defines how JuliaInterpreter behaves when evaluating code.
+An interpreter that subtypes this type can implement its own evaluation strategies, by
+overloading the certain methods in JuliaInterpreter that are defined for this base type.
+The default behaviors of `Interpreter` is same as that of [`RecursiveInterpreter`](@ref),
+meaning it will recursively interpret all `:call` expressions.
 """
-struct Compiled end
+abstract type Interpreter end
+
+"""
+    RecursiveInterpreter <: Interpreter
+
+`RecursiveInterpreter` is an [`Interpreter`](@ref) that recurses into any `:call`
+expressions in the code being interpreted.
+"""
+struct RecursiveInterpreter <: Interpreter end
+
+"""
+    Compiled <: Interpreter
+
+`Compiled` is an [`Interpreter`](@ref) that evaluates any `:call` expressions in the code
+being interpreted using Julia's normal compiled-code execution.
+"""
+struct Compiled <: Interpreter end
 Base.similar(::Compiled, sz) = Compiled()  # to support similar(stack, 0)
 
 # Our own replacements for Core types. We need to do this to ensure we can tell the difference

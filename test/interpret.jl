@@ -361,25 +361,24 @@ f113(;x) = x
     frame = JuliaInterpreter.enter_call(f_multi, 1)
     nlocals = length(frame.framedata.locals)
     @test_throws UndefVarError JuliaInterpreter.lookup_var(frame, JuliaInterpreter.SlotNumber(nlocals))
-    stack = [frame]
     locals = JuliaInterpreter.locals(frame)
     @test length(locals) == 2
     @test JuliaInterpreter.Variable(1, :x, false) in locals
-    JuliaInterpreter.step_expr!(stack, frame)
-    JuliaInterpreter.step_expr!(stack, frame)
+    JuliaInterpreter.step_expr!(frame)
+    JuliaInterpreter.step_expr!(frame)
     @static if VERSION >= v"1.11-"
         locals = JuliaInterpreter.locals(frame)
         @test length(locals) == 2
-        JuliaInterpreter.step_expr!(stack, frame)
+        JuliaInterpreter.step_expr!(frame)
     end
     locals = JuliaInterpreter.locals(frame)
     @test length(locals) == 3
     @test JuliaInterpreter.Variable(1, :c, false) in locals
-    JuliaInterpreter.step_expr!(stack, frame)
+    JuliaInterpreter.step_expr!(frame)
     locals = JuliaInterpreter.locals(frame)
     @test length(locals) == 3
     @test JuliaInterpreter.Variable(2, :x, false) in locals
-    JuliaInterpreter.step_expr!(stack, frame)
+    JuliaInterpreter.step_expr!(frame)
     locals = JuliaInterpreter.locals(frame)
     @test length(locals) == 3
     @test JuliaInterpreter.Variable(3, :x, false) in locals

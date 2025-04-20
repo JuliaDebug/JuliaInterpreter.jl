@@ -1,5 +1,5 @@
 using JuliaInterpreter
-using JuliaInterpreter: Frame
+using JuliaInterpreter: Frame, Interpreter, RecursiveInterpreter
 using JuliaInterpreter: finish_and_return!, evaluate_call!, step_expr!, shouldbreak,
                         do_assignment!, SSAValue, isassign, pc_expr, handle_err, get_return,
                         moduleof
@@ -50,82 +50,85 @@ function Aborted(frame::Frame, pc)
     return Aborted(lineinfo)
 end
 
+mutable struct LimitedExec <: Interpreter
+    nstmts::Int
+end
+
 """
-    ret, nstmtsleft = evaluate_limited!(recurse, frame, nstmts, istoplevel::Bool=true)
+    ret, nstmtsleft = evaluate_limited!(interp::Interpreter, frame, nstmts, istoplevel::Bool=true)
 
 Run `frame` until one of:
 - execution terminates normally (`ret = Some{Any}(val)`, where `val` is the returned value of `frame`)
 - if `istoplevel` and a `thunk` or `method` expression is encountered (`ret = nothing`)
 - more than `nstmts` have been executed (`ret = Aborted(lin)`, where `lnn` is the `LineInfoNode` of termination).
 """
-function evaluate_limited!(@nospecialize(recurse), frame::Frame, nstmts::Int, istoplevel::Bool=false)
-    refnstmts = Ref(nstmts)
-    limexec!(s, f, istl) = limited_exec!(s, f, refnstmts, istl)
+function evaluate_limited!(interp::Interpreter, frame::Frame, nstmts::Int, istoplevel::Bool=false)
+    limited_interp = LimitedExec(nstmts)
     # The following is like finish!, except we intercept :call expressions so that we can run them
     # with limexec! rather than the default finish_and_return!
     pc = frame.pc
     while nstmts > 0
-        shouldbreak(frame, pc) && return BreakpointRef(frame.framecode, pc), refnstmts[]
+        shouldbreak(frame, pc) && return BreakpointRef(frame.framecode, pc), limited_interp.nstmts
         stmt = pc_expr(frame, pc)
         # uncomment the following to calibrate `nstmts` in test/limits.jl
         # _lnn_ = Aborted(frame, pc).at
         # _lnn_.file == Symbol("fake.jl") && _lnn_.line == 5 && isa(stmt, Core.GotoIfNot) && @show nstmts
         if isa(stmt, Expr)
-            if stmt.head === :call && !isa(recurse, Compiled)
-                refnstmts[] = nstmts
+            if stmt.head === :call && !isa(interp, Compiled)
+                limited_interp.nstmts = nstmts
                 try
-                    rhs = evaluate_call!(limexec!, frame, stmt)
-                    isa(rhs, Aborted) && return rhs, refnstmts[]
+                    rhs = evaluate_call!(limited_interp, frame, stmt)
+                    isa(rhs, Aborted) && return rhs, limited_interp.nstmts
                     lhs = SSAValue(pc)
                     do_assignment!(frame, lhs, rhs)
                     new_pc = pc + 1
                 catch err
-                    new_pc = handle_err(recurse, frame, err)
+                    new_pc = handle_err(interp, frame, err)
                 end
-                nstmts = refnstmts[]
-            elseif stmt.head === :(=) && isexpr(stmt.args[2], :call) && !isa(recurse, Compiled)
-                refnstmts[] = nstmts
+                nstmts = limited_interp.nstmts
+            elseif stmt.head === :(=) && isexpr(stmt.args[2], :call) && !isa(interp, Compiled)
+                limited_interp.nstmts = nstmts
                 try
-                    rhs = evaluate_call!(limexec!, frame, stmt.args[2])
-                    isa(rhs, Aborted) && return rhs, refnstmts[]
+                    rhs = evaluate_call!(limited_interp, frame, stmt.args[2])
+                    isa(rhs, Aborted) && return rhs, limited_interp.nstmts
                     do_assignment!(frame, stmt.args[1], rhs)
                     new_pc = pc + 1
                 catch err
-                    new_pc = handle_err(recurse, frame, err)
+                    new_pc = handle_err(interp, frame, err)
                 end
-                nstmts = refnstmts[]
+                nstmts = limited_interp.nstmts
             elseif istoplevel && stmt.head === :thunk
                 code = stmt.args[1]
                 if length(code.code) == 1 && JuliaInterpreter.is_return(code.code[end]) && isexpr(code.code[end].args[1], :method)
                     # Julia 1.2+ puts a :thunk before the start of each method
                     new_pc = pc + 1
                 else
-                    refnstmts[] = nstmts
+                    limited_interp.nstmts = nstmts
                     newframe = Frame(moduleof(frame), stmt)
-                    if isa(recurse, Compiled)
-                        finish!(recurse, newframe, true)
+                    if isa(interp, Compiled)
+                        finish!(interp, newframe, true)
                     else
                         newframe.caller = frame
                         frame.callee = newframe
-                        ret = limited_exec!(recurse, newframe, refnstmts, istoplevel)
-                        isa(ret, Aborted) && return ret, refnstmts[]
+                        ret = finish_and_return!(limited_interp, newframe, istoplevel)
+                        isa(ret, Aborted) && return ret, limited_interp.nstmts
                         frame.callee = nothing
                     end
                     JuliaInterpreter.recycle(newframe)
                     # Because thunks may define new methods, return to toplevel
                     frame.pc = pc + 1
-                    return nothing, refnstmts[]
+                    return nothing, limited_interp.nstmts
                 end
             elseif istoplevel && stmt.head === :method && length(stmt.args) == 3
-                step_expr!(recurse, frame, stmt, istoplevel)
+                step_expr!(interp, frame, stmt, istoplevel)
                 frame.pc = pc + 1
                 return nothing, nstmts - 1
             else
-                new_pc = step_expr!(recurse, frame, stmt, istoplevel)
+                new_pc = step_expr!(interp, frame, stmt, istoplevel)
                 nstmts -= 1
             end
         else
-            new_pc = step_expr!(recurse, frame, stmt, istoplevel)
+            new_pc = step_expr!(interp, frame, stmt, istoplevel)
             nstmts -= 1
         end
         (new_pc === nothing || isa(new_pc, BreakpointRef)) && break
@@ -141,17 +144,17 @@ function evaluate_limited!(@nospecialize(recurse), frame::Frame, nstmts::Int, is
     return Some{Any}(ret), nstmts
 end
 
-evaluate_limited!(@nospecialize(recurse), modex::Tuple{Module,Expr,Frame}, nstmts::Int, istoplevel::Bool=true) =
-    evaluate_limited!(recurse, modex[end], nstmts, istoplevel)
-evaluate_limited!(@nospecialize(recurse), modex::Tuple{Module,Expr,Expr}, nstmts::Int, istoplevel::Bool=true) =
+evaluate_limited!(interp::Interpreter, modex::Tuple{Module,Expr,Frame}, nstmts::Int, istoplevel::Bool=true) =
+    evaluate_limited!(interp, modex[end], nstmts, istoplevel)
+evaluate_limited!(interp::Interpreter, modex::Tuple{Module,Expr,Expr}, nstmts::Int, istoplevel::Bool=true) =
     Some{Any}(Core.eval(modex[1], modex[3])), nstmts
 
 evaluate_limited!(frame::Union{Frame, Tuple}, nstmts::Int, istoplevel::Bool=false) =
-    evaluate_limited!(finish_and_return!, frame, nstmts, istoplevel)
+    evaluate_limited!(RecursiveInterpreter(), frame, nstmts, istoplevel)
 
-function limited_exec!(@nospecialize(recurse), newframe, refnstmts, istoplevel)
-    ret, nleft = evaluate_limited!(recurse, newframe, refnstmts[], istoplevel)
-    refnstmts[] = nleft
+function JuliaInterpreter.finish_and_return!(interp::LimitedExec, newframe::Frame, istoplevel::Bool)
+    ret, nleft = evaluate_limited!(interp, newframe, interp.nstmts, istoplevel)
+    interp.nstmts = nleft
     return isa(ret, Aborted) ? ret : something(ret)
 end
 
