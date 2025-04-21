@@ -359,7 +359,7 @@ function extract_method_table(frame::Frame, node::Expr; eval = true)
     end
     mod, name = isa(arg, Symbol) ? (moduleof(frame), arg) : (arg.mod, arg.name)
     @invokelatest(isdefinedglobal(mod, name)) || return nothing
-    value = Core.eval(mod, name)
+    value = getglobal(mod, name)
     isa(value, MethodTable) && return value
     return nothing
 end
