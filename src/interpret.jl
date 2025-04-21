@@ -313,6 +313,8 @@ evaluate_call!(frame::Frame, call_expr::Expr; kwargs...) = evaluate_call!(finish
 
 # The following come up only when evaluating toplevel code
 function evaluate_methoddef(frame::Frame, node::Expr)
+    mt = extract_method_table(frame, node)
+    mt !== nothing && return evaluate_overlayed_methoddef(frame, node, mt)
     f = node.args[1]
     if f isa Symbol || f isa GlobalRef
         mod = f isa Symbol ? moduleof(frame) : f.mod
@@ -332,9 +334,34 @@ function evaluate_methoddef(frame::Frame, node::Expr)
     length(node.args) == 1 && return f
     sig = @lookup(frame, node.args[2])::SimpleVector
     body = @lookup(frame, node.args[3])::Union{CodeInfo, Expr}
-    # branching on https://github.com/JuliaLang/julia/pull/41137
-    ccall(:jl_method_def, Cvoid, (Any, Ptr{Cvoid}, Any, Any), sig, C_NULL, body, moduleof(frame)::Module)
-    return f
+    method = ccall(:jl_method_def, Any, (Any, Ptr{Cvoid}, Any, Any), sig, C_NULL, body, moduleof(frame)::Module)::Method
+    return method
+end
+
+function evaluate_overlayed_methoddef(frame::Frame, node::Expr, mt::MethodTable)
+    # Overlaying an empty function such as `function f end` is not legal, and `f` must
+    # already be defined so we don't need to do as much work as in `evaluate_methoddef`.
+    sig = @lookup(frame, node.args[2])::SimpleVector
+    body = @lookup(frame, node.args[3])::Union{CodeInfo, Expr}
+    method = ccall(:jl_method_def, Any, (Any, Any, Any, Any), sig, mt, body, moduleof(frame)::Module)::Method
+    return method
+end
+
+function extract_method_table(frame::Frame, node::Expr; eval = true)
+    isexpr(node, :method, 3) || return nothing
+    arg = node.args[1]
+    isa(arg, MethodTable) && return arg
+    if !isa(arg, Symbol) && !isa(arg, GlobalRef)
+        eval || return nothing
+        value = try Core.eval(moduleof(frame), arg) catch _ nothing end
+        isa(value, MethodTable) && return value
+        return nothing
+    end
+    mod, name = isa(arg, Symbol) ? (moduleof(frame), arg) : (arg.mod, arg.name)
+    @invokelatest(isdefinedglobal(mod, name)) || return nothing
+    value = @invokelatest getglobal(mod, name)
+    isa(value, MethodTable) && return value
+    return nothing
 end
 
 function do_assignment!(frame::Frame, @nospecialize(lhs), @nospecialize(rhs))
@@ -505,7 +532,7 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
                 # (https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/591)
             elseif istoplevel
                 if node.head === :method && length(node.args) > 1
-                    evaluate_methoddef(frame, node)
+                    rhs = evaluate_methoddef(frame, node)
                 elseif node.head === :module
                     error("this should have been handled by split_expressions")
                 elseif node.head === :using || node.head === :import || node.head === :export
