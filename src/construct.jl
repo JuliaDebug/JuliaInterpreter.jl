@@ -691,7 +691,9 @@ end
 # call expression for further processing.
 function extract_args(__module__, ex0)
     if isa(ex0, Expr)
-        if any(a->(isexpr(a, :kw) || isexpr(a, :parameters)), ex0.args)
+        if isexpr(ex0, :macrocall) # Make @edit @time 1+2 edit the macro by using the types of the *expressions*
+            return error("Macros are not supported in @interpret")
+        elseif any(@nospecialize(a)->(isexpr(a, :kw) || isexpr(a, :parameters)), ex0.args)
             arg1, args, kwargs = gensym("arg1"), gensym("args"), gensym("kwargs")
             return quote
                 $arg1 = $(ex0.args[1])
@@ -706,9 +708,6 @@ function extract_args(__module__, ex0)
             return Expr(:tuple,
                 mapany(x->isexpr(x,:parameters) ? QuoteNode(x) : x, ex0.args)...)
         end
-    end
-    if isexpr(ex0, :macrocall) # Make @edit @time 1+2 edit the macro by using the types of the *expressions*
-        return error("Macros are not supported in @enter")
     end
     ex = Meta.lower(__module__, ex0)
     if !isa(ex, Expr)
@@ -727,12 +726,49 @@ function extract_args(__module__, ex0)
         end
     end
     return error("expression is not a function call, "
-               * "or is too complex for @enter to analyze; "
+               * "or is too complex for @interpret to analyze; "
                * "break it down to simpler parts if possible")
 end
 
+function interpret(mod::Module, @nospecialize(ex0); interp=RecursiveInterpreter())
+    args = try
+        extract_args(mod, ex0)
+    catch e
+        return :(throw($e))
+    end
+    quote
+        local theargs = $(esc(args))
+        local frame = JuliaInterpreter.enter_call_expr(Expr(:call, theargs...))
+        if frame === nothing
+            eval(Expr(:call, map(QuoteNode, theargs)...))
+        elseif shouldbreak(frame, 1)
+            frame, BreakpointRef(frame.framecode, 1)
+        else
+            local ret = finish_and_return!($interp, frame)
+            # We deliberately return the top frame here; future debugging commands
+            # via debug_command may alter the leaves, we want the top frame so we can
+            # ultimately do `get_return`.
+            isa(ret, BreakpointRef) ? (frame, ret) : ret
+        end
+    end
+end
+
+function interpret(mod::Module, opt, xs...)
+    if isexpr(opt, :(=))
+        optname, optval = opt.args
+        optname isa Symbol || error("Invalid @interpret call: $optname is not a symbol")
+        if optname === :interp
+            return interpret(mod, xs...; interp=esc(optval))
+        else
+            error("Invalid @interpret call: $optname is not a recognized option")
+        end
+    else
+        error("Invalid @interpret call: $opt is not a keyword")
+    end
+end
+
 """
-    @interpret f(args; kwargs...)
+    @interpret [interp] f(args; kwargs...)
 
 Evaluate `f` on the specified arguments using the interpreter.
 
@@ -748,25 +784,10 @@ julia> @interpret sum(a)
 8
 ```
 """
-macro interpret(arg)
-    args = try
-        extract_args(__module__, arg)
-    catch e
-        return :(throw($e))
-    end
-    quote
-        local theargs = $(esc(args))
-        local frame = JuliaInterpreter.enter_call_expr(Expr(:call, theargs...))
-        if frame === nothing
-            eval(Expr(:call, map(QuoteNode, theargs)...))
-        elseif shouldbreak(frame, 1)
-            frame, BreakpointRef(frame.framecode, 1)
-        else
-            local ret = finish_and_return!(frame)
-            # We deliberately return the top frame here; future debugging commands
-            # via debug_command may alter the leaves, we want the top frame so we can
-            # ultimately do `get_return`.
-            isa(ret, BreakpointRef) ? (frame, ret) : ret
-        end
-    end
+macro interpret(ex0)
+    return interpret(__module__, ex0)
+end
+
+macro interpret(xs...)
+    return interpret(__module__, xs...)
 end

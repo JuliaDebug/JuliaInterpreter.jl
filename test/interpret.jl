@@ -961,3 +961,15 @@ func_arrayref(a, i) = Core.arrayref(true, a, i)
 @static if isdefinedglobal(Base, :ScopedValues)
 @testset "interpret_scopedvalues.jl" include("interpret_scopedvalues.jl")
 end
+
+@testset "changing interpreter for @interpret" begin
+    @test sin(42) == @interpret sin(42)
+    @test sin(42) == @interpret interp=RecursiveInterpreter() sin(42)
+    @test sin(42) == @interpret interp=Compiled() sin(42)
+    @test ((@allocated @interpret interp=RecursiveInterpreter() sin(42)) ≠ (@allocated @interpret interp=Compiled() sin(42)))
+    let interp1 = RecursiveInterpreter(),
+        interp2 = Compiled()
+        @test sin(42) == @interpret interp=interp1 sin(42)
+        @test sin(42) == @interpret interp=interp2 sin(42)
+    end
+end
