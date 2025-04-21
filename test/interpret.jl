@@ -414,11 +414,16 @@ end
     f_gf(x) = false ? some_undef_var_zzzzzzz : x
     @test @interpret f_gf(2) == 2
 
-    function g_gf()
-        eval(:(z = 2))
-        return @invokelatest(@__MODULE__().z)
+    gvar = gensym()
+    @eval function g_gf()
+        @eval $gvar = 2
+        return $gvar
     end
-    @test @interpret g_gf() == 2
+    if VERSION ≥ v"1.12-"
+        @test_throws "`$gvar` not defined" @interpret(g_gf() == 2)
+    else
+        @test @interpret(g_gf() == 2)
+    end
 
     global q_gf = 0
     function h_gf()
