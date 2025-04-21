@@ -353,7 +353,7 @@ function extract_method_table(frame::Frame, node::Expr; eval = true)
     isa(arg, MethodTable) && return arg
     if !isa(arg, Symbol) && !isa(arg, GlobalRef)
         eval || return nothing
-        value = Core.eval(moduleof(frame), arg)
+        value = try Core.eval(moduleof(frame), arg) catch _ nothing end
         isa(value, MethodTable) && return value
         return nothing
     end
