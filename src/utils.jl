@@ -34,7 +34,8 @@ and doesn't throw when there is no matching method.
 function whichtt(@nospecialize(tt), mt::Union{Nothing, MethodTable} = nothing)
     # TODO: provide explicit control over world age? In case we ever need to call "old" methods.
     # branch on https://github.com/JuliaLang/julia/pull/44515
-    # for now, actual code execution doesn't ever need to consider overlayed method table
+    # for now, code execution doesn't have the capability to use an overlayed method table,
+    # which is meant to be addressed in https://github.com/JuliaDebug/JuliaInterpreter.jl/pull/682.
     match, _ = Core.Compiler._findsup(tt, mt, get_world_counter())
     match === nothing && return nothing
     return match.method
