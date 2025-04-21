@@ -1,9 +1,10 @@
 using JuliaInterpreter
 using Test, Random, InteractiveUtils, Distributed, Dates
+using JuliaInterpreter: isdefinedglobal
 
 # Much of this file is taken from Julia's test/runtests.jl file.
 
-if !isdefined(Main, :read_and_parse)
+if !isdefinedglobal(Main, :read_and_parse)
     include("utils.jl")
 end
 

@@ -4,7 +4,7 @@ using Logging
 
 @test isempty(detect_ambiguities(JuliaInterpreter, Base, Core))
 
-if !isdefined(@__MODULE__, :read_and_parse)
+if !JuliaInterpreter.isdefinedglobal(@__MODULE__, :read_and_parse)
     include("utils.jl")
 end
 

@@ -3,7 +3,7 @@ using CodeTracking
 using Test
 
 # This is a test-for-tests, verifying the code in utils.jl.
-if !isdefined(@__MODULE__, :read_and_parse)
+if !JuliaInterpreter.isdefinedglobal(@__MODULE__, :read_and_parse)
     include("utils.jl")
 end
 

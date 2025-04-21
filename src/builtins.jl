@@ -86,7 +86,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         return Some{Any}(Core._call_in_world_total(getargs(args, frame)...))
     elseif f === Core._compute_sparams
         return Some{Any}(Core._compute_sparams(getargs(args, frame)...))
-    elseif @static isdefined(Core, :_defaultctors) && f === Core._defaultctors
+    elseif @static isdefinedglobal(Core, :_defaultctors) && f === Core._defaultctors
         return Some{Any}(Core._defaultctors(getargs(args, frame)...))
     elseif f === Core._equiv_typedef
         return Some{Any}(Core._equiv_typedef(getargs(args, frame)...))
@@ -120,7 +120,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(Core.compilerbarrier(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :current_scope) && f === Core.current_scope
+    elseif @static isdefinedglobal(Core, :current_scope) && f === Core.current_scope
         if nargs == 0
             currscope = Core.current_scope()
             for scope in frame.framedata.current_scopes
@@ -154,33 +154,33 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(Core.ifelse(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :invoke_in_world) && f === Core.invoke_in_world
+    elseif @static isdefinedglobal(Core, :invoke_in_world) && f === Core.invoke_in_world
         return Some{Any}(Core.invoke_in_world(getargs(args, frame)...))
-    elseif @static isdefined(Core, :memorynew) && f === Core.memorynew
+    elseif @static isdefinedglobal(Core, :memorynew) && f === Core.memorynew
         if nargs == 2
             return Some{Any}(Core.memorynew(@lookup(frame, args[2]), @lookup(frame, args[3])))
         else
             return Some{Any}(Core.memorynew(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :memoryref_isassigned) && f === Core.memoryref_isassigned
+    elseif @static isdefinedglobal(Core, :memoryref_isassigned) && f === Core.memoryref_isassigned
         if nargs == 3
             return Some{Any}(Core.memoryref_isassigned(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
         else
             return Some{Any}(Core.memoryref_isassigned(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :memoryrefget) && f === Core.memoryrefget
+    elseif @static isdefinedglobal(Core, :memoryrefget) && f === Core.memoryrefget
         if nargs == 3
             return Some{Any}(Core.memoryrefget(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
         else
             return Some{Any}(Core.memoryrefget(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :memoryrefmodify!) && f === Core.memoryrefmodify!
+    elseif @static isdefinedglobal(Core, :memoryrefmodify!) && f === Core.memoryrefmodify!
         if nargs == 5
             return Some{Any}(Core.memoryrefmodify!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
         else
             return Some{Any}(Core.memoryrefmodify!(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :memoryrefnew) && f === Core.memoryrefnew
+    elseif @static isdefinedglobal(Core, :memoryrefnew) && f === Core.memoryrefnew
         if nargs == 1
             return Some{Any}(Core.memoryrefnew(@lookup(frame, args[2])))
         elseif nargs == 2
@@ -194,31 +194,31 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(Core.memoryrefnew(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :memoryrefoffset) && f === Core.memoryrefoffset
+    elseif @static isdefinedglobal(Core, :memoryrefoffset) && f === Core.memoryrefoffset
         if nargs == 1
             return Some{Any}(Core.memoryrefoffset(@lookup(frame, args[2])))
         else
             return Some{Any}(Core.memoryrefoffset(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :memoryrefreplace!) && f === Core.memoryrefreplace!
+    elseif @static isdefinedglobal(Core, :memoryrefreplace!) && f === Core.memoryrefreplace!
         if nargs == 6
             return Some{Any}(Core.memoryrefreplace!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6]), @lookup(frame, args[7])))
         else
             return Some{Any}(Core.memoryrefreplace!(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :memoryrefset!) && f === Core.memoryrefset!
+    elseif @static isdefinedglobal(Core, :memoryrefset!) && f === Core.memoryrefset!
         if nargs == 4
             return Some{Any}(Core.memoryrefset!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
         else
             return Some{Any}(Core.memoryrefset!(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :memoryrefsetonce!) && f === Core.memoryrefsetonce!
+    elseif @static isdefinedglobal(Core, :memoryrefsetonce!) && f === Core.memoryrefsetonce!
         if nargs == 5
             return Some{Any}(Core.memoryrefsetonce!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
         else
             return Some{Any}(Core.memoryrefsetonce!(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :memoryrefswap!) && f === Core.memoryrefswap!
+    elseif @static isdefinedglobal(Core, :memoryrefswap!) && f === Core.memoryrefswap!
         if nargs == 4
             return Some{Any}(Core.memoryrefswap!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
         else
@@ -232,7 +232,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         end
     elseif f === Core.svec
         return Some{Any}(Core.svec(getargs(args, frame)...))
-    elseif @static isdefined(Core, :throw_methoderror) && f === Core.throw_methoderror
+    elseif @static isdefinedglobal(Core, :throw_methoderror) && f === Core.throw_methoderror
         return Some{Any}(Core.throw_methoderror(getargs(args, frame)...))
     elseif f === applicable
         return Some{Any}(applicable(getargs(args, frame)...))
@@ -270,7 +270,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         # This uses the original arguments to avoid looking them up twice
         # See #442
         return Expr(:call, invoke, args[2:end]...)
-    elseif @static isdefined(Core, :invokelatest) && f === Core.invokelatest
+    elseif @static isdefinedglobal(Core, :invokelatest) && f === Core.invokelatest
         args = getargs(args, frame)
         if !expand
             return Some{Any}(Core.invokelatest(args...))
@@ -296,7 +296,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(isdefined(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :isdefinedglobal) && f === isdefinedglobal
+    elseif @static isdefinedglobal(Core, :isdefinedglobal) && f === isdefinedglobal
         return Some{Any}(isdefinedglobal(getargs(args, frame)...))
     elseif f === modifyfield!
         if nargs == 4
@@ -306,7 +306,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(modifyfield!(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :modifyglobal!) && f === modifyglobal!
+    elseif @static isdefinedglobal(Core, :modifyglobal!) && f === modifyglobal!
         if nargs == 4
             return Some{Any}(Base.invoke_in_world(frame.world, modifyglobal!, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
         elseif nargs == 5
@@ -330,7 +330,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(replacefield!(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :replaceglobal!) && f === replaceglobal!
+    elseif @static isdefinedglobal(Core, :replaceglobal!) && f === replaceglobal!
         if nargs == 4
             return Some{Any}(Base.invoke_in_world(frame.world, replaceglobal!, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
         elseif nargs == 5
@@ -348,7 +348,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(setfield!(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :setfieldonce!) && f === setfieldonce!
+    elseif @static isdefinedglobal(Core, :setfieldonce!) && f === setfieldonce!
         if nargs == 3
             return Some{Any}(setfieldonce!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
         elseif nargs == 4
@@ -366,7 +366,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(Base.invoke_in_world(frame.world, setglobal!, getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :setglobalonce!) && f === setglobalonce!
+    elseif @static isdefinedglobal(Core, :setglobalonce!) && f === setglobalonce!
         if nargs == 3
             return Some{Any}(Base.invoke_in_world(frame.world, setglobalonce!, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
         elseif nargs == 4
@@ -384,7 +384,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(swapfield!(getargs(args, frame)...))
         end
-    elseif @static isdefined(Core, :swapglobal!) && f === swapglobal!
+    elseif @static isdefinedglobal(Core, :swapglobal!) && f === swapglobal!
         if nargs == 3
             return Some{Any}(Base.invoke_in_world(frame.world, swapglobal!, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
         elseif nargs == 4
@@ -426,7 +426,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             call_expr.args[3] = @lookup(frame, args[3])
             return Some{Any}(Core.eval(moduleof(frame), call_expr))
         end
-    elseif @static (isdefined(Core, :arrayref) && Core.arrayref isa Core.Builtin) && f === Core.arrayref
+    elseif @static (isdefinedglobal(Core, :arrayref) && Core.arrayref isa Core.Builtin) && f === Core.arrayref
         if nargs == 1
             return Some{Any}(Core.arrayref(@lookup(frame, args[2])))
         elseif nargs == 2
@@ -440,7 +440,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(Core.arrayref(getargs(args, frame)...))
         end
-    elseif @static (isdefined(Core, :arrayset) && Core.arrayset isa Core.Builtin) && f === Core.arrayset
+    elseif @static (isdefinedglobal(Core, :arrayset) && Core.arrayset isa Core.Builtin) && f === Core.arrayset
         if nargs == 1
             return Some{Any}(Core.arrayset(@lookup(frame, args[2])))
         elseif nargs == 2
@@ -456,7 +456,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(Core.arrayset(getargs(args, frame)...))
         end
-    elseif @static (isdefined(Core, :arrayset) && Core.arrayset isa Core.Builtin) && f === Core.arrayset
+    elseif @static (isdefinedglobal(Core, :arrayset) && Core.arrayset isa Core.Builtin) && f === Core.arrayset
         if nargs == 1
             return Some{Any}(Core.arrayset(@lookup(frame, args[2])))
         elseif nargs == 2
@@ -472,7 +472,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(Core.arrayset(getargs(args, frame)...))
         end
-    elseif @static (isdefined(Core, :const_arrayref) && Core.const_arrayref isa Core.Builtin) && f === Core.const_arrayref
+    elseif @static (isdefinedglobal(Core, :const_arrayref) && Core.const_arrayref isa Core.Builtin) && f === Core.const_arrayref
         if nargs == 1
             return Some{Any}(Core.const_arrayref(@lookup(frame, args[2])))
         elseif nargs == 2
@@ -486,7 +486,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(Core.const_arrayref(getargs(args, frame)...))
         end
-    elseif @static (isdefined(Core, :memoryref) && Core.memoryref isa Core.Builtin) && f === Core.memoryref
+    elseif @static (isdefinedglobal(Core, :memoryref) && Core.memoryref isa Core.Builtin) && f === Core.memoryref
         if nargs == 1
             return Some{Any}(Core.memoryref(@lookup(frame, args[2])))
         elseif nargs == 2
@@ -500,7 +500,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(Core.memoryref(getargs(args, frame)...))
         end
-    elseif @static (isdefined(Core, :set_binding_type!) && Core.set_binding_type! isa Core.Builtin) && f === Core.set_binding_type!
+    elseif @static (isdefinedglobal(Core, :set_binding_type!) && Core.set_binding_type! isa Core.Builtin) && f === Core.set_binding_type!
         if nargs == 2
             return Some{Any}(Core.set_binding_type!(@lookup(frame, args[2]), @lookup(frame, args[3])))
         elseif nargs == 3
@@ -508,11 +508,11 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         else
             return Some{Any}(Core.set_binding_type!(getargs(args, frame)...))
         end
-    elseif @static (isdefined(Core, :_apply_pure) && Core._apply_pure isa Core.Builtin) && f === Core._apply_pure
+    elseif @static (isdefinedglobal(Core, :_apply_pure) && Core._apply_pure isa Core.Builtin) && f === Core._apply_pure
         return Some{Any}(Core._apply_pure(getargs(args, frame)...))
-    elseif @static (isdefined(Core, :_call_in_world) && Core._call_in_world isa Core.Builtin) && f === Core._call_in_world
+    elseif @static (isdefinedglobal(Core, :_call_in_world) && Core._call_in_world isa Core.Builtin) && f === Core._call_in_world
         return Some{Any}(Core._call_in_world(getargs(args, frame)...))
-    elseif @static (isdefined(Core, :_call_latest) && Core._call_latest isa Core.Builtin) && f === Core._call_latest
+    elseif @static (isdefinedglobal(Core, :_call_latest) && Core._call_latest isa Core.Builtin) && f === Core._call_latest
         args = getargs(args, frame)
         if !expand
             return Some{Any}(Core._call_latest(args...))
