@@ -17,12 +17,15 @@ expressions in the code being interpreted.
 struct RecursiveInterpreter <: Interpreter end
 
 """
-    Compiled <: Interpreter
+    NonRecursiveInterpreter <: Interpreter
 
-`Compiled` is an [`Interpreter`](@ref) that evaluates any `:call` expressions in the code
-being interpreted using Julia's normal code execution engine with the native compiler.
+`NonRecursiveInterpreter` is an [`Interpreter`](@ref) that evaluates any `:call` expressions
+in the code being interpreted using Julia's normal code execution engine with the native
+compiler.
 """
-struct Compiled <: Interpreter end
+struct NonRecursiveInterpreter <: Interpreter end
+
+const Compiled = NonRecursiveInterpreter # for backward compatibility
 Base.similar(::Compiled, sz) = Compiled()  # to support similar(stack, 0)
 
 # Our own replacements for Core types. We need to do this to ensure we can tell the difference
