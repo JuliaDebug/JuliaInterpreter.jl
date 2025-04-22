@@ -9,46 +9,33 @@ function lookup_var(frame::Frame, slot::SlotNumber)
     throw(UndefVarError(frame.framecode.src.slotnames[slot.id]))
 end
 
+function gen_lookup_ex(frame, node)
+    :(let node = $(esc(node))
+        isa(node, SSAValue) ? lookup_var($(esc(frame)), node) :
+        isa(node, GlobalRef) ? lookup_var($(esc(frame)), node) :
+        isa(node, SlotNumber) ? lookup_var($(esc(frame)), node) :
+        isa(node, QuoteNode) ? node.value :
+        isa(node, Symbol) ? @invokelatest(getglobal(moduleof($(esc(frame))), node)) :
+        isa(node, Expr) ? lookup_expr($(esc(frame)), node) :
+        node # fallback
+    end)
+end
+
 """
     rhs = @lookup(frame, node)
-    rhs = @lookup(mod, frame, node)
 
 This macro looks up previously-computed values referenced as SSAValues, SlotNumbers,
 GlobalRefs, QuoteNode, sparam or exception reference expression.
-It will also lookup symbols in `moduleof(frame)`; this can be supplied ahead-of-time via
-the 3-argument version.
-If none of the above apply, the value of `node` will be returned.
+It will also lookup symbols in `moduleof(frame)`.
+If none of the above apply, the value of `node` itself will be returned.
 """
-macro lookup(args...)
-    length(args) == 2 || length(args) == 3 || error("invalid number of arguments ", length(args))
-    havemod = length(args) == 3
-    local mod
-    if havemod
-        mod, frame, node = args
-    else
-        frame, node = args
-    end
-    nodetmp = gensym(:node)  # used to hoist, e.g., args[4]
-    if havemod
-        fallback = quote
-            isa($nodetmp, Symbol) ? invokelatest(getfield, $(esc(mod)), $nodetmp) :
-            $nodetmp
-        end
-    else
-        fallback = quote
-            $nodetmp
-        end
-    end
-    quote
-        $nodetmp = $(esc(node))
-        isa($nodetmp, SSAValue) ? lookup_var($(esc(frame)), $nodetmp) :
-        isa($nodetmp, GlobalRef) ? lookup_var($(esc(frame)), $nodetmp) :
-        isa($nodetmp, SlotNumber) ? lookup_var($(esc(frame)), $nodetmp) :
-        isa($nodetmp, QuoteNode) ? $nodetmp.value :
-        isa($nodetmp, Symbol) ? invokelatest(getfield, moduleof($(esc(frame))), $nodetmp) :
-        isa($nodetmp, Expr) ? lookup_expr($(esc(frame)), $nodetmp) :
-        $fallback
-    end
+macro lookup(frame, node)
+    return gen_lookup_ex(frame, node)
+end
+macro lookup(_, frame, node)
+    f, l = __source__.file, __source__.line
+    @warn "`@lookup(mod, frame, node)` at $f:$l is deprecated, use `@lookup(frame, node)` instead."
+    return gen_lookup_ex(frame, node)
 end
 
 function lookup_expr(frame::Frame, e::Expr)
@@ -156,13 +143,12 @@ end
 function collect_args(@nospecialize(recurse), frame::Frame, call_expr::Expr; isfc::Bool=false)
     args = frame.framedata.callargs
     resize!(args, length(call_expr.args))
-    mod = moduleof(frame)
-    args[1] = isfc ? resolvefc(frame, call_expr.args[1]) : @lookup(mod, frame, call_expr.args[1])
+    args[1] = isfc ? resolvefc(frame, call_expr.args[1]) : @lookup(frame, call_expr.args[1])
     for i = 2:length(args)
         if isexpr(call_expr.args[i], :call)
             args[i] = lookup_or_eval(recurse, frame, call_expr.args[i])
         else
-            args[i] = @lookup(mod, frame, call_expr.args[i])
+            args[i] = @lookup(frame, call_expr.args[i])
         end
     end
     return args
@@ -396,17 +382,13 @@ maybe_assign!(frame::Frame, @nospecialize(val)) = maybe_assign!(frame, pc_expr(f
 function eval_rhs(@nospecialize(recurse), frame::Frame, node::Expr)
     head = node.head
     if head === :new
-        mod = moduleof(frame)
-        args = let mod=mod
-            Any[@lookup(mod, frame, arg) for arg in node.args]
-        end
+        args = Any[@lookup(frame, arg) for arg in node.args]
         T = popfirst!(args)::DataType
         rhs = ccall(:jl_new_structv, Any, (Any, Ptr{Any}, UInt32), T, args, length(args))
         return rhs
     elseif head === :splatnew  # Julia 1.2+
-        mod = moduleof(frame)
-        T = @lookup(mod, frame, node.args[1])::DataType
-        args = @lookup(mod, frame, node.args[2])::Tuple
+        T = @lookup(frame, node.args[1])::DataType
+        args = @lookup(frame, node.args[2])::Tuple
         rhs = ccall(:jl_new_structt, Any, (Any, Any), T, args)
         return rhs
     elseif head === :isdefined
@@ -502,7 +484,7 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
                 if isa(rhs, Expr)
                     rhs = eval_rhs(recurse, frame, rhs)
                 else
-                    rhs = istoplevel ? @lookup(moduleof(frame), frame, rhs) : @lookup(frame, rhs)
+                    rhs = @lookup(frame, rhs)
                 end
                 isa(rhs, BreakpointRef) && return rhs
                 do_assignment!(frame, lhs, rhs)
