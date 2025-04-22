@@ -9,6 +9,33 @@ function lookup_var(frame::Frame, slot::SlotNumber)
     throw(UndefVarError(frame.framecode.src.slotnames[slot.id]))
 end
 
+"""
+    lookup(frame::Frame, node)
+
+Looks up previously-computed values referenced as `SSAValue`, `SlotNumber`,
+`GlobalRef`, sparam or exception reference expression.
+It will also lookup `Symbol`s as global reference in the context of `moduleof(frame)::Module`.
+If none of the above apply, the value of `node` will be returned.
+"""
+function lookup(frame::Frame, @nospecialize(node))
+    if isa(node, SSAValue)
+        return lookup_var(frame, node)
+    elseif isa(node, GlobalRef)
+        return lookup_var(frame, node)
+    elseif isa(node, SlotNumber)
+        return lookup_var(frame, node)
+    elseif isa(node, Symbol)
+        return @invokelatest getglobal(moduleof(frame), node)
+    elseif isa(node, Expr)
+        return lookup_expr(frame, node)
+    else # fallback
+        if isa(node, QuoteNode)
+            return node.value
+        end
+        return node
+    end
+end
+
 function gen_lookup_ex(frame, node)
     :(let node = $(esc(node))
         isa(node, SSAValue) ? lookup_var($(esc(frame)), node) :
@@ -20,21 +47,13 @@ function gen_lookup_ex(frame, node)
         node # fallback
     end)
 end
-
-"""
-    rhs = @lookup(frame, node)
-
-This macro looks up previously-computed values referenced as SSAValues, SlotNumbers,
-GlobalRefs, QuoteNode, sparam or exception reference expression.
-It will also lookup symbols in `moduleof(frame)`.
-If none of the above apply, the value of `node` itself will be returned.
-"""
 macro lookup(frame, node)
+    @warn "`@lookup` at $f:$l is deprecated, use `lookup(frame, node)` instead."
     return gen_lookup_ex(frame, node)
 end
 macro lookup(_, frame, node)
     f, l = __source__.file, __source__.line
-    @warn "`@lookup(mod, frame, node)` at $f:$l is deprecated, use `@lookup(frame, node)` instead."
+    @warn "`@lookup(mod, frame, node)` at $f:$l is deprecated, use `lookup(frame, node)` instead."
     return gen_lookup_ex(frame, node)
 end
 
@@ -52,13 +71,13 @@ function lookup_expr(frame::Frame, e::Expr)
     end
     head === :boundscheck && length(e.args) == 0 && return true
     if head === :call
-        f = @lookup frame e.args[1]
+        f = lookup(frame, e.args[1])
         if (@static VERSION < v"1.11.0-DEV.1180" && true) && f === Core.svec
             # work around for a linearization bug in Julia (https://github.com/JuliaLang/julia/pull/52497)
-            return f(Any[@lookup(frame, e.args[i]) for i in 2:length(e.args)]...)
+            return f(Any[lookup(frame, e.args[i]) for i in 2:length(e.args)]...)
         elseif f === Core.tuple
             # handling for ccall literal syntax
-            return f(Any[@lookup(frame, e.args[i]) for i in 2:length(e.args)]...)
+            return f(Any[lookup(frame, e.args[i]) for i in 2:length(e.args)]...)
         end
     end
     error("invalid lookup expr ", e)
@@ -143,12 +162,12 @@ end
 function collect_args(@nospecialize(recurse), frame::Frame, call_expr::Expr; isfc::Bool=false)
     args = frame.framedata.callargs
     resize!(args, length(call_expr.args))
-    args[1] = isfc ? resolvefc(frame, call_expr.args[1]) : @lookup(frame, call_expr.args[1])
+    args[1] = isfc ? resolvefc(frame, call_expr.args[1]) : lookup(frame, call_expr.args[1])
     for i = 2:length(args)
         if isexpr(call_expr.args[i], :call)
             args[i] = lookup_or_eval(recurse, frame, call_expr.args[i])
         else
-            args[i] = @lookup(frame, call_expr.args[i])
+            args[i] = lookup(frame, call_expr.args[i])
         end
     end
     return args
@@ -318,8 +337,8 @@ function evaluate_methoddef(frame::Frame, node::Expr)
         end
     end
     length(node.args) == 1 && return f
-    sig = @lookup(frame, node.args[2])::SimpleVector
-    body = @lookup(frame, node.args[3])::Union{CodeInfo, Expr}
+    sig = lookup(frame, node.args[2])::SimpleVector
+    body = lookup(frame, node.args[3])::Union{CodeInfo, Expr}
     method = ccall(:jl_method_def, Any, (Any, Ptr{Cvoid}, Any, Any), sig, C_NULL, body, moduleof(frame)::Module)::Method
     return method
 end
@@ -327,8 +346,8 @@ end
 function evaluate_overlayed_methoddef(frame::Frame, node::Expr, mt::MethodTable)
     # Overlaying an empty function such as `function f end` is not legal, and `f` must
     # already be defined so we don't need to do as much work as in `evaluate_methoddef`.
-    sig = @lookup(frame, node.args[2])::SimpleVector
-    body = @lookup(frame, node.args[3])::Union{CodeInfo, Expr}
+    sig = lookup(frame, node.args[2])::SimpleVector
+    body = lookup(frame, node.args[3])::Union{CodeInfo, Expr}
     method = ccall(:jl_method_def, Any, (Any, Any, Any, Any), sig, mt, body, moduleof(frame)::Module)::Method
     return method
 end
@@ -382,13 +401,13 @@ maybe_assign!(frame::Frame, @nospecialize(val)) = maybe_assign!(frame, pc_expr(f
 function eval_rhs(@nospecialize(recurse), frame::Frame, node::Expr)
     head = node.head
     if head === :new
-        args = Any[@lookup(frame, arg) for arg in node.args]
+        args = Any[lookup(frame, arg) for arg in node.args]
         T = popfirst!(args)::DataType
         rhs = ccall(:jl_new_structv, Any, (Any, Ptr{Any}, UInt32), T, args, length(args))
         return rhs
     elseif head === :splatnew  # Julia 1.2+
-        T = @lookup(frame, node.args[1])::DataType
-        args = @lookup(frame, node.args[2])::Tuple
+        T = lookup(frame, node.args[1])::DataType
+        args = lookup(frame, node.args[2])::Tuple
         rhs = ccall(:jl_new_structt, Any, (Any, Any), T, args)
         return rhs
     elseif head === :isdefined
@@ -484,7 +503,7 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
                 if isa(rhs, Expr)
                     rhs = eval_rhs(recurse, frame, rhs)
                 else
-                    rhs = @lookup(frame, rhs)
+                    rhs = lookup(frame, rhs)
                 end
                 isa(rhs, BreakpointRef) && return rhs
                 do_assignment!(frame, lhs, rhs)
@@ -522,7 +541,7 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
                 elseif node.head === :const || node.head === :globaldecl
                     g = node.args[1]
                     if length(node.args) == 2
-                        Core.eval(moduleof(frame), Expr(:block, Expr(node.head, g, @lookup(frame, node.args[2])), nothing))
+                        Core.eval(moduleof(frame), Expr(:block, Expr(node.head, g, lookup(frame, node.args[2])), nothing))
                     else
                         Core.eval(moduleof(frame), Expr(:block, Expr(node.head, g), nothing))
                     end
@@ -572,7 +591,7 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
             @assert is_leaf(frame)
             return (frame.pc = node.label)
         elseif isa(node, GotoIfNot)
-            arg = @lookup(frame, node.cond)
+            arg = lookup(frame, node.cond)
             if !isa(arg, Bool)
                 throw(TypeError(nameof(frame), "if", Bool, arg))
             end
@@ -591,10 +610,10 @@ function step_expr!(@nospecialize(recurse), frame::Frame, @nospecialize(node), i
             rhs = node.catch_dest
             push!(data.exception_frames, rhs)
             if isdefined(node, :scope)
-                push!(data.current_scopes, @lookup(frame, node.scope))
+                push!(data.current_scopes, lookup(frame, node.scope))
             end
         else
-            rhs = @lookup(frame, node)
+            rhs = lookup(frame, node)
         end
     catch err
         return handle_err(recurse, frame, err)
@@ -670,7 +689,7 @@ function handle_err(@nospecialize(recurse), frame::Frame, @nospecialize(err))
     return pc
 end
 
-lookup_return(frame, node::ReturnNode) = @lookup(frame, node.val)
+lookup_return(frame::Frame, node::ReturnNode) = lookup(frame, node.val)
 
 """
     ret = get_return(frame)

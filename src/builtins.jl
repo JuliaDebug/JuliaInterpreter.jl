@@ -4,7 +4,7 @@ function getargs(args, frame)
     nargs = length(args)-1  # skip f
     callargs = resize!(frame.framedata.callargs, nargs)
     for i = 1:nargs
-        callargs[i] = @lookup(frame, args[i+1])
+        callargs[i] = lookup(frame, args[i+1])
     end
     return callargs
 end
@@ -35,7 +35,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     if isa(fex, QuoteNode)
         f = fex.value
     else
-        f = @lookup(frame, fex)
+        f = lookup(frame, fex)
     end
 
     if f isa Core.OpaqueClosure
@@ -55,13 +55,13 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     # each gets call-site optimized.
     if f === <:
         if nargs == 2
-            return Some{Any}(<:(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(<:(lookup(frame, args[2]), lookup(frame, args[3])))
         else
             return Some{Any}(<:(getargs(args, frame)...))
         end
     elseif f === ===
         if nargs == 2
-            return Some{Any}(===(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(===(lookup(frame, args[2]), lookup(frame, args[3])))
         else
             return Some{Any}(===(getargs(args, frame)...))
         end
@@ -100,7 +100,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         return Some{Any}(Core._structtype(getargs(args, frame)...))
     elseif f === Core._svec_ref
         if nargs == 2
-            return Some{Any}(Core._svec_ref(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(Core._svec_ref(lookup(frame, args[2]), lookup(frame, args[3])))
         else
             return Some{Any}(Core._svec_ref(getargs(args, frame)...))
         end
@@ -108,7 +108,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         return Some{Any}(Core._typebody!(getargs(args, frame)...))
     elseif f === Core._typevar
         if nargs == 3
-            return Some{Any}(Core._typevar(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(Core._typevar(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         else
             return Some{Any}(Core._typevar(getargs(args, frame)...))
         end
@@ -116,7 +116,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         return Some{Any}(Core.apply_type(getargs(args, frame)...))
     elseif f === Core.compilerbarrier
         if nargs == 2
-            return Some{Any}(Core.compilerbarrier(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(Core.compilerbarrier(lookup(frame, args[2]), lookup(frame, args[3])))
         else
             return Some{Any}(Core.compilerbarrier(getargs(args, frame)...))
         end
@@ -134,23 +134,23 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         return Some{Any}(Core.donotdelete(getargs(args, frame)...))
     elseif f === Core.finalizer
         if nargs == 2
-            return Some{Any}(Core.finalizer(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(Core.finalizer(lookup(frame, args[2]), lookup(frame, args[3])))
         elseif nargs == 3
-            return Some{Any}(Core.finalizer(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(Core.finalizer(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(Core.finalizer(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(Core.finalizer(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         else
             return Some{Any}(Core.finalizer(getargs(args, frame)...))
         end
     elseif f === Core.get_binding_type
         if nargs == 2
-            return Some{Any}(Base.invoke_in_world(frame.world, Core.get_binding_type, @lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(Base.invoke_in_world(frame.world, Core.get_binding_type, lookup(frame, args[2]), lookup(frame, args[3])))
         else
             return Some{Any}(Base.invoke_in_world(frame.world, Core.get_binding_type, getargs(args, frame)...))
         end
     elseif f === Core.ifelse
         if nargs == 3
-            return Some{Any}(Core.ifelse(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(Core.ifelse(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         else
             return Some{Any}(Core.ifelse(getargs(args, frame)...))
         end
@@ -158,75 +158,75 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         return Some{Any}(Core.invoke_in_world(getargs(args, frame)...))
     elseif @static isdefinedglobal(Core, :memorynew) && f === Core.memorynew
         if nargs == 2
-            return Some{Any}(Core.memorynew(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(Core.memorynew(lookup(frame, args[2]), lookup(frame, args[3])))
         else
             return Some{Any}(Core.memorynew(getargs(args, frame)...))
         end
     elseif @static isdefinedglobal(Core, :memoryref_isassigned) && f === Core.memoryref_isassigned
         if nargs == 3
-            return Some{Any}(Core.memoryref_isassigned(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(Core.memoryref_isassigned(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         else
             return Some{Any}(Core.memoryref_isassigned(getargs(args, frame)...))
         end
     elseif @static isdefinedglobal(Core, :memoryrefget) && f === Core.memoryrefget
         if nargs == 3
-            return Some{Any}(Core.memoryrefget(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(Core.memoryrefget(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         else
             return Some{Any}(Core.memoryrefget(getargs(args, frame)...))
         end
     elseif @static isdefinedglobal(Core, :memoryrefmodify!) && f === Core.memoryrefmodify!
         if nargs == 5
-            return Some{Any}(Core.memoryrefmodify!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+            return Some{Any}(Core.memoryrefmodify!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6])))
         else
             return Some{Any}(Core.memoryrefmodify!(getargs(args, frame)...))
         end
     elseif @static isdefinedglobal(Core, :memoryrefnew) && f === Core.memoryrefnew
         if nargs == 1
-            return Some{Any}(Core.memoryrefnew(@lookup(frame, args[2])))
+            return Some{Any}(Core.memoryrefnew(lookup(frame, args[2])))
         elseif nargs == 2
-            return Some{Any}(Core.memoryrefnew(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(Core.memoryrefnew(lookup(frame, args[2]), lookup(frame, args[3])))
         elseif nargs == 3
-            return Some{Any}(Core.memoryrefnew(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(Core.memoryrefnew(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(Core.memoryrefnew(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(Core.memoryrefnew(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         elseif nargs == 5
-            return Some{Any}(Core.memoryrefnew(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+            return Some{Any}(Core.memoryrefnew(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6])))
         else
             return Some{Any}(Core.memoryrefnew(getargs(args, frame)...))
         end
     elseif @static isdefinedglobal(Core, :memoryrefoffset) && f === Core.memoryrefoffset
         if nargs == 1
-            return Some{Any}(Core.memoryrefoffset(@lookup(frame, args[2])))
+            return Some{Any}(Core.memoryrefoffset(lookup(frame, args[2])))
         else
             return Some{Any}(Core.memoryrefoffset(getargs(args, frame)...))
         end
     elseif @static isdefinedglobal(Core, :memoryrefreplace!) && f === Core.memoryrefreplace!
         if nargs == 6
-            return Some{Any}(Core.memoryrefreplace!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6]), @lookup(frame, args[7])))
+            return Some{Any}(Core.memoryrefreplace!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6]), lookup(frame, args[7])))
         else
             return Some{Any}(Core.memoryrefreplace!(getargs(args, frame)...))
         end
     elseif @static isdefinedglobal(Core, :memoryrefset!) && f === Core.memoryrefset!
         if nargs == 4
-            return Some{Any}(Core.memoryrefset!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(Core.memoryrefset!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         else
             return Some{Any}(Core.memoryrefset!(getargs(args, frame)...))
         end
     elseif @static isdefinedglobal(Core, :memoryrefsetonce!) && f === Core.memoryrefsetonce!
         if nargs == 5
-            return Some{Any}(Core.memoryrefsetonce!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+            return Some{Any}(Core.memoryrefsetonce!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6])))
         else
             return Some{Any}(Core.memoryrefsetonce!(getargs(args, frame)...))
         end
     elseif @static isdefinedglobal(Core, :memoryrefswap!) && f === Core.memoryrefswap!
         if nargs == 4
-            return Some{Any}(Core.memoryrefswap!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(Core.memoryrefswap!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         else
             return Some{Any}(Core.memoryrefswap!(getargs(args, frame)...))
         end
     elseif f === Core.sizeof
         if nargs == 1
-            return Some{Any}(Core.sizeof(@lookup(frame, args[2])))
+            return Some{Any}(Core.sizeof(lookup(frame, args[2])))
         else
             return Some{Any}(Core.sizeof(getargs(args, frame)...))
         end
@@ -238,27 +238,27 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         return Some{Any}(applicable(getargs(args, frame)...))
     elseif f === fieldtype
         if nargs == 2
-            return Some{Any}(fieldtype(@lookup(frame, args[2]), @lookup(frame, args[3]))::Type)
+            return Some{Any}(fieldtype(lookup(frame, args[2]), lookup(frame, args[3]))::Type)
         elseif nargs == 3
-            return Some{Any}(fieldtype(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]))::Type)
+            return Some{Any}(fieldtype(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]))::Type)
         else
             return Some{Any}(fieldtype(getargs(args, frame)...)::Type)
         end
     elseif f === getfield
         if nargs == 2
-            return Some{Any}(getfield(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(getfield(lookup(frame, args[2]), lookup(frame, args[3])))
         elseif nargs == 3
-            return Some{Any}(getfield(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(getfield(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(getfield(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(getfield(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         else
             return Some{Any}(getfield(getargs(args, frame)...))
         end
     elseif f === getglobal
         if nargs == 2
-            return Some{Any}(getglobal(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(getglobal(lookup(frame, args[2]), lookup(frame, args[3])))
         elseif nargs == 3
-            return Some{Any}(getglobal(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(getglobal(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         else
             return Some{Any}(getglobal(getargs(args, frame)...))
         end
@@ -284,15 +284,15 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
 
     elseif f === isa
         if nargs == 2
-            return Some{Any}(isa(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(isa(lookup(frame, args[2]), lookup(frame, args[3])))
         else
             return Some{Any}(isa(getargs(args, frame)...))
         end
     elseif f === isdefined
         if nargs == 2
-            return Some{Any}(isdefined(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(isdefined(lookup(frame, args[2]), lookup(frame, args[3])))
         elseif nargs == 3
-            return Some{Any}(isdefined(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(isdefined(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         else
             return Some{Any}(isdefined(getargs(args, frame)...))
         end
@@ -300,115 +300,115 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         return Some{Any}(isdefinedglobal(getargs(args, frame)...))
     elseif f === modifyfield!
         if nargs == 4
-            return Some{Any}(modifyfield!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(modifyfield!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         elseif nargs == 5
-            return Some{Any}(modifyfield!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+            return Some{Any}(modifyfield!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6])))
         else
             return Some{Any}(modifyfield!(getargs(args, frame)...))
         end
     elseif @static isdefinedglobal(Core, :modifyglobal!) && f === modifyglobal!
         if nargs == 4
-            return Some{Any}(Base.invoke_in_world(frame.world, modifyglobal!, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(Base.invoke_in_world(frame.world, modifyglobal!, lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         elseif nargs == 5
-            return Some{Any}(Base.invoke_in_world(frame.world, modifyglobal!, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+            return Some{Any}(Base.invoke_in_world(frame.world, modifyglobal!, lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6])))
         else
             return Some{Any}(Base.invoke_in_world(frame.world, modifyglobal!, getargs(args, frame)...))
         end
     elseif f === nfields
         if nargs == 1
-            return Some{Any}(nfields(@lookup(frame, args[2])))
+            return Some{Any}(nfields(lookup(frame, args[2])))
         else
             return Some{Any}(nfields(getargs(args, frame)...))
         end
     elseif f === replacefield!
         if nargs == 4
-            return Some{Any}(replacefield!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(replacefield!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         elseif nargs == 5
-            return Some{Any}(replacefield!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+            return Some{Any}(replacefield!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6])))
         elseif nargs == 6
-            return Some{Any}(replacefield!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6]), @lookup(frame, args[7])))
+            return Some{Any}(replacefield!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6]), lookup(frame, args[7])))
         else
             return Some{Any}(replacefield!(getargs(args, frame)...))
         end
     elseif @static isdefinedglobal(Core, :replaceglobal!) && f === replaceglobal!
         if nargs == 4
-            return Some{Any}(Base.invoke_in_world(frame.world, replaceglobal!, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(Base.invoke_in_world(frame.world, replaceglobal!, lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         elseif nargs == 5
-            return Some{Any}(Base.invoke_in_world(frame.world, replaceglobal!, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+            return Some{Any}(Base.invoke_in_world(frame.world, replaceglobal!, lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6])))
         elseif nargs == 6
-            return Some{Any}(Base.invoke_in_world(frame.world, replaceglobal!, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6]), @lookup(frame, args[7])))
+            return Some{Any}(Base.invoke_in_world(frame.world, replaceglobal!, lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6]), lookup(frame, args[7])))
         else
             return Some{Any}(Base.invoke_in_world(frame.world, replaceglobal!, getargs(args, frame)...))
         end
     elseif f === setfield!
         if nargs == 3
-            return Some{Any}(setfield!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(setfield!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(setfield!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(setfield!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         else
             return Some{Any}(setfield!(getargs(args, frame)...))
         end
     elseif @static isdefinedglobal(Core, :setfieldonce!) && f === setfieldonce!
         if nargs == 3
-            return Some{Any}(setfieldonce!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(setfieldonce!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(setfieldonce!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(setfieldonce!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         elseif nargs == 5
-            return Some{Any}(setfieldonce!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+            return Some{Any}(setfieldonce!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6])))
         else
             return Some{Any}(setfieldonce!(getargs(args, frame)...))
         end
     elseif f === setglobal!
         if nargs == 3
-            return Some{Any}(Base.invoke_in_world(frame.world, setglobal!, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(Base.invoke_in_world(frame.world, setglobal!, lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(Base.invoke_in_world(frame.world, setglobal!, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(Base.invoke_in_world(frame.world, setglobal!, lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         else
             return Some{Any}(Base.invoke_in_world(frame.world, setglobal!, getargs(args, frame)...))
         end
     elseif @static isdefinedglobal(Core, :setglobalonce!) && f === setglobalonce!
         if nargs == 3
-            return Some{Any}(Base.invoke_in_world(frame.world, setglobalonce!, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(Base.invoke_in_world(frame.world, setglobalonce!, lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(Base.invoke_in_world(frame.world, setglobalonce!, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(Base.invoke_in_world(frame.world, setglobalonce!, lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         elseif nargs == 5
-            return Some{Any}(Base.invoke_in_world(frame.world, setglobalonce!, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+            return Some{Any}(Base.invoke_in_world(frame.world, setglobalonce!, lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6])))
         else
             return Some{Any}(Base.invoke_in_world(frame.world, setglobalonce!, getargs(args, frame)...))
         end
     elseif f === swapfield!
         if nargs == 3
-            return Some{Any}(swapfield!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(swapfield!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(swapfield!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(swapfield!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         else
             return Some{Any}(swapfield!(getargs(args, frame)...))
         end
     elseif @static isdefinedglobal(Core, :swapglobal!) && f === swapglobal!
         if nargs == 3
-            return Some{Any}(Base.invoke_in_world(frame.world, swapglobal!, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(Base.invoke_in_world(frame.world, swapglobal!, lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(Base.invoke_in_world(frame.world, swapglobal!, @lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(Base.invoke_in_world(frame.world, swapglobal!, lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         else
             return Some{Any}(Base.invoke_in_world(frame.world, swapglobal!, getargs(args, frame)...))
         end
     elseif f === throw
         if nargs == 1
-            return Some{Any}(throw(@lookup(frame, args[2])))
+            return Some{Any}(throw(lookup(frame, args[2])))
         else
             return Some{Any}(throw(getargs(args, frame)...))
         end
     elseif f === tuple
-        return Some{Any}(ntupleany(i->@lookup(frame, args[i+1]), length(args)-1))
+        return Some{Any}(ntupleany(i::Int->lookup(frame, args[i+1]), length(args)-1))
     elseif f === typeassert
         if nargs == 2
-            return Some{Any}(typeassert(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(typeassert(lookup(frame, args[2]), lookup(frame, args[3])))
         else
             return Some{Any}(typeassert(getargs(args, frame)...))
         end
     elseif f === typeof
         if nargs == 1
-            return Some{Any}(typeof(@lookup(frame, args[2])))
+            return Some{Any}(typeof(lookup(frame, args[2])))
         else
             return Some{Any}(typeof(getargs(args, frame)...))
         end
@@ -417,94 +417,94 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         if nargs == 1
             call_expr = copy(call_expr)
             args2 = args[2]
-            call_expr.args[2] = isa(args2, QuoteNode) ? args2 : @lookup(frame, args2)
+            call_expr.args[2] = isa(args2, QuoteNode) ? args2 : lookup(frame, args2)
             return Some{Any}(Core.eval(moduleof(frame), call_expr))
         elseif nargs == 2
             call_expr = copy(call_expr)
             args2 = args[2]
-            call_expr.args[2] = isa(args2, QuoteNode) ? args2 : @lookup(frame, args2)
-            call_expr.args[3] = @lookup(frame, args[3])
+            call_expr.args[2] = isa(args2, QuoteNode) ? args2 : lookup(frame, args2)
+            call_expr.args[3] = lookup(frame, args[3])
             return Some{Any}(Core.eval(moduleof(frame), call_expr))
         end
     elseif @static (isdefinedglobal(Core, :arrayref) && Core.arrayref isa Core.Builtin) && f === Core.arrayref
         if nargs == 1
-            return Some{Any}(Core.arrayref(@lookup(frame, args[2])))
+            return Some{Any}(Core.arrayref(lookup(frame, args[2])))
         elseif nargs == 2
-            return Some{Any}(Core.arrayref(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(Core.arrayref(lookup(frame, args[2]), lookup(frame, args[3])))
         elseif nargs == 3
-            return Some{Any}(Core.arrayref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(Core.arrayref(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(Core.arrayref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(Core.arrayref(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         elseif nargs == 5
-            return Some{Any}(Core.arrayref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+            return Some{Any}(Core.arrayref(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6])))
         else
             return Some{Any}(Core.arrayref(getargs(args, frame)...))
         end
     elseif @static (isdefinedglobal(Core, :arrayset) && Core.arrayset isa Core.Builtin) && f === Core.arrayset
         if nargs == 1
-            return Some{Any}(Core.arrayset(@lookup(frame, args[2])))
+            return Some{Any}(Core.arrayset(lookup(frame, args[2])))
         elseif nargs == 2
-            return Some{Any}(Core.arrayset(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(Core.arrayset(lookup(frame, args[2]), lookup(frame, args[3])))
         elseif nargs == 3
-            return Some{Any}(Core.arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(Core.arrayset(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(Core.arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(Core.arrayset(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         elseif nargs == 5
-            return Some{Any}(Core.arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+            return Some{Any}(Core.arrayset(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6])))
         elseif nargs == 6
-            return Some{Any}(Core.arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6]), @lookup(frame, args[7])))
+            return Some{Any}(Core.arrayset(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6]), lookup(frame, args[7])))
         else
             return Some{Any}(Core.arrayset(getargs(args, frame)...))
         end
     elseif @static (isdefinedglobal(Core, :arrayset) && Core.arrayset isa Core.Builtin) && f === Core.arrayset
         if nargs == 1
-            return Some{Any}(Core.arrayset(@lookup(frame, args[2])))
+            return Some{Any}(Core.arrayset(lookup(frame, args[2])))
         elseif nargs == 2
-            return Some{Any}(Core.arrayset(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(Core.arrayset(lookup(frame, args[2]), lookup(frame, args[3])))
         elseif nargs == 3
-            return Some{Any}(Core.arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(Core.arrayset(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(Core.arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(Core.arrayset(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         elseif nargs == 5
-            return Some{Any}(Core.arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+            return Some{Any}(Core.arrayset(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6])))
         elseif nargs == 6
-            return Some{Any}(Core.arrayset(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6]), @lookup(frame, args[7])))
+            return Some{Any}(Core.arrayset(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6]), lookup(frame, args[7])))
         else
             return Some{Any}(Core.arrayset(getargs(args, frame)...))
         end
     elseif @static (isdefinedglobal(Core, :const_arrayref) && Core.const_arrayref isa Core.Builtin) && f === Core.const_arrayref
         if nargs == 1
-            return Some{Any}(Core.const_arrayref(@lookup(frame, args[2])))
+            return Some{Any}(Core.const_arrayref(lookup(frame, args[2])))
         elseif nargs == 2
-            return Some{Any}(Core.const_arrayref(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(Core.const_arrayref(lookup(frame, args[2]), lookup(frame, args[3])))
         elseif nargs == 3
-            return Some{Any}(Core.const_arrayref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(Core.const_arrayref(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(Core.const_arrayref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(Core.const_arrayref(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         elseif nargs == 5
-            return Some{Any}(Core.const_arrayref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+            return Some{Any}(Core.const_arrayref(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6])))
         else
             return Some{Any}(Core.const_arrayref(getargs(args, frame)...))
         end
     elseif @static (isdefinedglobal(Core, :memoryref) && Core.memoryref isa Core.Builtin) && f === Core.memoryref
         if nargs == 1
-            return Some{Any}(Core.memoryref(@lookup(frame, args[2])))
+            return Some{Any}(Core.memoryref(lookup(frame, args[2])))
         elseif nargs == 2
-            return Some{Any}(Core.memoryref(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(Core.memoryref(lookup(frame, args[2]), lookup(frame, args[3])))
         elseif nargs == 3
-            return Some{Any}(Core.memoryref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(Core.memoryref(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(Core.memoryref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5])))
+            return Some{Any}(Core.memoryref(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5])))
         elseif nargs == 5
-            return Some{Any}(Core.memoryref(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4]), @lookup(frame, args[5]), @lookup(frame, args[6])))
+            return Some{Any}(Core.memoryref(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4]), lookup(frame, args[5]), lookup(frame, args[6])))
         else
             return Some{Any}(Core.memoryref(getargs(args, frame)...))
         end
     elseif @static (isdefinedglobal(Core, :set_binding_type!) && Core.set_binding_type! isa Core.Builtin) && f === Core.set_binding_type!
         if nargs == 2
-            return Some{Any}(Core.set_binding_type!(@lookup(frame, args[2]), @lookup(frame, args[3])))
+            return Some{Any}(Core.set_binding_type!(lookup(frame, args[2]), lookup(frame, args[3])))
         elseif nargs == 3
-            return Some{Any}(Core.set_binding_type!(@lookup(frame, args[2]), @lookup(frame, args[3]), @lookup(frame, args[4])))
+            return Some{Any}(Core.set_binding_type!(lookup(frame, args[2]), lookup(frame, args[3]), lookup(frame, args[4])))
         else
             return Some{Any}(Core.set_binding_type!(getargs(args, frame)...))
         end

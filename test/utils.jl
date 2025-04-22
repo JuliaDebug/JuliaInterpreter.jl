@@ -1,5 +1,5 @@
 using JuliaInterpreter
-using JuliaInterpreter: Frame, @lookup
+using JuliaInterpreter: Frame
 using JuliaInterpreter: finish_and_return!, evaluate_call!, step_expr!, shouldbreak,
                         do_assignment!, SSAValue, isassign, pc_expr, handle_err, get_return,
                         moduleof

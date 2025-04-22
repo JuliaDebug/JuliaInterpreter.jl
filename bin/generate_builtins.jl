@@ -90,7 +90,7 @@ function generate_fcall_nargs(fname, minarg, maxarg; requires_world::Bool=false)
         wrapper *= "$nargs\n            "
         argcall = ""
         for i = 1:nargs
-            argcall *= "@lookup(frame, args[$(i+1)])"
+            argcall *= "lookup(frame, args[$(i+1)])"
             if i < nargs
                 argcall *= ", "
             end
@@ -144,7 +144,7 @@ function getargs(args, frame)
     nargs = length(args)-1  # skip f
     callargs = resize!(frame.framedata.callargs, nargs)
     for i = 1:nargs
-        callargs[i] = @lookup(frame, args[i+1])
+        callargs[i] = lookup(frame, args[i+1])
     end
     return callargs
 end
@@ -175,7 +175,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
     if isa(fex, QuoteNode)
         f = fex.value
     else
-        f = @lookup(frame, fex)
+        f = lookup(frame, fex)
     end
 
     if f isa Core.OpaqueClosure
@@ -208,7 +208,7 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
             print(io,
 """
     $head f === tuple
-        return Some{Any}(ntupleany(i->@lookup(frame, args[i+1]), length(args)-1))
+        return Some{Any}(ntupleany(i::Int->lookup(frame, args[i+1]), length(args)-1))
 """)
             continue
         elseif f === Core._apply_iterate
@@ -293,13 +293,13 @@ function maybe_evaluate_builtin(frame, call_expr, expand::Bool)
         if nargs == 1
             call_expr = copy(call_expr)
             args2 = args[2]
-            call_expr.args[2] = isa(args2, QuoteNode) ? args2 : @lookup(frame, args2)
+            call_expr.args[2] = isa(args2, QuoteNode) ? args2 : lookup(frame, args2)
             return Some{Any}(Core.eval(moduleof(frame), call_expr))
         elseif nargs == 2
             call_expr = copy(call_expr)
             args2 = args[2]
-            call_expr.args[2] = isa(args2, QuoteNode) ? args2 : @lookup(frame, args2)
-            call_expr.args[3] = @lookup(frame, args[3])
+            call_expr.args[2] = isa(args2, QuoteNode) ? args2 : lookup(frame, args2)
+            call_expr.args[3] = lookup(frame, args[3])
             return Some{Any}(Core.eval(moduleof(frame), call_expr))
         end
 """)

@@ -186,7 +186,7 @@ function build_compiled_llvmcall!(stmt::Expr, code::CodeInfo, idx::Int, evalmod:
             pc === nothing && error("this should never happen")
         end
     end
-    llvmir, RetType, ArgType = @lookup(frame, stmt.args[2]), @lookup(frame, stmt.args[3]), @lookup(frame, stmt.args[4])::DataType
+    llvmir, RetType, ArgType = lookup(frame, stmt.args[2]), lookup(frame, stmt.args[3]), lookup(frame, stmt.args[4])::DataType
     args = stmt.args[5:end]
     argnames = Any[Symbol(:arg, i) for i = 1:length(args)]
     cc_key = (llvmir, RetType, ArgType, evalmod)  # compiled call key
