@@ -36,25 +36,15 @@ function lookup(frame::Frame, @nospecialize(node))
     end
 end
 
-function gen_lookup_ex(frame, node)
-    :(let node = $(esc(node))
-        isa(node, SSAValue) ? lookup_var($(esc(frame)), node) :
-        isa(node, GlobalRef) ? lookup_var($(esc(frame)), node) :
-        isa(node, SlotNumber) ? lookup_var($(esc(frame)), node) :
-        isa(node, QuoteNode) ? node.value :
-        isa(node, Symbol) ? @invokelatest(getglobal(moduleof($(esc(frame))), node)) :
-        isa(node, Expr) ? lookup_expr($(esc(frame)), node) :
-        node # fallback
-    end)
-end
 macro lookup(frame, node)
+    f, l = __source__.file, __source__.line
     @warn "`@lookup` at $f:$l is deprecated, use `lookup(frame, node)` instead."
-    return gen_lookup_ex(frame, node)
+    return :(lookup($(esc(frame)), $(esc(node))))
 end
 macro lookup(_, frame, node)
     f, l = __source__.file, __source__.line
     @warn "`@lookup(mod, frame, node)` at $f:$l is deprecated, use `lookup(frame, node)` instead."
-    return gen_lookup_ex(frame, node)
+    return :(lookup($(esc(frame)), $(esc(node))))
 end
 
 function lookup_expr(frame::Frame, e::Expr)
