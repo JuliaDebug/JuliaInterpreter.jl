@@ -1,8 +1,6 @@
 """
     abstract type Interpreter end
 
-The abstract type that all interpreters should subtype.
-It defines how JuliaInterpreter behaves when evaluating code.
 An interpreter that subtypes this type can implement its own evaluation strategies, by
 overloading the certain methods in JuliaInterpreter that are defined for this base type.
 The default behaviors of `Interpreter` is same as that of [`RecursiveInterpreter`](@ref),
@@ -13,7 +11,7 @@ abstract type Interpreter end
 """
     RecursiveInterpreter <: Interpreter
 
-`RecursiveInterpreter` is an [`Interpreter`](@ref) that recurses into any `:call`
+`RecursiveInterpreter` is an [`Interpreter`](@ref) that recursively interprets any `:call`
 expressions in the code being interpreted.
 """
 struct RecursiveInterpreter <: Interpreter end
@@ -22,7 +20,7 @@ struct RecursiveInterpreter <: Interpreter end
     Compiled <: Interpreter
 
 `Compiled` is an [`Interpreter`](@ref) that evaluates any `:call` expressions in the code
-being interpreted using Julia's normal compiled-code execution.
+being interpreted using Julia's normal code execution engine with the native compiler.
 """
 struct Compiled <: Interpreter end
 Base.similar(::Compiled, sz) = Compiled()  # to support similar(stack, 0)
