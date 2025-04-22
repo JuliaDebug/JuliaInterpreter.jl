@@ -18,14 +18,15 @@ It will also lookup `Symbol`s as global reference in the context of `moduleof(fr
 If none of the above apply, the value of `node` will be returned.
 """
 function lookup(interp::Interpreter, frame::Frame, @nospecialize(node))
+    if isa(node, Symbol)
+        node = GlobalRef(moduleof(frame), node)
+    end
     if isa(node, SSAValue)
-        return lookup_var(frame, node)
-    elseif isa(node, GlobalRef)
         return lookup_var(frame, node)
     elseif isa(node, SlotNumber)
         return lookup_var(frame, node)
-    elseif isa(node, Symbol)
-        return @invokelatest getglobal(moduleof(frame), node)
+    elseif isa(node, GlobalRef)
+        return lookup_var(frame, node)
     elseif isa(node, Expr)
         return lookup_expr(interp, frame, node)
     else # fallback

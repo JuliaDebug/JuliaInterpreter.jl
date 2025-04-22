@@ -22,6 +22,8 @@ struct RecursiveInterpreter <: Interpreter end
 `NonRecursiveInterpreter` is an [`Interpreter`](@ref) that evaluates any `:call` expressions
 in the code being interpreted using Julia's normal code execution engine with the native
 compiler.
+
+`JuliaInterpreter.Compiled` is alised to `NonRecursiveInterpreter` for backward compatibility.
 """
 struct NonRecursiveInterpreter <: Interpreter end
 
