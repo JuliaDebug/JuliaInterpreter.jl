@@ -10,14 +10,14 @@ function lookup_var(frame::Frame, slot::SlotNumber)
 end
 
 """
-    lookup(frame::Frame, node)
+    lookup([interp::Interpreter=RecursiveInterpreter()], frame::Frame, node)
 
 Looks up previously-computed values referenced as `SSAValue`, `SlotNumber`,
 `GlobalRef`, sparam or exception reference expression.
 It will also lookup `Symbol`s as global reference in the context of `moduleof(frame)::Module`.
 If none of the above apply, the value of `node` will be returned.
 """
-function lookup(frame::Frame, @nospecialize(node))
+function lookup(interp::Interpreter, frame::Frame, @nospecialize(node))
     if isa(node, SSAValue)
         return lookup_var(frame, node)
     elseif isa(node, GlobalRef)
@@ -27,7 +27,7 @@ function lookup(frame::Frame, @nospecialize(node))
     elseif isa(node, Symbol)
         return @invokelatest getglobal(moduleof(frame), node)
     elseif isa(node, Expr)
-        return lookup_expr(frame, node)
+        return lookup_expr(interp, frame, node)
     else # fallback
         if isa(node, QuoteNode)
             return node.value
@@ -35,6 +35,7 @@ function lookup(frame::Frame, @nospecialize(node))
         return node
     end
 end
+lookup(frame::Frame, @nospecialize(node)) = lookup(RecursiveInterpreter(), frame, node)
 
 macro lookup(frame, node)
     f, l = __source__.file, __source__.line
@@ -47,7 +48,7 @@ macro lookup(_, frame, node)
     return :(lookup($(esc(frame)), $(esc(node))))
 end
 
-function lookup_expr(frame::Frame, e::Expr)
+function lookup_expr(interp::Interpreter, frame::Frame, e::Expr)
     head = e.head
     head === :the_exception && return frame.framedata.last_exception[]
     if head === :static_parameter
@@ -61,13 +62,13 @@ function lookup_expr(frame::Frame, e::Expr)
     end
     head === :boundscheck && length(e.args) == 0 && return true
     if head === :call
-        f = lookup(frame, e.args[1])
+        f = lookup(interp, frame, e.args[1])
         if (@static VERSION < v"1.11.0-DEV.1180" && true) && f === Core.svec
             # work around for a linearization bug in Julia (https://github.com/JuliaLang/julia/pull/52497)
-            return f(Any[lookup(frame, e.args[i]) for i in 2:length(e.args)]...)
+            return Core.svec(Any[lookup(interp, frame, e.args[i]) for i in 2:length(e.args)]...)
         elseif f === Core.tuple
             # handling for ccall literal syntax
-            return f(Any[lookup(frame, e.args[i]) for i in 2:length(e.args)]...)
+            return Core.tuple(Any[lookup(interp, frame, e.args[i]) for i in 2:length(e.args)]...)
         end
     end
     error("invalid lookup expr ", e)
@@ -78,21 +79,11 @@ end
 # and hence our re-use of the `callargs` field of Frame would introduce
 # bugs. Since these nodes use a very limited repertoire of calls, we can special-case
 # this quite easily.
-function lookup_or_eval(interp::Interpreter, frame::Frame, @nospecialize(node))
-    if isa(node, SSAValue)
-        return lookup_var(frame, node)
-    elseif isa(node, SlotNumber)
-        return lookup_var(frame, node)
-    elseif isa(node, GlobalRef)
-        return lookup_var(frame, node)
-    elseif isa(node, Symbol)
-        return invokelatest(getfield, moduleof(frame), node)
-    elseif isa(node, QuoteNode)
-        return node.value
-    elseif isa(node, Expr)
+function lookup_nested(interp::Interpreter, frame::Frame, @nospecialize(node))
+    if isa(node, Expr)
         ex = Expr(node.head)
         for arg in node.args
-            push!(ex.args, lookup_or_eval(interp, frame, arg))
+            push!(ex.args, lookup_nested(interp, frame, arg))
         end
         if ex.head === :call
             f = ex.args[1]
@@ -119,14 +110,10 @@ function lookup_or_eval(interp::Interpreter, frame::Frame, @nospecialize(node))
                 @invokelatest error("unknown call f introduced by ccall lowering ", f)
             end
         else
-            return lookup_expr(frame, ex)
+            return lookup_expr(interp, frame, ex)
         end
-    elseif isa(node, Int) || isa(node, Number)   # Number is slow, requires subtyping
-        return node
-    elseif isa(node, Type)
-        return node
     end
-    return eval_rhs(interp, frame, node)
+    return lookup(interp, frame, node)
 end
 
 function resolvefc(frame::Frame, @nospecialize(expr))
@@ -152,12 +139,12 @@ end
 function collect_args(interp::Interpreter, frame::Frame, call_expr::Expr; isfc::Bool=false)
     args = frame.framedata.callargs
     resize!(args, length(call_expr.args))
-    args[1] = isfc ? resolvefc(frame, call_expr.args[1]) : lookup(frame, call_expr.args[1])
+    args[1] = isfc ? resolvefc(frame, call_expr.args[1]) : lookup(interp, frame, call_expr.args[1])
     for i = 2:length(args)
         if isexpr(call_expr.args[i], :call)
-            args[i] = lookup_or_eval(interp, frame, call_expr.args[i])
+            args[i] = lookup_nested(interp, frame, call_expr.args[i]::Expr)
         else
-            args[i] = lookup(frame, call_expr.args[i])
+            args[i] = lookup(interp, frame, call_expr.args[i])
         end
     end
     return args
@@ -241,7 +228,7 @@ function evaluate_call!(interp::Compiled, frame::Frame, call_expr::Expr, enter_g
     pc = frame.pc
     ret = bypass_builtins(interp, frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
-    ret = maybe_evaluate_builtin(frame, call_expr, false)
+    ret = maybe_evaluate_builtin(interp, frame, call_expr, false)
     isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(interp, frame, call_expr)
     return native_call(fargs, frame)
@@ -251,7 +238,7 @@ function evaluate_call!(interp::Interpreter, frame::Frame, call_expr::Expr, ente
     pc = frame.pc
     ret = bypass_builtins(interp, frame, call_expr, pc)
     isa(ret, Some{Any}) && return ret.value
-    ret = maybe_evaluate_builtin(frame, call_expr, true)
+    ret = maybe_evaluate_builtin(interp, frame, call_expr, true)
     isa(ret, Some{Any}) && return ret.value
     call_expr = ret
     fargs = collect_args(interp, frame, call_expr)
@@ -304,9 +291,9 @@ evaluate_call!(frame::Frame, call_expr::Expr, enter_generated::Bool=false) =
     evaluate_call!(RecursiveInterpreter(), frame, call_expr, enter_generated)
 
 # The following come up only when evaluating toplevel code
-function evaluate_methoddef(frame::Frame, node::Expr)
+function evaluate_methoddef(interp::Interpreter, frame::Frame, node::Expr)
     mt = extract_method_table(frame, node)
-    mt !== nothing && return evaluate_overlayed_methoddef(frame, node, mt)
+    mt !== nothing && return evaluate_overlayed_methoddef(interp, frame, node, mt)
     f = node.args[1]
     if f isa Symbol || f isa GlobalRef
         mod = f isa Symbol ? moduleof(frame) : f.mod
@@ -324,17 +311,17 @@ function evaluate_methoddef(frame::Frame, node::Expr)
         end
     end
     length(node.args) == 1 && return f
-    sig = lookup(frame, node.args[2])::SimpleVector
-    body = lookup(frame, node.args[3])::Union{CodeInfo, Expr}
+    sig = lookup(interp, frame, node.args[2])::SimpleVector
+    body = lookup(interp, frame, node.args[3])::Union{CodeInfo, Expr}
     method = ccall(:jl_method_def, Any, (Any, Ptr{Cvoid}, Any, Any), sig, C_NULL, body, moduleof(frame)::Module)::Method
     return method
 end
 
-function evaluate_overlayed_methoddef(frame::Frame, node::Expr, mt::MethodTable)
+function evaluate_overlayed_methoddef(interp::Interpreter, frame::Frame, node::Expr, mt::MethodTable)
     # Overlaying an empty function such as `function f end` is not legal, and `f` must
     # already be defined so we don't need to do as much work as in `evaluate_methoddef`.
-    sig = lookup(frame, node.args[2])::SimpleVector
-    body = lookup(frame, node.args[3])::Union{CodeInfo, Expr}
+    sig = lookup(interp, frame, node.args[2])::SimpleVector
+    body = lookup(interp, frame, node.args[3])::Union{CodeInfo, Expr}
     method = ccall(:jl_method_def, Any, (Any, Any, Any, Any), sig, mt, body, moduleof(frame)::Module)::Method
     return method
 end
@@ -388,13 +375,13 @@ maybe_assign!(frame::Frame, @nospecialize(val)) = maybe_assign!(frame, pc_expr(f
 function eval_rhs(interp::Interpreter, frame::Frame, node::Expr)
     head = node.head
     if head === :new
-        args = Any[lookup(frame, arg) for arg in node.args]
+        args = Any[lookup(interp, frame, arg) for arg in node.args]
         T = popfirst!(args)::DataType
         rhs = ccall(:jl_new_structv, Any, (Any, Ptr{Any}, UInt32), T, args, length(args))
         return rhs
     elseif head === :splatnew  # Julia 1.2+
-        T = lookup(frame, node.args[1])::DataType
-        args = lookup(frame, node.args[2])::Tuple
+        T = lookup(interp, frame, node.args[1])::DataType
+        args = lookup(interp, frame, node.args[2])::Tuple
         rhs = ccall(:jl_new_structt, Any, (Any, Any), T, args)
         return rhs
     elseif head === :isdefined
@@ -413,9 +400,9 @@ function eval_rhs(interp::Interpreter, frame::Frame, node::Expr)
            head === :aliasscope || head === :popaliasscope
         return nothing
     elseif head === :method && length(node.args) == 1
-        return evaluate_methoddef(frame, node)
+        return evaluate_methoddef(interp, frame, node)
     end
-    return lookup_expr(frame, node)
+    return lookup_expr(interp, frame, node)
 end
 
 function check_isdefined(frame::Frame, @nospecialize(node))
@@ -488,7 +475,7 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
                 if isa(rhs, Expr)
                     rhs = eval_rhs(interp, frame, rhs)
                 else
-                    rhs = lookup(frame, rhs)
+                    rhs = lookup(interp, frame, rhs)
                 end
                 isa(rhs, BreakpointRef) && return rhs
                 do_assignment!(frame, lhs, rhs)
@@ -518,7 +505,7 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
                 # (https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/591)
             elseif istoplevel
                 if node.head === :method && length(node.args) > 1
-                    rhs = evaluate_methoddef(frame, node)
+                    rhs = evaluate_methoddef(interp, frame, node)
                 elseif node.head === :module
                     error("this should have been handled by split_expressions")
                 elseif node.head === :using || node.head === :import || node.head === :export
@@ -526,7 +513,7 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
                 elseif node.head === :const || node.head === :globaldecl
                     g = node.args[1]
                     if length(node.args) == 2
-                        Core.eval(moduleof(frame), Expr(:block, Expr(node.head, g, lookup(frame, node.args[2])), nothing))
+                        Core.eval(moduleof(frame), Expr(:block, Expr(node.head, g, lookup(interp, frame, node.args[2])), nothing))
                     else
                         Core.eval(moduleof(frame), Expr(:block, Expr(node.head, g), nothing))
                     end
@@ -576,7 +563,7 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
             @assert is_leaf(frame)
             return (frame.pc = node.label)
         elseif isa(node, GotoIfNot)
-            arg = lookup(frame, node.cond)
+            arg = lookup(interp, frame, node.cond)
             if !isa(arg, Bool)
                 throw(TypeError(nameof(frame), "if", Bool, arg))
             end
@@ -595,10 +582,10 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
             rhs = node.catch_dest
             push!(data.exception_frames, rhs)
             if isdefined(node, :scope)
-                push!(data.current_scopes, lookup(frame, node.scope))
+                push!(data.current_scopes, lookup(interp, frame, node.scope))
             end
         else
-            rhs = lookup(frame, node)
+            rhs = lookup(interp, frame, node)
         end
     catch err
         return handle_err(interp, frame, err)
@@ -673,7 +660,7 @@ function handle_err(::Interpreter, frame::Frame, @nospecialize(err))
     return pc
 end
 
-lookup_return(frame::Frame, node::ReturnNode) = lookup(frame, node.val)
+lookup_return(interp::Interpreter, frame::Frame, node::ReturnNode) = lookup(interp, frame, node.val)
 
 """
     ret = get_return(interp, frame)
@@ -685,7 +672,7 @@ e.g., [`JuliaInterpreter.finish!`](@ref)).
 function get_return(interp::Interpreter, frame::Frame)
     node = pc_expr(frame)
     is_return(node) || @invokelatest error("expected return statement, got ", node)
-    return lookup_return(frame, node)
+    return lookup_return(interp, frame, node)
 end
 get_return(frame::Frame) = get_return(RecursiveInterpreter(), frame)
 get_return(t::Tuple{Module,Expr,Frame}) = get_return(t[end])
