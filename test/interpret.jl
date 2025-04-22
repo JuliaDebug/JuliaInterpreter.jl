@@ -972,4 +972,6 @@ end
         @test sin(42) == @interpret interp=interp1 sin(42)
         @test sin(42) == @interpret interp=interp2 sin(42)
     end
+    @test_throws "Invalid @interpret call" macroexpand(@__MODULE__, :(@interpret interp sin(42)))
+    @test_throws "Invalid @interpret call" macroexpand(@__MODULE__, :(@interpret _interp_=RecursiveInterpreter() sin(42)))
 end

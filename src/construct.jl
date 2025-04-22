@@ -753,12 +753,12 @@ function interpret(mod::Module, @nospecialize(ex0); interp=RecursiveInterpreter(
     end
 end
 
-function interpret(mod::Module, opt, xs...)
+function interpret(mod::Module, opt, xs...; kwargs...)
     if isexpr(opt, :(=))
         optname, optval = opt.args
         optname isa Symbol || error("Invalid @interpret call: $optname is not a symbol")
         if optname === :interp
-            return interpret(mod, xs...; interp=esc(optval))
+            return interpret(mod, xs...; interp=esc(optval), kwargs...)
         else
             error("Invalid @interpret call: $optname is not a recognized option")
         end
