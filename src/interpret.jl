@@ -219,18 +219,21 @@ function bypass_builtins(interp::Interpreter, frame::Frame, call_expr::Expr, pc:
 end
 
 function native_call(fargs::Vector{Any}, frame::Frame)
-    f = popfirst!(fargs) # now it's really just `args`
-    if (@static isdefinedglobal(Core.IR, :EnterNode) && true)
-        newscope = Core.current_scope()
-        if newscope !== nothing || !isempty(frame.framedata.current_scopes)
-            for scope in frame.framedata.current_scopes
-                newscope = Scope(newscope, scope.values...)
-            end
-            ex = Expr(:tryfinally, :($f($fargs...)), nothing, newscope)
-            return Core.eval(moduleof(frame), ex)
+    f = popfirst!(fargs)
+    @something maybe_eval_with_scope(f, fargs, frame) return @invokelatest f(fargs...)
+end
+
+function maybe_eval_with_scope(@nospecialize(f), fargs::Vector{Any}, frame::Frame)
+    @static isdefinedglobal(Core.IR, :EnterNode) || return nothing
+    newscope = Core.current_scope()
+    if newscope !== nothing || !isempty(frame.framedata.current_scopes)
+        for scope in frame.framedata.current_scopes
+            newscope = Scope(newscope, scope.values...)
         end
+        ex = Expr(:tryfinally, :($f($fargs...)), nothing, newscope)
+        return Some{Any}(Core.eval(moduleof(frame), ex))
     end
-    return @invokelatest f(fargs...)
+    return nothing
 end
 
 function evaluate_call!(interp::Compiled, frame::Frame, call_expr::Expr, enter_generated::Bool=false)
