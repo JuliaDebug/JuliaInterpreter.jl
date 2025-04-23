@@ -516,7 +516,7 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
                 elseif node.head === :const || node.head === :globaldecl
                     g = node.args[1]
                     if length(node.args) == 2
-                        Core.eval(moduleof(frame), Expr(:block, Expr(node.head, g, lookup(interp, frame, node.args[2])), nothing))
+                        Core.eval(moduleof(frame), Expr(:block, Expr(node.head, g, QuoteNode(lookup(interp, frame, node.args[2]))), nothing))
                     else
                         Core.eval(moduleof(frame), Expr(:block, Expr(node.head, g), nothing))
                     end

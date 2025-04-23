@@ -633,3 +633,8 @@ end
     JuliaInterpreter.finish!(frame, true)
     @test nmethods_in_overlay() == 4
 end
+
+# Need to wrap rhs of `:const` expression
+let ex = :(const ___symbol___ = :___symbol___)
+    @test JuliaInterpreter.finish_and_return!(Frame(@__MODULE__, ex), true) === :___symbol___
+end
