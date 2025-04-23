@@ -10,9 +10,11 @@ using Random
 using Random.DSFMT
 using InteractiveUtils
 
-export @interpret, Compiled, Frame, root, leaf, ExprSplitter,
-       BreakpointRef, breakpoint, @breakpoint, breakpoints, enable, disable, remove, toggle,
-       debug_command, @bp, break_on, break_off, on_breakpoints_updated
+export BreakpointRef, Compiled, ExprSplitter, Frame,
+       Interpreter, NonRecursiveInterpreter, RecursiveInterpreter
+export @bp, @breakpoint, @interpret,
+       break_off, break_on, breakpoint, breakpoints, debug_command, disable, enable, leaf,
+       on_breakpoints_updated, remove, root, toggle
 
 module CompiledCalls
 # This module is for handling intrinsics that must be compiled (llvmcall) as well as ccalls

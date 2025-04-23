@@ -181,7 +181,7 @@ function build_compiled_llvmcall!(stmt::Expr, code::CodeInfo, idx::Int, evalmod:
     frame.pc = idxstart
     if idxstart < idx
         while true
-            pc = step_expr!(Compiled(), frame)
+            pc = step_expr!(NonRecursiveInterpreter(), frame)
             pc === idx && break
             pc === nothing && error("this should never happen")
         end

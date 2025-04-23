@@ -1,9 +1,42 @@
 """
-`Compiled` is a trait indicating that any `:call` expressions should be evaluated
-using Julia's normal compiled-code evaluation. The alternative is to pass `stack=Frame[]`,
-which will cause all calls to be evaluated via the interpreter.
+    abstract type Interpreter end
+
+An interpreter that subtypes this type can implement its own evaluation strategies, by
+overloading the certain methods in JuliaInterpreter that are defined for this base type.
+The default behavior of `Interpreter` is same as that of [`RecursiveInterpreter`](@ref),
+meaning it will recursively interpret all `:call` expressions.
 """
-struct Compiled end
+abstract type Interpreter end
+
+"""
+    RecursiveInterpreter <: Interpreter
+
+`RecursiveInterpreter` is an [`Interpreter`](@ref) that recursively interprets any `:call`
+expressions in the code being interpreted.
+
+With this interpreter, code runs in fully interpreted mode; it will never be compiled for execution.
+"""
+struct RecursiveInterpreter <: Interpreter end
+
+"""
+    NonRecursiveInterpreter <: Interpreter
+
+`NonRecursiveInterpreter` is an [`Interpreter`](@ref) that evaluates any `:call` expressions
+in the code being interpreted using Julia's normal code execution engine with the native
+compiler.
+
+`JuliaInterpreter.Compiled` is aliased to `NonRecursiveInterpreter` for backward compatibility.
+"""
+struct NonRecursiveInterpreter <: Interpreter end
+
+"""
+    const Compiled = NonRecursiveInterpreter
+
+As of JuliaInterpreter v0.10, `Compiled` is now an alias for [`NonRecursiveInterpreter`](@ref).
+This remains for backward compatibility for packages using `Compiled`, and may be removed or
+redefined as a completely different type in v0.11 or later.
+"""
+const Compiled = NonRecursiveInterpreter # for backward compatibility
 Base.similar(::Compiled, sz) = Compiled()  # to support similar(stack, 0)
 
 # Our own replacements for Core types. We need to do this to ensure we can tell the difference
