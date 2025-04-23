@@ -520,7 +520,7 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
                     end
                 elseif node.head === :thunk
                     newframe = Frame(moduleof(frame), node.args[1]::CodeInfo)
-                    finish_nested_frame!(interp, newframe, frame)
+                    finish!(interp, newframe, true)
                     return_from(newframe)
                 elseif node.head === :global
                     Core.eval(moduleof(frame), node)
@@ -612,28 +612,6 @@ If you are evaluating `frame` at module scope you should pass `istoplevel=true`.
 step_expr!(interp::Interpreter, frame::Frame, istoplevel::Bool=false) =
     step_expr!(interp, frame, pc_expr(frame), istoplevel)
 step_expr!(frame::Frame, istoplevel::Bool=false) = step_expr!(RecursiveInterpreter(), frame, istoplevel)
-
-# TODO Is this interface really needed?
-
-"""
-    finish_nested_frame!(interp::Interpreter, newframe::Frame, frame::Frame)
-
-Finish evaluating `newframe` and return to `frame`.
-
-This function is used when `newframe` is a nested frame embedded within `frame`.
-Specifically, it applies when `frame` contains a top‐level `Expr(:thunk)` and needs to
-interpret the `CodeInfo` embedded in that thunk. Consequently, within this function
-`newframe` is also treated as a top‐level frame during interpretation.
-"""
-function finish_nested_frame!(interp::Interpreter, newframe::Frame, frame::Frame)
-    newframe.caller = frame
-    frame.callee = newframe
-    finish!(interp, newframe, true)
-    frame.callee = nothing
-end
-function finish_nested_frame!(interp::NonRecursiveInterpreter, newframe::Frame, ::Frame)
-    finish!(interp, newframe, true)
-end
 
 """
     loc = handle_err(interp, frame, err)

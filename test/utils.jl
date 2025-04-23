@@ -105,15 +105,8 @@ function evaluate_limited!(interp::Interpreter, frame::Frame, nstmts::Int, istop
                 else
                     limited_interp.nstmts = nstmts
                     newframe = Frame(moduleof(frame), stmt)
-                    if isa(interp, NonRecursiveInterpreter)
-                        finish!(interp, newframe, true)
-                    else
-                        newframe.caller = frame
-                        frame.callee = newframe
-                        ret = finish_and_return!(limited_interp, newframe, true)
-                        isa(ret, Aborted) && return ret, limited_interp.nstmts
-                        frame.callee = nothing
-                    end
+                    ret = finish_and_return!(limited_interp, newframe, true)
+                    isa(ret, Aborted) && return ret, limited_interp.nstmts
                     JuliaInterpreter.recycle(newframe)
                     # Because thunks may define new methods, return to toplevel
                     frame.pc = pc + 1
