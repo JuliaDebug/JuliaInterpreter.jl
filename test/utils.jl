@@ -110,7 +110,7 @@ function evaluate_limited!(interp::Interpreter, frame::Frame, nstmts::Int, istop
                     else
                         newframe.caller = frame
                         frame.callee = newframe
-                        ret = finish_and_return!(limited_interp, newframe, istoplevel)
+                        ret = finish_and_return!(limited_interp, newframe, true)
                         isa(ret, Aborted) && return ret, limited_interp.nstmts
                         frame.callee = nothing
                     end

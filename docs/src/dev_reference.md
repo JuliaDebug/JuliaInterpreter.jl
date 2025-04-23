@@ -12,6 +12,7 @@
 JuliaInterpreter.Interpreter
 JuliaInterpreter.RecursiveInterpreter
 JuliaInterpreter.NonRecursiveInterpreter
+JuliaInterpreter.Compiled
 ```
 
 ## Frame creation

@@ -32,7 +32,9 @@ struct NonRecursiveInterpreter <: Interpreter end
 """
     const Compiled = NonRecursiveInterpreter
 
-See [`NonRecursiveInterpreter`](@ref) for the details.
+As of JuliaInterpreter v0.10, `Compiled` is now an alias for [`NonRecursiveInterpreter`](@ref).
+This remains for backward compatibility for packages using `Compiled`, and may be removed or
+redefined as a completely different type in v0.11 or later.
 """
 const Compiled = NonRecursiveInterpreter # for backward compatibility
 Base.similar(::Compiled, sz) = Compiled()  # to support similar(stack, 0)
