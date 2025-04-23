@@ -44,6 +44,7 @@ JuliaInterpreter.step_expr!
 JuliaInterpreter.finish!
 JuliaInterpreter.finish_and_return!
 JuliaInterpreter.finish_stack!
+JuliaInterpreter.finish_nested_frame!
 JuliaInterpreter.get_return
 JuliaInterpreter.next_until!
 JuliaInterpreter.maybe_next_until!
