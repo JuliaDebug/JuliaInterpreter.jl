@@ -784,10 +784,6 @@ julia> @interpret sum(a)
 8
 ```
 """
-macro interpret(ex0)
-    return interpret(__module__, ex0)
-end
-
-macro interpret(xs...)
-    return interpret(__module__, xs...)
+macro interpret(ex0, exs...)
+    return interpret(__module__, ex0, exs...)
 end

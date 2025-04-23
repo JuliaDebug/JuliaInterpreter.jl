@@ -3,7 +3,7 @@
 
 An interpreter that subtypes this type can implement its own evaluation strategies, by
 overloading the certain methods in JuliaInterpreter that are defined for this base type.
-The default behaviors of `Interpreter` is same as that of [`RecursiveInterpreter`](@ref),
+The default behavior of `Interpreter` is same as that of [`RecursiveInterpreter`](@ref),
 meaning it will recursively interpret all `:call` expressions.
 """
 abstract type Interpreter end
@@ -13,6 +13,8 @@ abstract type Interpreter end
 
 `RecursiveInterpreter` is an [`Interpreter`](@ref) that recursively interprets any `:call`
 expressions in the code being interpreted.
+
+With this interpreter, code runs in fully interpreted mode; it will never be compiled for execution.
 """
 struct RecursiveInterpreter <: Interpreter end
 
@@ -23,7 +25,7 @@ struct RecursiveInterpreter <: Interpreter end
 in the code being interpreted using Julia's normal code execution engine with the native
 compiler.
 
-`JuliaInterpreter.Compiled` is alised to `NonRecursiveInterpreter` for backward compatibility.
+`JuliaInterpreter.Compiled` is aliased to `NonRecursiveInterpreter` for backward compatibility.
 """
 struct NonRecursiveInterpreter <: Interpreter end
 
