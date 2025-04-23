@@ -23,7 +23,7 @@ function stacklength(frame)
 end
 
 # Execute a frame using Julia's regular compiled-code dispatch for any :call expressions
-runframe(frame) = Some{Any}(finish_and_return!(Compiled(), frame))
+runframe(frame) = Some{Any}(finish_and_return!(NonRecursiveInterpreter(), frame))
 
 # Execute a frame using the interpreter for all :call expressions (except builtins & intrinsics)
 runstack(frame) = Some{Any}(finish_and_return!(frame))
@@ -74,7 +74,7 @@ function evaluate_limited!(interp::Interpreter, frame::Frame, nstmts::Int, istop
         # _lnn_ = Aborted(frame, pc).at
         # _lnn_.file == Symbol("fake.jl") && _lnn_.line == 5 && isa(stmt, Core.GotoIfNot) && @show nstmts
         if isa(stmt, Expr)
-            if stmt.head === :call && !isa(interp, Compiled)
+            if stmt.head === :call && !isa(interp, NonRecursiveInterpreter)
                 limited_interp.nstmts = nstmts
                 try
                     rhs = evaluate_call!(limited_interp, frame, stmt)
@@ -86,7 +86,7 @@ function evaluate_limited!(interp::Interpreter, frame::Frame, nstmts::Int, istop
                     new_pc = handle_err(interp, frame, err)
                 end
                 nstmts = limited_interp.nstmts
-            elseif stmt.head === :(=) && isexpr(stmt.args[2], :call) && !isa(interp, Compiled)
+            elseif stmt.head === :(=) && isexpr(stmt.args[2], :call) && !isa(interp, NonRecursiveInterpreter)
                 limited_interp.nstmts = nstmts
                 try
                     rhs = evaluate_call!(limited_interp, frame, stmt.args[2])
@@ -105,7 +105,7 @@ function evaluate_limited!(interp::Interpreter, frame::Frame, nstmts::Int, istop
                 else
                     limited_interp.nstmts = nstmts
                     newframe = Frame(moduleof(frame), stmt)
-                    if isa(interp, Compiled)
+                    if isa(interp, NonRecursiveInterpreter)
                         finish!(interp, newframe, true)
                     else
                         newframe.caller = frame
@@ -161,7 +161,7 @@ end
 ### Functions needed on workers for running tests
 
 function configure_test()
-    # To run tests efficiently, certain methods must be run in Compiled mode,
+    # To run tests efficiently, certain methods must be run in the compiled mode,
     # in particular those that are used by the Test infrastructure
     cm = JuliaInterpreter.compiled_methods
     empty!(cm)
@@ -205,7 +205,7 @@ function run_test_by_eval(test, fullpath, nstmts)
             ret, nstmtsleft = evaluate_limited!(frame, nstmtsleft, true)
             if isa(ret, Aborted)
                 push!(aborts, ret)
-                JuliaInterpreter.finish_stack!(Compiled(), frame, true)
+                JuliaInterpreter.finish_stack!(NonRecursiveInterpreter(), frame, true)
             end
         end
         println("Finished ", $test)

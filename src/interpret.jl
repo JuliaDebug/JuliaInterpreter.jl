@@ -224,7 +224,7 @@ function maybe_eval_with_scope(@nospecialize(f), fargs::Vector{Any}, frame::Fram
     return nothing
 end
 
-function evaluate_call!(interp::Compiled, frame::Frame, call_expr::Expr, enter_generated::Bool=false)
+function evaluate_call!(interp::NonRecursiveInterpreter, frame::Frame, call_expr::Expr, enter_generated::Bool=false)
     # @assert !enter_generated
     pc = frame.pc
     ret = bypass_builtins(interp, frame, call_expr, pc)
@@ -520,7 +520,7 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
                     end
                 elseif node.head === :thunk
                     newframe = Frame(moduleof(frame), node.args[1]::CodeInfo)
-                    if isa(interp, Compiled)
+                    if isa(interp, NonRecursiveInterpreter)
                         finish!(interp, newframe, true)
                     else
                         newframe.caller = frame
@@ -610,9 +610,9 @@ end
 Execute the next statement in `frame`. `pc` is the new program counter, or `nothing`
 if execution terminates, or a [`BreakpointRef`](@ref) if execution hits a breakpoint.
 
-`interp` controls call evaluation; `interp = Compiled()` evaluates :call expressions
-by normal dispatch. The default value `interp = RecursiveInterpreter()` will use recursive
-interpretation.
+`interp` controls call evaluation; `interp = NonRecursiveInterpreter()` evaluates :call
+expressions by normal dispatch.
+The default value `interp = RecursiveInterpreter()` will use recursive interpretation.
 
 If you are evaluating `frame` at module scope you should pass `istoplevel=true`.
 """

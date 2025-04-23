@@ -965,10 +965,10 @@ end
 @testset "changing interpreter for @interpret" begin
     @test sin(42) == @interpret sin(42)
     @test sin(42) == @interpret interp=RecursiveInterpreter() sin(42)
-    @test sin(42) == @interpret interp=Compiled() sin(42)
-    @test ((@allocated @interpret interp=RecursiveInterpreter() sin(42)) ≠ (@allocated @interpret interp=Compiled() sin(42)))
+    @test sin(42) == @interpret interp=NonRecursiveInterpreter() sin(42)
+    @test ((@allocated @interpret interp=RecursiveInterpreter() sin(42)) ≠ (@allocated @interpret interp=NonRecursiveInterpreter() sin(42)))
     let interp1 = RecursiveInterpreter(),
-        interp2 = Compiled()
+        interp2 = NonRecursiveInterpreter()
         @test sin(42) == @interpret interp=interp1 sin(42)
         @test sin(42) == @interpret interp=interp2 sin(42)
     end

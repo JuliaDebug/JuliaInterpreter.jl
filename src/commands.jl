@@ -6,7 +6,7 @@ Run `frame` until execution terminates. `pc` is either `nothing` (if execution t
 when it hits a `return` statement) or a reference to a breakpoint.
 In the latter case, `leaf(frame)` returns the frame in which it hit the breakpoint.
 
-`interp` controls call evaluation; `interp = Compiled()` evaluates :call expressions
+`interp` controls call evaluation; `interp = NonRecursiveInterpreter()` evaluates :call expressions
 by normal dispatch, whereas the default `interp = RecursiveInterpreter()` uses recursive interpretation.
 """
 function finish!(interp::Interpreter, frame::Frame, istoplevel::Bool=false)
@@ -252,7 +252,7 @@ function maybe_step_through_wrapper!(interp::Interpreter, frame::Frame)
             end
         end
         ret = @invoke evaluate_call!(BreakOnCall()::Interpreter, frame::Frame, last::Expr)
-        if !isa(ret, BreakpointRef) # Happens if next call is Compiled
+        if !isa(ret, BreakpointRef) # Happens if next call is compiled
             return frame
         end
         frame.framedata.ssavalues[frame.pc] = Wrapper()

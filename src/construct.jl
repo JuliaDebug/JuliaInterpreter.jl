@@ -15,20 +15,20 @@ for the generator itself, its framecode would be stored in [`framedict`](@ref).
 const genframedict = Dict{Tuple{Method,Type},FrameCode}() # the same for @generated functions
 
 """
-`meth ∈ compiled_methods` indicates that `meth` should be run using [`Compiled`](@ref)
+`meth ∈ compiled_methods` indicates that `meth` should be run using [`NonRecursiveInterpreter`](@ref)
 rather than recursed into via the interpreter.
 """
 const compiled_methods = Set{Method}()
 
 """
-`meth ∈ interpreted_methods` indicates that `meth` should *not* be run using [`Compiled`](@ref)
+`meth ∈ interpreted_methods` indicates that `meth` should *not* be run using [`NonRecursiveInterpreter`](@ref)
 and recursed into via the interpreter. This takes precedence over [`compiled_methods`](@ref) and
 [`compiled_modules`](@ref).
 """
 const interpreted_methods = Set{Method}()
 
 """
-`mod ∈ compiled_modules` indicates that any method in `mod` should be run using [`Compiled`](@ref)
+`mod ∈ compiled_modules` indicates that any method in `mod` should be run using [`NonRecursiveInterpreter`](@ref)
 rather than recursed into via the interpreter.
 """
 const compiled_modules = Set{Module}()

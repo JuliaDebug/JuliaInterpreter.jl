@@ -10,8 +10,9 @@ using Random
 using Random.DSFMT
 using InteractiveUtils
 
-export BreakpointRef, Compiled, ExprSplitter, Frame, Interpreter, RecursiveInterpreter,
-       @bp, @breakpoint, @interpret,
+export BreakpointRef, Compiled, ExprSplitter, Frame,
+       Interpreter, NonRecursiveInterpreter, RecursiveInterpreter
+export @bp, @breakpoint, @interpret,
        break_off, break_on, breakpoint, breakpoints, debug_command, disable, enable, leaf,
        on_breakpoints_updated, remove, root, toggle
 

@@ -29,6 +29,11 @@ compiler.
 """
 struct NonRecursiveInterpreter <: Interpreter end
 
+"""
+    const Compiled = NonRecursiveInterpreter
+
+See [`NonRecursiveInterpreter`](@ref) for the details.
+"""
 const Compiled = NonRecursiveInterpreter # for backward compatibility
 Base.similar(::Compiled, sz) = Compiled()  # to support similar(stack, 0)
 
