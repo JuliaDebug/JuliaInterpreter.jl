@@ -6,6 +6,16 @@
 @interpret
 ```
 
+## Interpreter
+
+```@docs
+JuliaInterpreter.Interpreter
+JuliaInterpreter.RecursiveInterpreter
+JuliaInterpreter.NonRecursiveInterpreter
+JuliaInterpreter.Compiled
+JuliaInterpreter.method_table
+```
+
 ## Frame creation
 
 ```@docs
@@ -31,7 +41,6 @@ leaf
 ## Frame execution
 
 ```@docs
-JuliaInterpreter.Compiled
 JuliaInterpreter.step_expr!
 JuliaInterpreter.finish!
 JuliaInterpreter.finish_and_return!
@@ -67,7 +76,7 @@ toggle
 break_on
 break_off
 breakpoints
-JuliaInterpreter.dummy_breakpoint
+JuliaInterpreter.BreakOnCall
 ```
 
 ## Types
@@ -99,7 +108,7 @@ JuliaInterpreter.interpreted_methods
 
 ```@docs
 JuliaInterpreter.eval_code
-JuliaInterpreter.@lookup
+JuliaInterpreter.lookup
 JuliaInterpreter.is_wrapper_call
 JuliaInterpreter.is_doc_expr
 JuliaInterpreter.is_global_ref

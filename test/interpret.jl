@@ -361,25 +361,24 @@ f113(;x) = x
     frame = JuliaInterpreter.enter_call(f_multi, 1)
     nlocals = length(frame.framedata.locals)
     @test_throws UndefVarError JuliaInterpreter.lookup_var(frame, JuliaInterpreter.SlotNumber(nlocals))
-    stack = [frame]
     locals = JuliaInterpreter.locals(frame)
     @test length(locals) == 2
     @test JuliaInterpreter.Variable(1, :x, false) in locals
-    JuliaInterpreter.step_expr!(stack, frame)
-    JuliaInterpreter.step_expr!(stack, frame)
+    JuliaInterpreter.step_expr!(frame)
+    JuliaInterpreter.step_expr!(frame)
     @static if VERSION >= v"1.11-"
         locals = JuliaInterpreter.locals(frame)
         @test length(locals) == 2
-        JuliaInterpreter.step_expr!(stack, frame)
+        JuliaInterpreter.step_expr!(frame)
     end
     locals = JuliaInterpreter.locals(frame)
     @test length(locals) == 3
     @test JuliaInterpreter.Variable(1, :c, false) in locals
-    JuliaInterpreter.step_expr!(stack, frame)
+    JuliaInterpreter.step_expr!(frame)
     locals = JuliaInterpreter.locals(frame)
     @test length(locals) == 3
     @test JuliaInterpreter.Variable(2, :x, false) in locals
-    JuliaInterpreter.step_expr!(stack, frame)
+    JuliaInterpreter.step_expr!(frame)
     locals = JuliaInterpreter.locals(frame)
     @test length(locals) == 3
     @test JuliaInterpreter.Variable(3, :x, false) in locals
@@ -961,4 +960,40 @@ func_arrayref(a, i) = Core.arrayref(true, a, i)
 
 @static if isdefinedglobal(Base, :ScopedValues)
 @testset "interpret_scopedvalues.jl" include("interpret_scopedvalues.jl")
+end
+
+@testset "changing interpreter for @interpret" begin
+    @test sin(42) == @interpret sin(42)
+    @test sin(42) == @interpret interp=RecursiveInterpreter() sin(42)
+    @test sin(42) == @interpret interp=NonRecursiveInterpreter() sin(42)
+    @test ((@allocated @interpret interp=RecursiveInterpreter() sin(42)) ≠ (@allocated @interpret interp=NonRecursiveInterpreter() sin(42)))
+    let interp1 = RecursiveInterpreter(),
+        interp2 = NonRecursiveInterpreter()
+        @test sin(42) == @interpret interp=interp1 sin(42)
+        @test sin(42) == @interpret interp=interp2 sin(42)
+    end
+    @test_throws "Invalid @interpret call" macroexpand(@__MODULE__, :(@interpret interp sin(42)))
+    @test_throws "Invalid @interpret call" macroexpand(@__MODULE__, :(@interpret _interp_=RecursiveInterpreter() sin(42)))
+end
+
+function func_overlay end
+func_overlay(x) = sin(x)
+call_func_overlay(x) = func_overlay(x)
+Base.Experimental.@MethodTable ex_method_table
+Base.Experimental.@overlay ex_method_table func_overlay(x) = cos(x)
+struct OverlayInterpreter <: Interpreter end
+JuliaInterpreter.method_table(::OverlayInterpreter) = ex_method_table
+
+@testset "Interpret overlay method" begin
+    let frame = JuliaInterpreter.Frame(@__MODULE__, :(func_overlay(42.0)))
+        @test JuliaInterpreter.finish_and_return!(frame, true) == sin(42.0)
+    end
+    @test sin(42.0) == @interpret call_func_overlay(42.0)
+    let frame = JuliaInterpreter.Frame(@__MODULE__, :(func_overlay(42.0)))
+        @test JuliaInterpreter.finish_and_return!(OverlayInterpreter(), frame, true) == cos(42.0)
+    end
+    let frame = JuliaInterpreter.enter_call(func_overlay, 42.0; method_table=ex_method_table)
+        @test JuliaInterpreter.finish_and_return!(OverlayInterpreter(), frame) == cos(42.0)
+    end
+    @test cos(42.0) == @interpret interp=OverlayInterpreter() call_func_overlay(42.0)
 end

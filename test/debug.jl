@@ -1,5 +1,5 @@
 using CodeTracking, JuliaInterpreter, Test
-using JuliaInterpreter: enter_call, enter_call_expr, get_return, @lookup
+using JuliaInterpreter: enter_call, enter_call_expr, get_return
 using Base.Meta: isexpr
 include("utils.jl")
 
@@ -7,7 +7,7 @@ const ALL_COMMANDS = (:n, :s, :c, :finish, :nc, :se, :si, :until)
 
 function step_through_command(fr::Frame, cmd::Symbol)
     while true
-        ret = JuliaInterpreter.debug_command(JuliaInterpreter.finish_and_return!, fr, cmd)
+        ret = JuliaInterpreter.debug_command(fr, cmd)
         ret == nothing && break
         fr, pc = ret
     end
@@ -275,7 +275,7 @@ end
         frame = fr = JuliaInterpreter.enter_call(f_va_outer, 1)
         # depending on whether this is in or out of a @testset, the first statement may differ
         stmt1 = fr.framecode.src.code[1]
-        if isexpr(stmt1, :call) && @lookup(frame, stmt1.args[1]) === getfield
+        if isexpr(stmt1, :call) && JuliaInterpreter.lookup(frame, stmt1.args[1]) === getfield
             fr, pc = debug_command(fr, :se)
         end
         fr, pc = debug_command(fr, :s)
@@ -336,7 +336,7 @@ end
         try
             break_on(:error)
             fr = JuliaInterpreter.enter_call(f_outer)
-            fr, pc = debug_command(JuliaInterpreter.finish_and_return!, fr, :finish)
+            fr, pc = debug_command(fr, :finish)
             @test fr.framecode.scope.name === :error
 
             fundef() = undef_func()
@@ -462,7 +462,7 @@ end
         frame = JuliaInterpreter.enter_call(f, 2, 3) # at sin
         frame, pc = debug_command(frame, :n)
         # Check that we are at the kw call to g
-        @test Core.kwfunc(g) == JuliaInterpreter.@lookup frame JuliaInterpreter.pc_expr(frame).args[1]
+        @test Core.kwfunc(g) == JuliaInterpreter.lookup(frame, JuliaInterpreter.pc_expr(frame).args[1])
         # Step into the inner g
         frame, pc = debug_command(frame, :s)
         # Finish the frame and make sure we step out of the wrapper
@@ -477,7 +477,7 @@ end
         frame = JuliaInterpreter.enter_call(h_1, 2, 1)
         frame, pc = debug_command(frame, :s)
         # Should have skipped the kwprep in h_2 and be at call to kwfunc h_3
-        @test Core.kwfunc(h_3) == JuliaInterpreter.@lookup frame JuliaInterpreter.pc_expr(frame).args[1]
+        @test Core.kwfunc(h_3) == JuliaInterpreter.lookup(frame, JuliaInterpreter.pc_expr(frame).args[1])
     end
 
     @testset "si should not step through wrappers or kwprep" begin

@@ -99,7 +99,7 @@ module EvalLimited end
         @test isa(frame, Frame)
         nstmtsleft = nstmts
         while true
-            ret, nstmtsleft = evaluate_limited!(Compiled(), frame, nstmtsleft, true)
+            ret, nstmtsleft = evaluate_limited!(NonRecursiveInterpreter(), frame, nstmtsleft, true)
             isa(ret, Some{Any}) && break
             isa(ret, Aborted) && (push!(aborts, ret); break)
         end

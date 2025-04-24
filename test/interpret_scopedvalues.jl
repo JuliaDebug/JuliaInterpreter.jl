@@ -33,7 +33,7 @@ let m = only(methods(_sval1_func2))
     end
 end
 let frame = JuliaInterpreter.enter_call(sval1_func2)
-    @test 2 == JuliaInterpreter.finish_and_return!(Compiled(), frame)
+    @test 2 == JuliaInterpreter.finish_and_return!(NonRecursiveInterpreter(), frame)
 end
 
 # preset `current_scope` support

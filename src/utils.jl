@@ -31,14 +31,27 @@ end
 Like `which` except it operates on the complete tuple-type `tt`,
 and doesn't throw when there is no matching method.
 """
-function whichtt(@nospecialize(tt), mt::Union{Nothing, MethodTable} = nothing)
+function whichtt(@nospecialize(tt), mt::Union{Nothing,MethodTable}=nothing)
     # TODO: provide explicit control over world age? In case we ever need to call "old" methods.
-    # branch on https://github.com/JuliaLang/julia/pull/44515
-    # for now, code execution doesn't have the capability to use an overlayed method table,
-    # which is meant to be addressed in https://github.com/JuliaDebug/JuliaInterpreter.jl/pull/682.
-    match, _ = Core.Compiler._findsup(tt, mt, get_world_counter())
+    # TODO Use `CachedMethodTable` for better performance once `teh/worldage` is merged
+    match, _ = findsup_mt(tt, Base.get_world_counter(), mt)
     match === nothing && return nothing
     return match.method
+end
+
+@static if VERSION ≥ v"1.12-"
+using Base.Compiler: findsup_mt
+else
+function findsup_mt(@nospecialize(tt), world, method_table)
+    if method_table === nothing
+        table = Core.Compiler.InternalMethodTable(world)
+    elseif method_table isa Core.MethodTable
+        table = Core.Compiler.OverlayMethodTable(world, method_table)
+    else
+        table = method_table
+    end
+    return Core.Compiler.findsup(tt, table)
+end
 end
 
 instantiate_type_in_env(arg, spsig::UnionAll, spvals::Vector{Any}) =

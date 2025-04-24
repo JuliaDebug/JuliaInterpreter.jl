@@ -8,8 +8,8 @@
 
 ## Installation
 
-```jl
-]add JuliaInterpreter
+```julia-repl
+pkg> add JuliaInterpreter
 ```
 
 ## Usage
