@@ -329,17 +329,19 @@ function evaluate_overlayed_methoddef(interp::Interpreter, frame::Frame, node::E
     return method
 end
 
-function extract_method_table(frame::Frame, node::Expr; eval = true)
+extract_method_table(frame::Frame, node::Expr; eval = true) = extract_method_table(moduleof(frame), node; eval)
+
+function extract_method_table(mod::Module, node::Expr; eval = true)
     isexpr(node, :method, 3) || return nothing
     arg = node.args[1]
     isa(arg, MethodTable) && return arg
     if !isa(arg, Symbol) && !isa(arg, GlobalRef)
         eval || return nothing
-        value = try Core.eval(moduleof(frame), arg) catch _ nothing end
+        value = try Core.eval(mod, arg) catch _ nothing end
         isa(value, MethodTable) && return value
         return nothing
     end
-    mod, name = isa(arg, Symbol) ? (moduleof(frame), arg) : (arg.mod, arg.name)
+    mod, name = isa(arg, Symbol) ? (mod, arg) : (arg.mod, arg.name)
     @invokelatest(isdefinedglobal(mod, name)) || return nothing
     value = @invokelatest getglobal(mod, name)
     isa(value, MethodTable) && return value
