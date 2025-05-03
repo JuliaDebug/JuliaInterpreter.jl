@@ -92,6 +92,8 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         return Some{Any}(Core._equiv_typedef(getargs(interp, args, frame)...))
     elseif f === Core._expr
         return Some{Any}(Core._expr(getargs(interp, args, frame)...))
+    elseif @static isdefinedglobal(Core, :_import) && f === Core._import
+        return Some{Any}(Core._import(getargs(interp, args, frame)...))
     elseif f === Core._primitivetype
         return Some{Any}(Core._primitivetype(getargs(interp, args, frame)...))
     elseif f === Core._setsuper!
@@ -112,6 +114,8 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         else
             return Some{Any}(Core._typevar(getargs(interp, args, frame)...))
         end
+    elseif @static isdefinedglobal(Core, :_using) && f === Core._using
+        return Some{Any}(Core._using(getargs(interp, args, frame)...))
     elseif f === Core.apply_type
         return Some{Any}(Core.apply_type(getargs(interp, args, frame)...))
     elseif f === Core.compilerbarrier

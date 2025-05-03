@@ -23,6 +23,8 @@ const RECENTLY_ADDED = Core.Builtin[
     setglobalonce!,
     swapglobal!,
     Core._defaultctors,
+    Core._import,
+    Core._using,
     # Recently became builtins
     Base.invokelatest,
     Base.invoke_in_world,
