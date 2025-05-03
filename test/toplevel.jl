@@ -638,3 +638,14 @@ end
 let ex = :(const ___symbol___ = :___symbol___)
     @test JuliaInterpreter.finish_and_return!(Frame(@__MODULE__, ex), true) === :___symbol___
 end
+
+module UsingTest end
+module ImportTest end
+let ex = quote using Test end
+    JuliaInterpreter.finish_and_return!(Frame(UsingTest, ex), true)
+    @test @invokelatest JuliaInterpreter.isdefinedglobal(UsingTest, :Test)
+end
+let ex = quote import Test end
+    JuliaInterpreter.finish_and_return!(Frame(ImportTest, ex), true)
+    @test @invokelatest JuliaInterpreter.isdefinedglobal(ImportTest, :Test)
+end
