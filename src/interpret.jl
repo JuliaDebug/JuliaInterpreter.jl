@@ -232,6 +232,9 @@ function evaluate_call!(interp::NonRecursiveInterpreter, frame::Frame, call_expr
     ret = maybe_evaluate_builtin(interp, frame, call_expr, false)
     isa(ret, Some{Any}) && return ret.value
     fargs = collect_args(interp, frame, call_expr)
+    return evaluate_call!(interp, frame, fargs, enter_generated)
+end
+function evaluate_call!(::NonRecursiveInterpreter, frame::Frame, fargs::Vector{Any}, ::Bool)
     return native_call(fargs, frame)
 end
 
@@ -243,6 +246,9 @@ function evaluate_call!(interp::Interpreter, frame::Frame, call_expr::Expr, ente
     isa(ret, Some{Any}) && return ret.value
     call_expr = ret
     fargs = collect_args(interp, frame, call_expr)
+    return evaluate_call!(interp, frame, fargs, enter_generated)
+end
+function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, enter_generated::Bool)
     if fargs[1] === Core.eval
         return Core.eval(fargs[2], fargs[3])  # not a builtin, but worth treating specially
     elseif fargs[1] === Base.rethrow
