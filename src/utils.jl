@@ -237,13 +237,14 @@ Test whether expression `ex` is a `@doc` expression.
 function is_doc_expr(@nospecialize(ex))
     docsym = Symbol("@doc")
     if isexpr(ex, :macrocall)
-        ex::Expr
         length(ex.args) == 4 || return false
         a = ex.args[1]
-        is_global_ref(a, Core, docsym) && return true
-        isa(a, Symbol) && a == docsym && return true
-        if isexpr(a, :.)
-            mod, name = (a::Expr).args[1], (a::Expr).args[2]
+        if isa(a, Symbol) && a === docsym
+            return true
+        elseif is_global_ref(a, Core, docsym)
+            return true
+        elseif isexpr(a, :.)
+            mod, name = a.args[1], a.args[2]
             return mod === :Core && isa(name, QuoteNode) && name.value === docsym
         end
     end
@@ -682,7 +683,7 @@ respectively) can be evaluated using the syntax `var"%3"` and `var"@_4"` respect
 """
 function eval_code end
 
-function extract_usage!(s::Set{Symbol}, expr)
+function extract_usage!(s::Set{Symbol}, @nospecialize expr)
     if expr isa Expr
         for arg in expr.args
             if arg isa Symbol
@@ -753,7 +754,7 @@ function eval_code(frame::Frame, expr::Expr)
     eval_res
 end
 
-function show_stackloc(io::IO, frame)
+function show_stackloc(io::IO, frame::Frame)
     indent = ""
     fr = root(frame)
     shown = false
@@ -772,7 +773,7 @@ function show_stackloc(io::IO, frame)
         println(io, indent, scopeof(frame), ", pc = ", frame.pc)
     end
 end
-show_stackloc(frame) = show_stackloc(stdout, frame)
+show_stackloc(frame::Frame) = show_stackloc(stdout, frame)
 
 # Printing of stacktraces and errors with Frame
 function Base.StackTraces.StackFrame(frame::Frame)
@@ -820,12 +821,4 @@ function Base.display_error(io::IO, er, frame::Frame)
     printstyled(io, "ERROR: "; bold=true, color=Base.error_color())
     showerror(IOContext(io, :limit => true), er, frame)
     println(io)
-end
-
-function static_eval(evalmod, ex)
-    try
-        Core.eval(evalmod, ex)
-    catch
-        nothing
-    end
 end
