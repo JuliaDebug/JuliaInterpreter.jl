@@ -438,8 +438,8 @@ See [`Frame(mod::Module, ex::Expr)`](@ref) for more information about frame crea
 """
 mutable struct ExprSplitter
     # Non-mutating fields
-    stack::Vector{Tuple{Module,Expr}}   # mod[i] is module of evaluation for
-    index::Vector{Int}    # next-to-handle argument index for :block or :toplevel exprs
+    const stack::Vector{Tuple{Module,Expr}}   # mod[i] is module of evaluation for
+    const index::Vector{Int}    # next-to-handle argument index for :block or :toplevel exprs
     # Mutating fields
     lnn::Union{LineNumberNode,Nothing}
 end
@@ -508,7 +508,7 @@ function queuenext!(iter::ExprSplitter)
                 mod = Base.root_module(id)::Module
             else
                 loc = firstline(ex)
-                mod = Core.eval(mod, Expr(:module, ex.args[1], ex.args[2], Expr(:block, loc, loc)))::Module
+                mod = Core.eval(mod, Expr(:module, ex.args[1], newname, Expr(:block, loc, loc)))::Module
             end
         end
         # We've handled the module declaration, remove it and queue the body
