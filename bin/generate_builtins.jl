@@ -210,7 +210,9 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
             print(io,
 """
     $head f === tuple
-        return Some{Any}(ntupleany(i::Int->lookup(interp, frame, args[i+1]), length(args)-1))
+        let args=args
+            return Some{Any}(ntupleany(i::Int->lookup(interp, frame, args[i+1]), length(args)-1))
+        end
 """)
             continue
         elseif f === Core._apply_iterate
