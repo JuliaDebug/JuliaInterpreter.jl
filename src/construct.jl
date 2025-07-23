@@ -487,8 +487,8 @@ function queuenext!(iter::ExprSplitter)
     if head === :module
         # Find or create the module
         newname = ex.args[2]::Symbol
-        if invokelatest(isdefined, mod, newname)
-            newmod = invokelatest(getfield, mod, newname)
+        if invokelatest(isdefinedglobal, mod, newname)
+            newmod = invokelatest(getglobal, mod, newname)
             newmod isa Module || throw(ErrorException("invalid redefinition of constant $(newname)"))
             mod = newmod
         else
@@ -508,7 +508,7 @@ function queuenext!(iter::ExprSplitter)
                 mod = Base.root_module(id)::Module
             else
                 loc = firstline(ex)
-                mod = Core.eval(mod, Expr(:module, ex.args[1], newname, Expr(:block, loc, loc)))::Module
+                mod = Core.eval(mod, Expr(:module, ex.args[1], newname, Expr(:block, loc)))::Module
             end
         end
         # We've handled the module declaration, remove it and queue the body
