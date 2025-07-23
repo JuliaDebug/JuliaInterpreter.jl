@@ -155,7 +155,7 @@ const kwinvoke = Core.kwfunc(Core.invoke)
 
 function maybe_recurse_expanded_builtin(interp::Interpreter, frame::Frame, new_expr::Expr)
     f = new_expr.args[1]
-    if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
+    if supertype(typeof(f)) === Core.Builtin || isa(f, Core.IntrinsicFunction)
         return maybe_evaluate_builtin(interp, frame, new_expr, true)
     else
         return new_expr
@@ -190,7 +190,7 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         end
         return Some{Any}(f(args...))
     end
-    if !(isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction))
+    if !(supertype(typeof(f)) === Core.Builtin || isa(f, Core.IntrinsicFunction))
         return call_expr
     end
     # By having each call appearing statically in the "switch" block below,
