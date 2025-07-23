@@ -403,7 +403,9 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
             return Some{Any}(throw(getargs(interp, args, frame)...))
         end
     elseif f === tuple
-        return Some{Any}(ntupleany(i::Int->lookup(interp, frame, args[i+1]), length(args)-1))
+        let args=args
+            return Some{Any}(ntupleany(i::Int->lookup(interp, frame, args[i+1]), length(args)-1))
+        end
     elseif f === typeassert
         if nargs == 2
             return Some{Any}(typeassert(lookup(interp, frame, args[2]), lookup(interp, frame, args[3])))
