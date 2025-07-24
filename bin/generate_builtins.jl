@@ -23,6 +23,8 @@ const RECENTLY_ADDED = Core.Builtin[
     setglobalonce!,
     swapglobal!,
     Core._defaultctors,
+    Core._import,
+    Core._using,
     # Recently became builtins
     Base.invokelatest,
     Base.invoke_in_world,
@@ -153,7 +155,7 @@ const kwinvoke = Core.kwfunc(Core.invoke)
 
 function maybe_recurse_expanded_builtin(interp::Interpreter, frame::Frame, new_expr::Expr)
     f = new_expr.args[1]
-    if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
+    if supertype(typeof(f)) === Core.Builtin || isa(f, Core.IntrinsicFunction)
         return maybe_evaluate_builtin(interp, frame, new_expr, true)
     else
         return new_expr
@@ -188,7 +190,7 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         end
         return Some{Any}(f(args...))
     end
-    if !(isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction))
+    if !(supertype(typeof(f)) === Core.Builtin || isa(f, Core.IntrinsicFunction))
         return call_expr
     end
     # By having each call appearing statically in the "switch" block below,
@@ -208,7 +210,9 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
             print(io,
 """
     $head f === tuple
-        return Some{Any}(ntupleany(i::Int->lookup(interp, frame, args[i+1]), length(args)-1))
+        let args=args
+            return Some{Any}(ntupleany(i::Int->lookup(interp, frame, args[i+1]), length(args)-1))
+        end
 """)
             continue
         elseif f === Core._apply_iterate

@@ -1,6 +1,6 @@
 name = "JuliaInterpreter"
 uuid = "aa1ae85d-cabe-5617-a682-6adf51b2e16a"
-version = "0.10.1"
+version = "0.10.3"
 authors = ["Tim Holy <tim.holy@gmail.com>, Kristoffer Carlsson <kcarlsson89@gmail.com>, Shuhei Kadowaki <aviatesk@gmail.com> and contributors"]
 
 [deps]

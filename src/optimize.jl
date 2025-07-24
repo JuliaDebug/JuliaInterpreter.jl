@@ -219,7 +219,7 @@ function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector
     dynamic_ccall = false
     oldcfunc = nothing
     if isa(cfuncarg, Expr) || isa(cfuncarg, GlobalRef) || isa(cfuncarg, Symbol) # specification by tuple, e.g., (:clock, "libc")
-        cfunc = something(static_eval(evalmod, cfuncarg), cfuncarg)
+        cfunc = something(try Core.eval(evalmod, cfuncarg) catch nothing end, cfuncarg)
     elseif isa(cfuncarg, QuoteNode)
         cfunc = cfuncarg.value
     else
