@@ -372,7 +372,7 @@ Return the deepest callee in the call stack.
 leaf(frame) = traverse(callee, frame)
 
 function Base.show(io::IO, frame::Frame)
-    frame_loc = CodeTracking.replace_buildbot_stdlibpath(repr(scopeof(frame)))
+    frame_loc = Base.fixup_stdlib_path(repr(scopeof(frame)))
     println(io, "Frame for ", frame_loc)
     pc = frame.pc
     ns = nstatements(frame.framecode)
