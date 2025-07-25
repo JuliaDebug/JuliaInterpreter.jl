@@ -559,7 +559,8 @@ end
 
 # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/154
 q = QuoteNode([1])
-@test @interpret deepcopy(q) == q
+qcopy = @interpret deepcopy(q)
+@test isa(qcopy, QuoteNode) && qcopy.value == q.value
 
 # Check #args for builtins (#217)
 f217() = <:(Float64, Float32, Float16)
