@@ -649,3 +649,24 @@ let ex = quote import Test end
     JuliaInterpreter.finish_and_return!(Frame(ImportTest, ex), true)
     @test @invokelatest JuliaInterpreter.isdefinedglobal(ImportTest, :Test)
 end
+
+module BareModuleTest end
+function toplevel_eval(m, x)
+    modexs = ExprSplitter(m, x)
+    for (mod, ex) in modexs
+        frame = Frame(mod, ex)
+        while true
+            JuliaInterpreter.through_methoddef_or_done!(frame) === nothing && break
+        end
+    end
+end
+let ex = :(baremodule BareModule
+        using Base
+        function foo(x::Cint)
+            @ccall jl_(x::Cint)::Cvoid
+        end
+    end)
+    toplevel_eval(BareModuleTest, ex)
+    @test @invokelatest(JuliaInterpreter.isdefinedglobal(BareModuleTest, :BareModule)) &&
+        @invokelatest(JuliaInterpreter.isdefinedglobal(@invokelatest(BareModuleTest.BareModule), :foo))
+end

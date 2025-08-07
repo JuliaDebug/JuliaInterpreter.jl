@@ -409,7 +409,7 @@ function eval_rhs(interp::Interpreter, frame::Frame, node::Expr)
            head === :aliasscope || head === :popaliasscope
         return nothing
     elseif head === :method && length(node.args) == 1
-        return evaluate_methoddef(interp, frame, node)
+        return @invokelatest evaluate_methoddef(interp, frame, node)
     end
     return lookup_expr(interp, frame, node)
 end
@@ -514,7 +514,7 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
                 # (https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/591)
             elseif istoplevel
                 if node.head === :method && length(node.args) > 1
-                    rhs = evaluate_methoddef(interp, frame, node)
+                    rhs = @invokelatest evaluate_methoddef(interp, frame, node)
                 elseif node.head === :module
                     error("this should have been handled by split_expressions")
                 elseif node.head === :using || node.head === :import || node.head === :export
