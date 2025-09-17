@@ -5,6 +5,8 @@ using InteractiveUtils
 # Builtins not present in 1.10 (the lowest supported version)
 const RECENTLY_ADDED = Core.Builtin[
     Core.current_scope,
+    Core.declare_const,
+    Core.declare_global,
     isdefinedglobal,
     Core.memorynew,
     Core.memoryref_isassigned,

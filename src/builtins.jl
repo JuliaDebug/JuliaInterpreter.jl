@@ -134,6 +134,10 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         else
             return Some{Any}(Core.current_scope(getargs(interp, args, frame)...))
         end
+    elseif @static isdefinedglobal(Core, :declare_const) && f === Core.declare_const
+        return Some{Any}(Core.declare_const(getargs(interp, args, frame)...))
+    elseif @static isdefinedglobal(Core, :declare_global) && f === Core.declare_global
+        return Some{Any}(Core.declare_global(getargs(interp, args, frame)...))
     elseif f === Core.donotdelete
         return Some{Any}(Core.donotdelete(getargs(interp, args, frame)...))
     elseif f === Core.finalizer
