@@ -2,6 +2,7 @@ const compiled_calls = Dict{Any,Any}()
 
 # Pre-frame-construction lookup
 function lookup_stmt(stmts::Vector{Any}, @nospecialize arg)
+    # this convert a statement into something else, without the slightly interest in correctness:
     if isa(arg, SSAValue)
         arg = stmts[arg.id]
     end
@@ -210,30 +211,31 @@ end
 # Handle :llvmcall & :foreigncall (issue #28)
 function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector{Symbol}, evalmod::Module)
     TVal = evalmod == Core.Compiler ? Core.Compiler.Val : Val
-    cfuncarg = stmt.args[1]
-    while isa(cfuncarg, SSAValue)
-        cfuncarg = lookup_stmt(code.code, cfuncarg)
-    end
     RetType, ArgType = stmt.args[2], stmt.args[3]::SimpleVector
 
     dynamic_ccall = false
-    oldcfunc = nothing
-    if isa(cfuncarg, Expr) || isa(cfuncarg, GlobalRef) || isa(cfuncarg, Symbol) # specification by tuple, e.g., (:clock, "libc")
-        cfunc = something(try Core.eval(evalmod, cfuncarg) catch nothing end, cfuncarg)
-    elseif isa(cfuncarg, QuoteNode)
-        cfunc = cfuncarg.value
+    argcfunc = cfunc = stmt.args[1]
+    if @isdefined(__has_internal_change) && __has_internal_change(v"1.13.0", :syntacticccall)
+        if !isexpr(cfunc, :tuple)
+            dynamic_ccall = true
+            cfunc = gensym("ptr")
+        end
     else
-        cfunc = cfuncarg
+        while isa(cfunc, SSAValue)
+            cfunc = lookup_stmt(code.code, cfunc)
+            cfunc isa Symbol && (cfunc = QuoteNode(cfunc))
+        end
+        # n.b. Base.memhash is deprecated (continued use would cause serious faults) in the same version as the syntax is deprecated
+        # so this is only needed as a legacy hack
+        if isa(cfunc, Expr) || (cfunc isa GlobalRef && cfunc == GlobalRef(Base, :memhash))
+            cfunc = something(try QuoteNode(Core.eval(evalmod, cfunc)) catch nothing end, cfunc)
+        end
+        if !(isa(cfunc, Union{String, Tuple}) || (isa(cfunc, QuoteNode) && isa(cfunc.value, Union{String, Tuple, Symbol})))
+            dynamic_ccall = true
+            cfunc = gensym("ptr")
+        end
     end
-    if isa(cfunc, Symbol)
-        cfunc = QuoteNode(cfunc)
-    elseif isa(cfunc, String) || isa(cfunc, Ptr) || isa(cfunc, Tuple)
-        # do nothing
-    else
-        dynamic_ccall = true
-        oldcfunc = cfunc
-        cfunc = gensym("ptr")
-    end
+
     if isa(RetType, SimpleVector)
         @assert length(RetType) == 1
         RetType = RetType[1]
@@ -274,7 +276,7 @@ function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector
     stmt.head = :call
     deleteat!(stmt.args, 2:length(stmt.args))
     if dynamic_ccall
-        push!(stmt.args, oldcfunc)
+        push!(stmt.args, argcfunc)
     end
     append!(stmt.args, args)
     for i in 1:length(sparams)
