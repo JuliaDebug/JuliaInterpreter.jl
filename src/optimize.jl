@@ -2,7 +2,7 @@ const compiled_calls = Dict{Any,Any}()
 
 # Pre-frame-construction lookup
 function lookup_stmt(stmts::Vector{Any}, @nospecialize arg)
-    # this convert a statement into something else, without the slightly interest in correctness:
+    # this converts a statement into something else, without the slightest interest in correctness:
     if isa(arg, SSAValue)
         arg = stmts[arg.id]
     end
