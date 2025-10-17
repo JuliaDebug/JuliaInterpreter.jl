@@ -176,10 +176,6 @@ function is_quoted_type(@nospecialize(a), name::Symbol)
     return false
 end
 
-function is_function_def(@nospecialize(ex))
-    (isexpr(ex, :(=)) && isexpr(ex.args[1], :call)) || isexpr(ex, :function)
-end
-
 function is_call(@nospecialize(node))
     isexpr(node, :call) ||
         (isexpr(node, :(=)) && (isexpr(node.args[2], :call)))
