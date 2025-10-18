@@ -500,7 +500,7 @@ struct BreakpointSignature <: AbstractBreakpoint
     sig::Union{Nothing, Type}
     line::Int # 0 is a sentinel for first statement
     condition::Condition
-    enabled::Ref{Bool}
+    enabled::Base.RefValue{Bool}
     instances::Vector{BreakpointRef}
 end
 same_location(bp2::BreakpointSignature, bp::BreakpointSignature) =
@@ -539,7 +539,7 @@ struct BreakpointFileLocation <: AbstractBreakpoint
     abspath::String
     line::Int
     condition::Condition
-    enabled::Ref{Bool}
+    enabled::Base.RefValue{Bool}
     instances::Vector{BreakpointRef}
 end
 same_location(bp2::BreakpointFileLocation, bp::BreakpointFileLocation) =
