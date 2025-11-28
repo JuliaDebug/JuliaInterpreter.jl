@@ -28,7 +28,7 @@ The input arguments and local variables are in `locals`:
 
 ```julia-repl
 julia> frame.framedata.locals
-5-element Array{Union{Nothing, Some{Any}},1}:
+5-element Vector{Union{Nothing, Some{Any}}}:
  Some(summer)
  Some([1, 2, 5])
  nothing
@@ -43,7 +43,7 @@ The static parameter, `T`, is stored in `frame.framedata.sparams`:
 
 ```julia-repl
 julia> frame.framedata.sparams
-1-element Array{Any,1}:
+1-element Vector{Any}:
  Int64
 ```
 
@@ -53,7 +53,7 @@ The other main storage is for the generated SSA values:
 
 ```julia-repl
 julia> frame.framedata.ssavalues
-16-element Array{Any,1}:
+16-element Vector{Any}:
  #undef
  #undef
  #undef
@@ -98,7 +98,7 @@ locals again:
 
 ```julia-repl
 julia> frame.framedata.locals
-5-element Array{Union{Nothing, Some{Any}},1}:
+5-element Vector{Union{Nothing, Some{Any}}}:
  Some(summer)
  Some([1, 2, 5])
  Some(0)
@@ -116,7 +116,7 @@ julia> JuliaInterpreter.step_expr!(frame)
 3
 
 julia> frame.framedata.ssavalues
-16-element Array{Any,1}:
+16-element Vector{Any}:
  #undef
     [1, 2, 5]
  #undef
@@ -230,7 +230,7 @@ In some cases one can fix this simply by indicating that we want to run this fra
 
 ```julia-repl
 julia> JuliaInterpreter.finish_and_return!(frame, true)
-3-element Array{Int64,1}:
+3-element Vector{Int64}:
  1
  4
  9

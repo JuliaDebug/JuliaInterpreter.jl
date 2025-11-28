@@ -138,7 +138,7 @@ Let's look at a couple of the fields of the `CodeInfo`. First, the statements th
 
 ```julia-repl
 julia> code.code
-16-element Array{Any,1}:
+16-element Vector{Any}:
  :(_3 = Main.zero($(Expr(:static_parameter, 1))))
  :(_2)
  :(_4 = Base.iterate(%2))
@@ -164,7 +164,7 @@ references that index into local variable slots:
 
 ```julia-repl
 julia> code.slotnames
-5-element Array{Any,1}:
+5-element Vector{Any}:
  Symbol("#self#")
  :A
  :s
