@@ -190,36 +190,12 @@ ERROR: this frame needs to be run a top level
 
 The reason for this error becomes clearer if we examine `frame` or look directly at the lowered code:
 
-```julia-repl
-julia> Meta.lower(Main, ex)
-:($(Expr(:thunk, CodeInfo(
-    @ none within `top-level scope`
-1 ─      $(Expr(:thunk, CodeInfo(
-    @ none within `top-level scope`
-1 ─      global var"#3#4"
-│        const var"#3#4"
-│   %3 = Core._structtype(Main, Symbol("#3#4"), Core.svec(), Core.svec(), Core.svec(), false, 0)
-│        var"#3#4" = %3
-│        Core._setsuper!(var"#3#4", Core.Function)
-│        Core._typebody!(var"#3#4", Core.svec())
-└──      return nothing
-)))
-│   %2 = Core.svec(var"#3#4", Core.Any)
-│   %3 = Core.svec()
-│   %4 = Core.svec(%2, %3, $(QuoteNode(:(#= REPL[18]:1 =#))))
-│        $(Expr(:method, false, :(%4), CodeInfo(
-    @ REPL[18]:1 within `none`
-1 ─ %1 = Core.apply_type(Base.Val, 2)
-│   %2 = (%1)()
-│   %3 = Base.literal_pow(^, x, %2)
-└──      return %3
-)))
-│        #3 = %new(var"#3#4")
-│   %7 = #3
-│   %8 = Base.vect(1, 2, 3)
-│   %9 = map(%7, %8)
-└──      return %9
-))))
+```@setup world-age-example
+ex = :(map(x->x^2, [1, 2, 3]))
+```
+
+```@repl world-age-example
+Meta.lower(Main, ex)
 ```
 
 All of the code before the `%7` line is devoted to defining the anonymous function `x->x^2`:
