@@ -342,9 +342,29 @@ function evaluate_overlayed_methoddef(interp::Interpreter, frame::Frame, node::E
     return method
 end
 
+function _is_define_method_ref(@nospecialize(f))
+    is_global_ref(f, Core, :define_method) && return true
+    @static if isdefined(Core, :define_method)
+        is_quotenode_egal(f, Core.define_method) && return true
+    end
+    return false
+end
+
+function _is_define_method_call_4arg(@nospecialize(stmt))
+    isexpr(stmt, :call) || return false
+    length(stmt.args) >= 5 || return false
+    return _is_define_method_ref(stmt.args[1])
+end
+
 function extract_method_table(frame::Frame, node::Expr; eval = true)
-    isexpr(node, :method, 3) || return nothing
-    arg = node.args[1]
+    if _is_define_method_call_4arg(node)
+        # define_method(mod, name_or_mt, sigdata, body): check args[3] for a method table
+        arg = node.args[3]
+    elseif isexpr(node, :method, 3)
+        arg = node.args[1]
+    else
+        return nothing
+    end
     isa(arg, MethodTable) && return arg
     if !isa(arg, Symbol) && !isa(arg, GlobalRef)
         eval || return nothing
