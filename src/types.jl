@@ -186,16 +186,22 @@ function pushuniquefiles!(unique_files::Set{Symbol}, lt)
 end
 end
 
-function FrameCode(scope, src::CodeInfo; generator=false, optimize=true)
+# The default world for entering interpretation is the latest committed world, so that
+# freshly-defined methods and bindings are visible (matching `Base.invokelatest` semantics).
+# A frame captures this once at construction and holds it, giving a consistent world while
+# stepping even if new code is defined mid-session; toplevel frames refresh it per statement.
+default_world() = Base.get_world_counter()
+
+function FrameCode(scope, src::CodeInfo; generator=false, optimize=true, world::UInt=default_world())
     if optimize
-        src, methodtables = optimize!(copy(src), scope)
+        src, methodtables = optimize!(copy(src), scope, world)
     else
         src = replace_coretypes!(copy(src))
         methodtables = Vector{Union{Compiled,DispatchableMethod}}(undef, length(src.code))
     end
     breakpoints = Vector{BreakpointState}(undef, length(src.code))
     for (i, pc_expr) in enumerate(src.code)
-        if is_breakpoint_marker(lookup_stmt(src.code, pc_expr))
+        if is_breakpoint_marker(lookup_stmt(src.code, pc_expr, world))
             breakpoints[i] = BreakpointState()
             src.code[i] = nothing
         end
@@ -305,11 +311,15 @@ mutable struct Frame
     caller::Union{Frame,Nothing}
     callee::Union{Frame,Nothing}
     last_codeloc::Int
-    # TODO: This is incompletely implemented
+    # The world age in which this frame's code is dispatched and globals are looked up.
+    # Captured at construction (see `default_world`) and held fixed for method frames, so
+    # stepping sees a consistent world even if new code is defined mid-session. Toplevel
+    # frames refresh it per statement, and `:latestworld` markers advance it after a
+    # world-incrementing statement.
     world::UInt
 end
 function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing,
-               world=@static isdefinedglobal(Base, :tls_world_age) ? Base.tls_world_age() : Base.get_world_counter())
+               world::UInt=default_world())
     if length(junk_frames) > 0
         frame = pop!(junk_frames)
         frame.framecode = framecode
@@ -330,9 +340,9 @@ end
 
 Construct a `Frame` to evaluate `src` in module `mod`.
 """
-function Frame(mod::Module, src::CodeInfo; kwargs...)
-    framecode = FrameCode(mod, src; kwargs...)
-    return Frame(framecode, prepare_framedata(framecode, []))
+function Frame(mod::Module, src::CodeInfo; world::UInt=default_world(), kwargs...)
+    framecode = FrameCode(mod, src; world, kwargs...)
+    return Frame(framecode, prepare_framedata(framecode, []), 1, nothing, world)
 end
 """
     frame = Frame(mod::Module, ex::Expr)
