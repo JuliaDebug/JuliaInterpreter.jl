@@ -14,6 +14,11 @@ function moduleof(@nospecialize(x))
     return isa(s, Module) ? s : s.module
 end
 
+# A frame executes top-level statements iff its scope is a Module. This cannot be inferred
+# from stack position: `:toplevel`/`:module` interpretation links module-scoped child frames
+# into the stack (see `step_toplevel!`), so a frame with a caller may still be toplevel.
+is_toplevel_frame(frame::Frame) = scopeof(frame) isa Module
+
 function Base.nameof(frame::Frame)
     s = frame.framecode.scope
     isa(s, Method) ? s.name : nameof(s)
@@ -370,6 +375,22 @@ function firstline(ex::Expr)
     return nothing
 end
 
+# A toplevel-surface framecode carries its line info in the `LineNumberNode`s of the surface
+# statements themselves; the synthetic `CodeInfo`'s line table is an unrelated skeleton (see
+# `toplevel_codeinfo`). Return the most recent `LineNumberNode` at or before `pc`, or `nothing`.
+function toplevel_surface_lnn(framecode::FrameCode, pc::Int)
+    code = framecode.src.code
+    for i in min(pc, length(code)):-1:1
+        stmt = code[i]
+        isa(stmt, LineNumberNode) && return stmt
+        if isa(stmt, Expr)
+            lnn = firstline(stmt)
+            lnn !== nothing && return lnn
+        end
+    end
+    return nothing
+end
+
 """
     loc = whereis(frame, pc::Int=frame.pc; macro_caller=false)
 
@@ -381,6 +402,11 @@ definition, but with`macro_caller=true` you can obtain the location within the
 method that issued the macro.
 """
 function CodeTracking.whereis(framecode::FrameCode, pc::Int; kwargs...)
+    if framecode.is_toplevel_surface
+        lnn = toplevel_surface_lnn(framecode, pc)
+        (lnn === nothing || lnn.file === nothing) && return nothing
+        return (getfile(lnn), getline(lnn))
+    end
     codeloc = codelocation(framecode.src, pc)
     codeloc == 0 && return nothing
     m = framecode.scope
@@ -401,6 +427,9 @@ is the location at the time the method was most recently defined.
 See [`CodeTracking.whereis`](@ref) for dynamic line information.
 """
 function linenumber(framecode::FrameCode, pc)
+    if framecode.is_toplevel_surface
+        return getline(toplevel_surface_lnn(framecode, pc))
+    end
     codeloc = codelocation(framecode.src, pc)
     codeloc == 0 && return nothing
     return getline(linetable(framecode, codeloc))
@@ -408,6 +437,11 @@ end
 linenumber(frame::Frame, pc=frame.pc) = linenumber(frame.framecode, pc)
 
 function getfile(framecode::FrameCode, pc)
+    if framecode.is_toplevel_surface
+        lnn = toplevel_surface_lnn(framecode, pc)
+        (lnn === nothing || lnn.file === nothing) && return nothing
+        return getfile(lnn)
+    end
     codeloc = codelocation(framecode.src, pc)
     codeloc == 0 && return nothing
     return getfile(linetable(framecode, codeloc))

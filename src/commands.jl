@@ -61,14 +61,19 @@ function finish_stack!(interp::Interpreter, frame::Frame, rootistoplevel::Bool=f
     frame0 = frame
     frame = leaf(frame)
     while true
-        istoplevel = rootistoplevel && frame.caller === nothing
+        istoplevel = rootistoplevel && is_toplevel_frame(frame)
         ret = finish_and_return!(interp, frame, istoplevel)
         isa(ret, BreakpointRef) && return ret
         frame === frame0 && return ret
         frame = return_from(frame)
         frame === nothing && return ret
         pc = frame.pc
-        if isassign(frame, pc)
+        if frame.framecode.is_toplevel_surface
+            # Driver frames record each statement's value (see `step_toplevel!`). The statement's
+            # side effects, including any global assignment, were performed by the child frame,
+            # so a surface `:(=)` must not be re-executed here.
+            frame.framedata.ssavalues[pc] = ret
+        elseif isassign(frame, pc)
             lhs = SSAValue(pc)
             do_assignment!(frame, lhs, ret)
         else
@@ -405,7 +410,7 @@ function maybe_reset_frame!(interp::Interpreter, frame::Frame, @nospecialize(pc)
         if is_wrapper
             return maybe_reset_frame!(interp, frame, finish!(interp, frame), rootistoplevel)
         end
-        pc = maybe_next_call!(interp, frame, rootistoplevel && frame.caller===nothing)
+        pc = maybe_next_call!(interp, frame, rootistoplevel && is_toplevel_frame(frame))
         return maybe_reset_frame!(interp, frame, pc, rootistoplevel)
     end
     return frame, pc
@@ -481,11 +486,11 @@ function debug_command(interp::Interpreter, frame::Frame, cmd::Symbol, rootistop
         if pc === nothing || isa(pc, BreakpointRef)
             return maybe_reset_frame!(interp, frame, pc, rootistoplevel)
         end
-        maybe_step_through_kwprep!(interp, frame, rootistoplevel && frame.caller === nothing)
+        maybe_step_through_kwprep!(interp, frame, rootistoplevel && is_toplevel_frame(frame))
         return frame, frame.pc
     end
 
-    istoplevel = rootistoplevel && frame.caller === nothing
+    istoplevel = rootistoplevel && is_toplevel_frame(frame)
     cmd0 = cmd
     is_si = false
     if cmd === :si

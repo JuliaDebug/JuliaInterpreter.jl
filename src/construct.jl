@@ -55,6 +55,60 @@ function return_from(frame::Frame)
     return frame
 end
 
+function link_caller_callee!(caller::Frame, callee::Frame)
+    caller.callee = callee
+    callee.caller = caller
+    return callee
+end
+
+"""
+    mod, body = find_or_create_module(parentmod::Module, ex::Expr)
+
+Given a `:module` expression `ex`, return the module it refers to (creating an empty one in
+`parentmod` if it does not yet exist) together with the `:block` of body statements. Handles
+both the 3-arg and 4-arg (syntax-versioned) `:module` forms.
+"""
+function find_or_create_module(parentmod::Module, ex::Expr)
+    @assert ex.head === :module
+    if length(ex.args) == 3
+        (std_imports, newname, modbody) = ex.args[1:3]
+        syntax_version = nothing
+    elseif length(ex.args) == 4
+        (syntax_version, std_imports, newname, modbody) = ex.args[1:4]
+    else
+        error("unexpected :module form with $(length(ex.args)) args")
+    end
+    newname = newname::Symbol
+    if invokelatest(isdefinedglobal, parentmod, newname)
+        mod = invokelatest(getglobal, parentmod, newname)
+        mod isa Module || throw(ErrorException("invalid redefinition of constant $(newname)"))
+    else
+        newnamestr = String(newname)
+        id = Base.identify_package(parentmod, newnamestr)
+        # If we're in a test environment and Julia's internal stdlibs are not a declared dependency
+        # of the package, we might fail to find it. Try really hard to find it.
+        if id === nothing && parentmod === Base.__toplevel__
+            for loaded_id in keys(Base.loaded_modules)
+                if loaded_id.name == newnamestr
+                    id = loaded_id
+                    break
+                end
+            end
+        end
+        if id !== nothing && haskey(Base.loaded_modules, id)
+            mod = Base.root_module(id)::Module
+        else
+            loc = firstline(ex)
+            module_ex = Expr(:module, std_imports, newname, Expr(:block, loc))
+            if syntax_version !== nothing
+                pushfirst!(module_ex.args, syntax_version)
+            end
+            mod = Core.eval(parentmod, module_ex)::Module
+        end
+    end
+    return mod, modbody::Expr
+end
+
 function clear_caches()
     empty!(junk_framedata)
     empty!(framedict)

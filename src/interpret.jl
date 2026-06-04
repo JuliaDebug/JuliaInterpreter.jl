@@ -389,7 +389,12 @@ end
 
 function maybe_assign!(frame::Frame, @nospecialize(stmt), @nospecialize(val))
     pc = frame.pc
-    if isexpr(stmt, :(=))
+    if frame.framecode.is_toplevel_surface
+        # Driver frames record each statement's value (see `step_toplevel!`). The statement's
+        # side effects, including any global assignment, were performed by the child frame, so
+        # a surface `:(=)` must not be re-executed here.
+        frame.framedata.ssavalues[pc] = val
+    elseif isexpr(stmt, :(=))
         lhs = stmt.args[1]
         do_assignment!(frame, lhs, val)
     elseif isassign(frame, pc)
@@ -481,6 +486,88 @@ end
 # in `step_expr!`
 const _location = Dict{Tuple{Method,Int},Int}()
 
+# Run a child frame to completion with the task's world age raised to the latest committed
+# world. Per Julia's world-age rules, a binding/method defined by a previous toplevel statement
+# is only visible once the running task's world age advances to the global counter — which can
+# only happen at a toplevel boundary. `invoke_in_world` provides exactly that boundary, so the
+# child (and the `Core.eval`s it performs for definitions) sees all earlier toplevel definitions.
+function finish_latestworld!(interp::Interpreter, frame::Frame)
+    return invoke_in_world(Base.get_world_counter(), finish!, interp, frame, true)
+end
+
+# Interpret a single surface statement `node` of a toplevel/module driver frame (see
+# `is_toplevel_surface`). `:module`/`:toplevel`/`:using`/... are handled directly; every other
+# statement is lowered and run as a child frame so that method/struct/const definitions, scoping
+# blocks (issue #427), and macro expansions are handled by the ordinary lowered-code machinery.
+function step_toplevel!(interp::Interpreter, frame::Frame, @nospecialize(node))
+    pc = frame.pc
+    data = frame.framedata
+    mod = moduleof(frame)
+    frame.world = Base.get_world_counter()
+    local rhs
+    try
+        if isa(node, LineNumberNode) || isa(node, Nothing)
+            # nothing to do; just advance
+        elseif isa(node, Core.ReturnNode)
+            return nothing
+        elseif isa(node, Expr) && node.head === :module
+            newmod, modbody = find_or_create_module(mod, node)
+            newframe = toplevel_frame(newmod, modbody.args; world=frame.world)
+            link_caller_callee!(frame, newframe)
+            ret = finish_latestworld!(interp, newframe)
+            isa(ret, BreakpointRef) && return ret
+            return_from(newframe)
+            rhs = newmod
+        elseif isa(node, Expr) && node.head === :toplevel
+            newframe = toplevel_frame(mod, node.args; world=frame.world)
+            link_caller_callee!(frame, newframe)
+            ret = finish_latestworld!(interp, newframe)
+            isa(ret, BreakpointRef) && return ret
+            rhs = get_return(newframe)
+            return_from(newframe)
+        elseif isa(node, Expr) && (node.head === :using || node.head === :import ||
+                                   node.head === :export || node.head === :public)
+            invoke_in_world(Base.get_world_counter(), Core.eval, mod, node)
+        else
+            rhs = interpret_toplevel_stmt!(interp, frame, node)
+            isa(rhs, BreakpointRef) && return rhs
+        end
+        data.ssavalues[pc] = @isdefined(rhs) ? rhs : nothing
+    catch err
+        return handle_err(interp, frame, err)
+    end
+    return (frame.pc = pc + 1)
+end
+
+# Lower an ordinary toplevel statement and interpret it as a child frame.
+function interpret_toplevel_stmt!(interp::Interpreter, frame::Frame, @nospecialize(stmt))
+    mod = moduleof(frame)
+    lwr = isa(stmt, Expr) ? Meta.lower(mod, stmt) : stmt
+    if isexpr(lwr, :thunk, 1)
+        newframe = Frame(mod, (lwr.args[1])::CodeInfo; world=frame.world)
+        link_caller_callee!(frame, newframe)
+        ret = finish_latestworld!(interp, newframe)
+        isa(ret, BreakpointRef) && return ret
+        rhs = get_return(newframe)
+        return_from(newframe)
+        return rhs
+    elseif isexpr(lwr, :error)
+        throw(ArgumentError("lowering returned an error, $lwr"))
+    elseif isexpr(lwr, (:toplevel, :module))
+        # macro expansion surfaced a nested toplevel/module; interpret it directly
+        newframe = Frame(mod, lwr::Expr; world=frame.world)
+        link_caller_callee!(frame, newframe)
+        ret = finish_latestworld!(interp, newframe)
+        isa(ret, BreakpointRef) && return ret
+        rhs = get_return(newframe)
+        return_from(newframe)
+        return rhs
+    else
+        # not lowerable to a thunk (e.g. a bare `:global` declaration or a literal value)
+        return invoke_in_world(Base.get_world_counter(), Core.eval, mod, isa(lwr, Expr) ? lwr : stmt)
+    end
+end
+
 function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), istoplevel::Bool)
     pc, code, data = frame.pc, frame.framecode, frame.framedata
     # if !is_leaf(frame)
@@ -492,6 +579,9 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
     # bindings, methods, and types defined by earlier statements in the same frame.
     # Method frames, by contrast, execute in the fixed world captured at frame creation.
     istoplevel && (frame.world = Base.get_world_counter())
+    if frame.framecode.is_toplevel_surface
+        return step_toplevel!(interp, frame, node)
+    end
     coverage_visit_line!(frame)
     local rhs
     # For debugging:
@@ -536,10 +626,19 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
                 # TODO: This needs to handle the exception stack properly
                 # (https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/591)
             elseif istoplevel
+                # This branch handles `:module`/`:toplevel` reached from a *lowered* `:thunk`.
+                # `step_toplevel!` handles the same heads reached from *unlowered* surface
+                # statements; keep the two in sync.
                 if node.head === :method && length(node.args) > 1
                     rhs = @invokelatest evaluate_methoddef(interp, frame, node)
                 elseif node.head === :module
-                    error("this should have been handled by split_expressions")
+                    newmod, modbody = find_or_create_module(moduleof(frame), node)
+                    newframe = toplevel_frame(newmod, modbody.args; world=frame.world)
+                    link_caller_callee!(frame, newframe)
+                    ret = finish_latestworld!(interp, newframe)
+                    isa(ret, BreakpointRef) && return ret
+                    return_from(newframe)
+                    rhs = newmod
                 elseif node.head === :using || node.head === :import || node.head === :export
                     Core.eval(moduleof(frame), node)
                 elseif node.head === :const || node.head === :globaldecl
@@ -556,20 +655,12 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
                 elseif node.head === :global
                     Core.eval(moduleof(frame), node)
                 elseif node.head === :toplevel
-                    mod = moduleof(frame)
-                    iter = ExprSplitter(mod, node)
-                    rhs = Core.eval(mod, Expr(:toplevel,
-                        :(for (mod, ex) in $iter
-                              if ex.head === :toplevel
-                                  Core.eval(mod, ex)
-                                  continue
-                              end
-                              newframe = ($Frame)(mod, ex)
-                              while true
-                                  ($through_methoddef_or_done!)($interp, newframe) === nothing && break
-                              end
-                              $return_from(newframe)
-                          end)))
+                    newframe = toplevel_frame(moduleof(frame), node.args; world=frame.world)
+                    link_caller_callee!(frame, newframe)
+                    ret = finish_latestworld!(interp, newframe)
+                    isa(ret, BreakpointRef) && return ret
+                    rhs = get_return(newframe)
+                    return_from(newframe)
                 elseif node.head === :error
                     error("unexpected error statement ", node)
                 elseif node.head === :incomplete
