@@ -8,7 +8,9 @@ function lookup_stmt(stmts::Vector{Any}, @nospecialize(arg), world::UInt)
     end
     if isa(arg, QuoteNode)
         return arg.value
-    elseif isexpr(arg, :call, 3) && is_global_ref(arg.args[1], Base, :getproperty)
+    elseif isexpr(arg, :call, 3) && (is_global_ref(arg.args[1], Base, :getproperty) ||
+                                     is_quotenode_egal(arg.args[1], Base.getproperty))
+        # `getproperty` may have been folded from a `GlobalRef` to a `QuoteNode` by `optimize!`.
         # Starting with Julia 1.12, llvmcall looks like this:
         # julia> src.code[1:3]
         # 3-element Vector{Any}:
@@ -45,32 +47,57 @@ function smallest_ref(stmts, arg, idmin)
     return idmin
 end
 
-function lookup_global_ref(a::GlobalRef, world::UInt)
-    isbindingresolved_deprecated && return a   # TODO: reenable this optimization once we can invalidate Frames
-    if Base.isbindingresolved(a.mod, a.name) &&
-        (invoke_in_world(world, isdefinedglobal, a.mod, a.name)) &&
-        (invoke_in_world(world, isconst, a.mod, a.name))
-        return QuoteNode(invoke_in_world(world, getglobal, a.mod, a.name))
+@static if isbindingresolved_deprecated
+    # Julia 1.12+: a `const` may be redefined, which advances the world age, so a folded value is
+    # only valid while its binding partition still covers the frame's world. Record that partition
+    # in `world_deps` as an invalidation token (redefinition drops its `max_world` below the
+    # redefinition world); `framecode_valid_world` then rejects the cached `FrameCode` for any world
+    # a folded value would be stale in, triggering a rebuild.
+    function lookup_global_ref(a::GlobalRef, world::UInt, world_deps)
+        if invoke_in_world(world, isdefinedglobal, a.mod, a.name) &&
+           invoke_in_world(world, isconst, a.mod, a.name)
+            partition = Base.lookup_binding_partition(world, a)
+            # Only fold *explicit* `const`s, not implicit (`using`-imported) bindings: an implicit
+            # name may be locally shadowed — e.g. `sin(::Int) = …` in a module that uses `Base.sin`,
+            # where the `:method` defines a new local `sin` — so folding the imported value would
+            # bind the method to the wrong function. (Pre-1.12 this role was served by the now-inert
+            # `isbindingresolved`.) Genuine local/explicit `const`s are the optimization's real target.
+            if !Base.is_some_implicit(Base.binding_kind(partition))
+                push!(world_deps, partition)
+                return QuoteNode(invoke_in_world(world, getglobal, a.mod, a.name))
+            end
+        end
+        return a
     end
-    return a
+else
+    # Pre-1.12: `const` bindings cannot be redefined, so a folded value never goes stale and no
+    # invalidation tracking is needed (`world_deps` is left untouched).
+    function lookup_global_ref(a::GlobalRef, world::UInt, world_deps)
+        if Base.isbindingresolved(a.mod, a.name) &&
+            (invoke_in_world(world, isdefinedglobal, a.mod, a.name)) &&
+            (invoke_in_world(world, isconst, a.mod, a.name))
+            return QuoteNode(invoke_in_world(world, getglobal, a.mod, a.name))
+        end
+        return a
+    end
 end
 
-function lookup_global_refs!(ex::Expr, world::UInt)
+function lookup_global_refs!(ex::Expr, world::UInt, world_deps)
     if isexpr(ex, (:isdefined, :thunk, :toplevel, :method, :global, :const, :globaldecl))
         return nothing
     end
     for (i, a) in enumerate(ex.args)
         ex.head === :(=) && i == 1 && continue # Don't look up globalrefs on the LHS of an assignment (issue #98)
         if isa(a, GlobalRef)
-            ex.args[i] = lookup_global_ref(a, world)
+            ex.args[i] = lookup_global_ref(a, world, world_deps)
         elseif isa(a, Expr)
-            lookup_global_refs!(a, world)
+            lookup_global_refs!(a, world, world_deps)
         end
     end
     return nothing
 end
 
-function lookup_getproperties(code::Vector{Any}, @nospecialize(a), world::UInt)
+function lookup_getproperties(code::Vector{Any}, @nospecialize(a), world::UInt, world_deps)
     isexpr(a, :call) || return a
     length(a.args) == 3 || return a
     arg1 = lookup_stmt(code, a.args[1], world)
@@ -79,7 +106,7 @@ function lookup_getproperties(code::Vector{Any}, @nospecialize(a), world::UInt)
     arg2 isa Module || return a
     arg3 = lookup_stmt(code, a.args[3], world)
     arg3 isa Symbol || return a
-    return lookup_global_ref(GlobalRef(arg2, arg3), world)
+    return lookup_global_ref(GlobalRef(arg2, arg3), world, world_deps)
 end
 
 # HACK This isn't optimization really, but necessary to bypass llvmcall and foreigncall
@@ -106,20 +133,30 @@ function optimize!(code::CodeInfo, scope, world::UInt)
     sparams = scope isa Method ? sparam_syms(scope) : Symbol[]
     replace_coretypes!(code)
 
+    # Binding partitions for the `const` globals folded below; recorded so a cached `FrameCode`
+    # can be invalidated once any folded value goes stale (see `FrameCode.world_deps`).
+    world_deps = BindingPartition[]
     # TODO: because of builtins.jl, for CodeInfos like
     #   %1 = Core.apply_type
     #   %2 = (%1)(args...)
     # it would be best to *not* resolve the GlobalRef at %1
     ## Replace GlobalRefs with QuoteNodes
-    for (i, stmt) in enumerate(code.code)
-        if isa(stmt, GlobalRef)
-            code.code[i] = lookup_global_ref(stmt, world)
-        elseif isa(stmt, Expr)
-            if stmt.head === :call && stmt.args[1] === :cglobal  # cglobal requires literals
-                continue
-            else
-                lookup_global_refs!(stmt, world)
-                code.code[i] = lookup_getproperties(code.code, stmt, world)
+    # On Julia 1.12+ fold only in method scope: a method frame executes in a single fixed
+    # world, so a value folded at `world` is exact. A module-scoped (toplevel) thunk advances
+    # the world at `:latestworld` markers — a `const` redefined and then read within the same
+    # thunk would serve a stale folded value — and such thunks execute once, so folding has
+    # nothing to gain there.
+    if scope isa Method || !isbindingresolved_deprecated
+        for (i, stmt) in enumerate(code.code)
+            if isa(stmt, GlobalRef)
+                code.code[i] = lookup_global_ref(stmt, world, world_deps)
+            elseif isa(stmt, Expr)
+                if stmt.head === :call && stmt.args[1] === :cglobal  # cglobal requires literals
+                    continue
+                else
+                    lookup_global_refs!(stmt, world, world_deps)
+                    code.code[i] = lookup_getproperties(code.code, stmt, world, world_deps)
+                end
             end
         end
     end
@@ -151,7 +188,7 @@ function optimize!(code::CodeInfo, scope, world::UInt)
         end
     end
 
-    return code, methodtables
+    return code, methodtables, world_deps
 end
 
 function parametric_type_to_expr(@nospecialize(t::Type))

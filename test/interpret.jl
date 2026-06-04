@@ -1060,3 +1060,43 @@ JuliaInterpreter.method_table(::OverlayInterpreter) = ex_method_table
     end
     @test cos(42.0) == @interpret interp=OverlayInterpreter() call_func_overlay(42.0)
 end
+
+module ConstFoldTest
+const KK = 7
+twice_KK() = 2 * KK
+end
+
+@testset "const folding world-age invalidation" begin
+    # `optimize!` folds `const` globals into the lowered code; interpretation must still give
+    # the correct value (folding is active on all supported Julia versions).
+    @test @interpret(ConstFoldTest.twice_KK()) == 14
+
+    @static if JuliaInterpreter.isbindingresolved_deprecated
+        # Julia 1.12+ allows redefining a `const`, which advances the world age. Confirm `KK` was
+        # actually folded into the code first — otherwise the redefinition check below would be
+        # vacuous, since a non-folding interpreter would see the new value via a runtime lookup.
+        m = only(methods(ConstFoldTest.twice_KK))
+        w = Base.get_world_counter()
+        fc, _ = JuliaInterpreter.prepare_framecode(m, Tuple{typeof(ConstFoldTest.twice_KK)}; world=w)
+        @test any(s -> s isa QuoteNode && s.value === 7, fc.src.code)
+        @test JuliaInterpreter.framecode_valid_world(fc, w)
+
+        # Module-scoped (toplevel) thunks must not fold: the world advances at `:latestworld`
+        # markers mid-thunk, so a `const` redefined and then read within a single thunk would
+        # serve a stale folded value. Native semantics: `b` sees the new value.
+        Core.eval(ConstFoldTest, :(const B = 1))
+        frame = Frame(ConstFoldTest, :(begin const B = 2; b = B end))
+        JuliaInterpreter.finish_and_return!(frame, true)
+        @test invokelatest(getproperty, ConstFoldTest, :b) == 2
+
+        # Redefining the const invalidates the folded `FrameCode`: it is detected as stale, a fresh
+        # one is built that folds the new value, and the interpreter observes 140 rather than 14.
+        Core.eval(ConstFoldTest, :(const KK = 70))
+        w2 = Base.get_world_counter()
+        @test !JuliaInterpreter.framecode_valid_world(fc, w2)
+        fc2, _ = JuliaInterpreter.prepare_framecode(m, Tuple{typeof(ConstFoldTest.twice_KK)}; world=w2)
+        @test fc2 !== fc                                                # cache miss -> rebuilt
+        @test any(s -> s isa QuoteNode && s.value === 70, fc2.src.code) # new value folded in
+        @test @interpret(ConstFoldTest.twice_KK()) == 140
+    end
+end

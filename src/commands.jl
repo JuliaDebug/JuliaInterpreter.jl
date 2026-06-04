@@ -371,15 +371,13 @@ end
 maybe_step_through_kwprep!(frame::Frame, istoplevel::Bool=false) =
     maybe_step_through_kwprep!(RecursiveInterpreter(), frame, istoplevel)
 
-@static if isbindingresolved_deprecated
-    function is_empty_namedtuple(stmt)
-        isexpr(stmt, :call) && length(stmt.args) == 1 || return false
-        arg1 = stmt.args[1]
-        isa(arg1, GlobalRef) || return false
-        return arg1.name === :NamedTuple
-    end
-else
-    is_empty_namedtuple(stmt) = isexpr(stmt, :call) && is_quoted_type(stmt.args[1], :NamedTuple) && length(stmt.args) == 1
+# `optimize!` may fold the `NamedTuple` `const` `GlobalRef` into a `QuoteNode` of the type, so
+# accept both the folded (`QuoteNode`) and unfolded (`GlobalRef`) forms of an empty-`NamedTuple`
+# construction.
+function is_empty_namedtuple(stmt)
+    isexpr(stmt, :call) && length(stmt.args) == 1 || return false
+    arg1 = stmt.args[1]
+    return is_quoted_type(arg1, :NamedTuple) || (isa(arg1, GlobalRef) && arg1.name === :NamedTuple)
 end
 
 """
