@@ -224,11 +224,27 @@ val = @interpret(BigInt())
 @test isa(val, BigInt) && val == 0
 @test isa(@interpret(Base.GMP.version()), VersionNumber)
 
-# Issue #455
-using PyCall
-let np = pyimport("numpy")
-    @test @interpret(PyCall.pystring_query(np.zeros)) === Union{}
+# Issue #455: a `cglobal` whose first argument is an inline `(symbol, library)`
+# tuple lowers to `cglobal(Core.tuple(sym, lib), T)`, so the first argument is an
+# expression rather than a literal symbol. Interleaved with `GotoIfNot` branches, this is
+# the structure of `PyCall.pystring_query`, the original trigger; reproduce it
+# self-containedly against openlibm (a permissively-licensed library bundled with
+# Julia) so the check no longer depends on PyCall or a Python install. The library
+# is named with a string literal rather than `Base.Math.libm`: on Julia ≥ 1.11 the
+# latter lowers to a nested `getproperty` chain, which the interpreter cannot
+# resolve when it looks up the inline `cglobal` tuple argument.
+function cglobal_query(x)
+    p1 = cglobal((:sin, "libopenlibm"), Ptr{Cvoid})
+    if p1 == C_NULL
+        return AbstractString
+    end
+    p2 = cglobal((:cos, "libopenlibm"), Ptr{Cvoid})
+    if p2 == C_NULL
+        return Integer
+    end
+    return Union{}
 end
+@test @interpret(cglobal_query(0)) === cglobal_query(0) === Union{}
 # Issue #354: an `llvmcall` argument computed from a function argument cannot be
 # interpreted directly. `build_compiled_llvmcall!` runs a mini-interpreter (with
 # no arguments) over the statements feeding the call's type parameters; here the
@@ -242,7 +258,9 @@ function llvmcall_354(x::Int64)
     Base.llvmcall("ret i64 %0", Int64, Tuple{Int64}, x + 1)
 end
 push!(JuliaInterpreter.compiled_methods, which(llvmcall_354, Tuple{Int64}))
-@test @interpret(llvmcall_354(10)) === Int64(11)
+# `Int64(10)`, not `10`: a bare literal is `Int32` on 32-bit platforms and would
+# not match the `Int64` signature.
+@test @interpret(llvmcall_354(Int64(10))) === Int64(11)
 
 # "correct" line numbers
 defline = @__LINE__() + 1
