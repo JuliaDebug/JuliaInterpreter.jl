@@ -258,7 +258,9 @@ function llvmcall_354(x::Int64)
     Base.llvmcall("ret i64 %0", Int64, Tuple{Int64}, x + 1)
 end
 push!(JuliaInterpreter.compiled_methods, which(llvmcall_354, Tuple{Int64}))
-@test @interpret(llvmcall_354(10)) === Int64(11)
+# `Int64(10)`, not `10`: a bare literal is `Int32` on 32-bit platforms and would
+# not match the `Int64` signature.
+@test @interpret(llvmcall_354(Int64(10))) === Int64(11)
 
 # "correct" line numbers
 defline = @__LINE__() + 1
