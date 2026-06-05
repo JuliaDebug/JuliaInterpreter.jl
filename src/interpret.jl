@@ -191,7 +191,11 @@ function evaluate_foreigncall(interp::Interpreter, frame::Frame, call_expr::Expr
             end...)
         end
     end
-    return invoke_in_world(frame.world, Core.eval, moduleof(frame), Expr(head, args...))
+    # A `:foreigncall`/`:cfunction` is a C call with no Julia method dispatch of its own:
+    # any `cconvert`/`unsafe_convert` are separate IR statements already run in `frame.world`.
+    # It evaluates at top level in the latest world; wrapping `Core.eval` in `invoke_in_world`
+    # would only set the world for dispatching `Core.eval` itself, not the expression body.
+    return Core.eval(moduleof(frame), Expr(head, args...))
 end
 
 # We have to intercept ccalls / llvmcalls before we try it as a builtin
@@ -227,8 +231,10 @@ function maybe_eval_with_scope(@nospecialize(f), fargs::Vector{Any}, frame::Fram
         for scope in frame.framedata.current_scopes
             newscope = Scope(newscope, scope.values...)
         end
-        ex = Expr(:tryfinally, :($f($fargs...)), nothing, newscope)
-        return Some{Any}(invoke_in_world(frame.world, Core.eval, moduleof(frame), ex))
+        # `Core.eval` only installs the dynamic scope (a lowering construct) and so runs in
+        # the latest world; pin the call itself to the frame's world inside the expression.
+        ex = Expr(:tryfinally, :($(invoke_in_world)($(frame.world), $f, $(fargs...))), nothing, newscope)
+        return Some{Any}(Core.eval(moduleof(frame), ex))
     end
     return nothing
 end
