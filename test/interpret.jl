@@ -229,11 +229,11 @@ val = @interpret(BigInt())
 # expression rather than a literal symbol. Interleaved with `GotoIfNot` branches, this is
 # the structure of `PyCall.pystring_query`, the original trigger; reproduce it
 # self-containedly against openlibm (a permissively-licensed library bundled with
-# Julia) so the check no longer depends on PyCall or a Python install. The library
-# is named with a string literal rather than `Base.Math.libm`: on Julia ≥ 1.11 the
-# latter lowers to a nested `getproperty` chain, which the interpreter cannot
-# resolve when it looks up the inline `cglobal` tuple argument.
-function cglobal_query(x)
+# Julia) so the check no longer depends on PyCall or a Python install. Spell the
+# library both as a string literal and as `Base.Math.libm`: on Julia ≥ 1.11 the
+# latter lowers to a nested `getproperty` chain inside the `cglobal` tuple, which the
+# interpreter must resolve when looking up that argument.
+function cglobal_query_str(x)
     p1 = cglobal((:sin, "libopenlibm"), Ptr{Cvoid})
     if p1 == C_NULL
         return AbstractString
@@ -244,7 +244,19 @@ function cglobal_query(x)
     end
     return Union{}
 end
-@test @interpret(cglobal_query(0)) === cglobal_query(0) === Union{}
+function cglobal_query_chain(x)
+    p1 = cglobal((:sin, Base.Math.libm), Ptr{Cvoid})
+    if p1 == C_NULL
+        return AbstractString
+    end
+    p2 = cglobal((:cos, Base.Math.libm), Ptr{Cvoid})
+    if p2 == C_NULL
+        return Integer
+    end
+    return Union{}
+end
+@test @interpret(cglobal_query_str(0)) === cglobal_query_str(0) === Union{}
+@test @interpret(cglobal_query_chain(0)) === cglobal_query_chain(0) === Union{}
 # Issue #354: an `llvmcall` argument computed from a function argument cannot be
 # interpreted directly. `build_compiled_llvmcall!` runs a mini-interpreter (with
 # no arguments) over the statements feeding the call's type parameters; here the
