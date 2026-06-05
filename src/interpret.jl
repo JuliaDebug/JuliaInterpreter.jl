@@ -75,8 +75,12 @@ function lookup_expr(interp::Interpreter, frame::Frame, e::Expr)
             # work around for a linearization bug in Julia (https://github.com/JuliaLang/julia/pull/52497)
             return Core.svec(Any[lookup(interp, frame, e.args[i]) for i in 2:length(e.args)]...)
         elseif f === Core.tuple
-            # handling for ccall literal syntax
-            return Core.tuple(Any[lookup(interp, frame, e.args[i]) for i in 2:length(e.args)]...)
+            # Handling for `ccall`/`cglobal` literal syntax, e.g. the `(:sin, lib)`
+            # first argument of `cglobal((:sin, lib), Ptr{Cvoid})`. The library may be
+            # spelled as a `getproperty` chain (e.g. `Base.Math.libm` on Julia ≥ 1.11),
+            # so resolve each element with `lookup_nested`, which understands
+            # `getproperty`/`getindex`/`apply_type`. (Issue #455)
+            return Core.tuple(Any[lookup_nested(interp, frame, e.args[i]) for i in 2:length(e.args)]...)
         end
     end
     error("invalid lookup expr ", e)
