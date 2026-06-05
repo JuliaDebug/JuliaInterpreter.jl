@@ -1060,3 +1060,69 @@ JuliaInterpreter.method_table(::OverlayInterpreter) = ex_method_table
     end
     @test cos(42.0) == @interpret interp=OverlayInterpreter() call_func_overlay(42.0)
 end
+
+module DispatchWorldTest
+    inner(::Number) = 1
+    helper() = inner(1)
+end
+
+@testset "local dispatch cache world-age invalidation" begin
+    # Within a single interpretation run, defining a more-specific method must invalidate the
+    # local method-table cache so a later call to the same helper dispatches to the new method.
+    # Across separate `@interpret` calls `clear_caches` masks this; it is only observable when the
+    # world advances mid-run, as in toplevel/module interpretation. The cached `DispatchableMethod`
+    # is stamped with its resolution world, and a higher frame world forces re-resolution.
+    stmts = Any[
+        :(x = helper()),
+        :(inner(::Int) = 2),   # advances the world age with a more-specific method
+        :(y = helper()),       # must re-dispatch to `inner(::Int)`
+        :(z = helper()),       # hits the refreshed cache entry at the now-current world
+    ]
+    frame = JuliaInterpreter.Frame(DispatchWorldTest, Expr(:toplevel, stmts...))
+    JuliaInterpreter.debug_command(JuliaInterpreter.RecursiveInterpreter(), frame, :c, true)
+    @test invokelatest(getproperty, DispatchWorldTest, :x) == 1
+    @test invokelatest(getproperty, DispatchWorldTest, :y) == 2   # stale cache would yield 1
+    @test invokelatest(getproperty, DispatchWorldTest, :z) == 2
+end
+
+module GenCacheTest
+    @generated gfun(x) = :(x + 1)
+    gcaller(x) = gfun(x)
+end
+
+@testset "dispatch cache keeps generator and body entries distinct" begin
+    # For a `@generated` method, the same call site can be resolved in two flavors: the
+    # specialized body (`enter_generated=false`) and the generator (`enter_generated=true`).
+    # Both must coexist in the `DispatchableMethod` chain; if the refresh-in-place store keyed
+    # on the signature alone, alternating flavors would overwrite a single entry and every
+    # alternation would re-dispatch.
+    m = only(methods(GenCacheTest.gcaller))
+    w = Base.get_world_counter()
+    fc, _ = JuliaInterpreter.prepare_framecode(m, Tuple{typeof(GenCacheTest.gcaller), Int}; world=w)
+    idx = findfirst(JuliaInterpreter.is_call, fc.src.code)   # the `gfun(x)` call, the only call
+    @test idx !== nothing
+    chainlength(idx) = begin
+        d = fc.methodtables[idx]
+        n = 0
+        while d !== nothing
+            n += 1
+            d = d.next
+        end
+        n
+    end
+    JuliaInterpreter.get_call_framecode(Any[GenCacheTest.gfun, 1], fc, idx; enter_generated=false, world=w)
+    @test chainlength(idx) == 1
+    JuliaInterpreter.get_call_framecode(Any[GenCacheTest.gfun, 1], fc, idx; enter_generated=true, world=w)
+    @test chainlength(idx) == 2
+    JuliaInterpreter.get_call_framecode(Any[GenCacheTest.gfun, 1], fc, idx; enter_generated=false, world=w)
+    @test chainlength(idx) == 2   # body entry still present: pure cache hit, no third entry
+    flavors = let d = fc.methodtables[idx], fl = Bool[]
+        while d !== nothing
+            fi = d.frameinstance
+            push!(fl, fi isa JuliaInterpreter.FrameInstance && fi.enter_generated)
+            d = d.next
+        end
+        fl
+    end
+    @test sort(flavors) == [false, true]
+end

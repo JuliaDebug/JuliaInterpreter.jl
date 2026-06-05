@@ -104,6 +104,7 @@ mutable struct _DispatchableMethod{FrameCode}
     next::Union{Nothing,_DispatchableMethod{FrameCode}}  # linked-list representation
     frameinstance::Union{Compiled,_FrameInstance{FrameCode}} # really a Union{Compiled, FrameInstance} but we have a cyclic dependency
     sig::Type # for speed of matching, this is a *concrete* signature. `sig <: frameinstance.framecode.scope.sig`
+    world::UInt # world age in which `frameinstance` was resolved for `sig`; a later world forces re-resolution
 end
 
 # 0: none
