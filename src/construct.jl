@@ -132,7 +132,7 @@ function prepare_args(@nospecialize(f), allargs, kwargs)
     return f, allargs
 end
 
-function prepare_framecode(method::Method, @nospecialize(argtypes); enter_generated=false)
+function prepare_framecode(method::Method, @nospecialize(argtypes); enter_generated=false, world::UInt=default_world())
     sig = method.sig
     if (method.module ∈ compiled_modules || method ∈ compiled_methods) && !(method ∈ interpreted_methods)
         return Compiled()
@@ -172,7 +172,7 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
                                hasarg(isidentical(:iolock_begin), code.code)
             return Compiled()
         end
-        framecode = FrameCode(method, code; generator=generator)
+        framecode = FrameCode(method, code; generator=generator, world)
         if is_generated(method) && !enter_generated
             genframedict[(method, argtypes)] = framecode
         else
@@ -231,6 +231,7 @@ Tuple{typeof(mymethod), Vector{Float64}}
 """
 function prepare_call(@nospecialize(f), allargs;
                       enter_generated::Bool=false,
+                      world::UInt=default_world(),
                       method_table::Union{Nothing,MethodTable}=nothing)
     # Can happen for thunks created by generated functions
     if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
@@ -249,17 +250,17 @@ function prepare_call(@nospecialize(f), allargs;
             return nothing
         end
     else
-        method = whichtt(argtypes, method_table)
+        method = whichtt(argtypes, method_table; world)
     end
     if method === nothing
         # Call it to generate the exact error
-        return f(allargs[2:end]...)
+        return invoke_in_world(world, f, allargs[2:end]...)
     end
-    ret = prepare_framecode(method, argtypes; enter_generated)
+    ret = prepare_framecode(method, argtypes; enter_generated, world)
     # Exceptional returns
     if ret === nothing
         # The generator threw an error. Let's generate the same error by calling it.
-        return f(allargs[2:end]...)
+        return invoke_in_world(world, f, allargs[2:end]...)
     end
     isa(ret, Compiled) && return ret, argtypes
     # Typical return
@@ -338,14 +339,14 @@ end
 Construct a new `Frame` for `framecode`, given lowered-code arguments `frameargs` and
 static parameters `lenv`. See [`JuliaInterpreter.prepare_call`](@ref) for information about how to prepare the inputs.
 """
-function prepare_frame(framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector, caller_will_catch_err::Bool=false)
+function prepare_frame(framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector, caller_will_catch_err::Bool=false; world::UInt=default_world())
     framedata = prepare_framedata(framecode, args, lenv, caller_will_catch_err)
-    return Frame(framecode, framedata)
+    return Frame(framecode, framedata, 1, nothing, world)
 end
 
 function prepare_frame_caller(caller::Frame, framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector)
     caller_will_catch_err = !isempty(caller.framedata.exception_frames) || caller.framedata.caller_will_catch_err
-    caller.callee = frame = prepare_frame(framecode, args, lenv, caller_will_catch_err)
+    caller.callee = frame = prepare_frame(framecode, args, lenv, caller_will_catch_err; world=caller.world)
     copy!(frame.framedata.current_scopes, caller.framedata.current_scopes)
     frame.caller = caller
     return frame
@@ -593,8 +594,9 @@ See [`JuliaInterpreter.prepare_call`](@ref) for information about the outputs.
 """
 function determine_method_for_expr(expr::Expr;
                                    enter_generated::Bool=false,
+                                   world::UInt=default_world(),
                                    method_table::Union{Nothing,MethodTable}=nothing)
-    f = to_function(expr.args[1])
+    f = to_function(expr.args[1], world)
     allargs = expr.args
     # Extract keyword args
     kwargs = Expr(:parameters)
@@ -602,7 +604,7 @@ function determine_method_for_expr(expr::Expr;
         kwargs = splice!(allargs, 2)::Expr
     end
     f, allargs = prepare_args(f, allargs, kwargs.args)
-    return prepare_call(f, allargs; enter_generated, method_table)
+    return prepare_call(f, allargs; enter_generated, world, method_table)
 end
 
 """
@@ -641,11 +643,12 @@ See [`enter_call`](@ref) for a similar approach not based on expressions.
 """
 function enter_call_expr(expr::Expr;
                          enter_generated::Bool=false,
+                         world::UInt=default_world(),
                          method_table::Union{Nothing,MethodTable}=nothing)
     clear_caches()
-    r = determine_method_for_expr(expr; enter_generated, method_table)
+    r = determine_method_for_expr(expr; enter_generated, world, method_table)
     if r !== nothing && !isa(r[1], Compiled)
-        return prepare_frame(Base.front(r)...)
+        return prepare_frame(Base.front(r)...; world)
     end
     nothing
 end
@@ -682,6 +685,7 @@ would be created by the generator.
 See [`enter_call_expr`](@ref) for a similar approach based on expressions.
 """
 function enter_call(@nospecialize(finfo), @nospecialize(args...);
+                    world::UInt=default_world(),
                     method_table::Union{Nothing,MethodTable}=nothing,
                     kwargs...)
     clear_caches()
@@ -697,9 +701,9 @@ function enter_call(@nospecialize(finfo), @nospecialize(args...);
     if isa(f, Core.Builtin) || isa(f, Core.IntrinsicFunction)
         error(f, " is a builtin or intrinsic")
     end
-    r = prepare_call(f, allargs; enter_generated, method_table)
+    r = prepare_call(f, allargs; enter_generated, world, method_table)
     if r !== nothing && !isa(r[1], Compiled)
-        return prepare_frame(Base.front(r)...)
+        return prepare_frame(Base.front(r)...; world)
     end
     return nothing
 end

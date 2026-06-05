@@ -21,20 +21,18 @@ end
 
 _Typeof(x) = isa(x, Type) ? Type{x} : typeof(x)
 
-function to_function(@nospecialize(x))
-    isa(x, GlobalRef) ? invokelatest(getfield, x.mod, x.name) : x
+function to_function(@nospecialize(x), world::UInt)
+    isa(x, GlobalRef) ? invoke_in_world(world, getglobal, x.mod, x.name) : x
 end
 
 """
-    method = whichtt(tt, mt = nothing)
+    method = whichtt(tt, mt=nothing; world=default_world())
 
 Like `which` except it operates on the complete tuple-type `tt`,
 and doesn't throw when there is no matching method.
 """
-function whichtt(@nospecialize(tt), mt::Union{Nothing,MethodTable}=nothing)
-    # TODO: provide explicit control over world age? In case we ever need to call "old" methods.
-    # TODO Use `CachedMethodTable` for better performance once `teh/worldage` is merged
-    match, _ = findsup_mt(tt, Base.get_world_counter(), mt)
+function whichtt(@nospecialize(tt), mt::Union{Nothing,MethodTable}=nothing; world::UInt=default_world())
+    match, _ = findsup_mt(tt, world, mt)
     match === nothing && return nothing
     return match.method
 end
