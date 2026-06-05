@@ -226,7 +226,7 @@ val = @interpret(BigInt())
 
 # Issue #455: a `cglobal` whose first argument is an inline `(symbol, library)`
 # tuple lowers to `cglobal(Core.tuple(sym, lib), T)`, so the first argument is an
-# SSAValue rather than a literal. Interleaved with `GotoIfNot` branches, this is
+# expression rather than a literal symbol. Interleaved with `GotoIfNot` branches, this is
 # the structure of `PyCall.pystring_query`, the original trigger; reproduce it
 # self-containedly against openlibm (a permissively-licensed library bundled with
 # Julia) so the check no longer depends on PyCall or a Python install. The library
