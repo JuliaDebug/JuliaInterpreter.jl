@@ -229,10 +229,20 @@ using PyCall
 let np = pyimport("numpy")
     @test @interpret(PyCall.pystring_query(np.zeros)) === Union{}
 end
-# Issue #354
-using HTTP
-headers = Dict("User-Agent" => "Debugger.jl")
-@test @interpret(HTTP.request("GET", "https://httpbingo.julialang.org", headers)) isa HTTP.Messages.Response
+# Issue #354: an `llvmcall` argument computed from a function argument cannot be
+# interpreted directly. `build_compiled_llvmcall!` runs a mini-interpreter (with
+# no arguments) over the statements feeding the call's type parameters; here the
+# inline `Tuple{Int64}` type argument lowers ahead of the argument-dependent
+# `x + 1`, so that sweep reaches `x + 1` and has no argument to evaluate it with.
+# Such methods are instead routed to compiled execution via `compiled_methods`.
+# `Base.load_state_acquire` (an atomic load via `llvmcall`) was the original
+# trigger; it was removed from Base in 1.12, so this reproduces the same
+# structural case portably, without pointers.
+function llvmcall_354(x::Int64)
+    Base.llvmcall("ret i64 %0", Int64, Tuple{Int64}, x + 1)
+end
+push!(JuliaInterpreter.compiled_methods, which(llvmcall_354, Tuple{Int64}))
+@test @interpret(llvmcall_354(10)) === Int64(11)
 
 # "correct" line numbers
 defline = @__LINE__() + 1
