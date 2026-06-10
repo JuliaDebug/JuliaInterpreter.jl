@@ -705,3 +705,58 @@ module ModuleFormsTest end
         @test isdefinedglobal(JIVisible.OuterModDocstring4, :InnerModDocstring4)
     end
 end
+
+module DirectMulti end
+module DirectNest end
+module DirectLocal end
+module DirectKwdef end
+
+@testset "Direct toplevel interpretation" begin
+    # A whole multi-definition "file" interpreted as a single `Frame` (no `ExprSplitter`):
+    # struct, multiple dispatch, parametric method, `const`, and a module-level binding that
+    # calls a function defined earlier in the same frame.
+    src = """
+        struct Pt; x::Int; y::Int; end
+        area(p::Pt) = p.x * p.y
+        typ(::T) where {T} = T
+        const K = 7
+        v = area(Pt(3, 4))
+        """
+    frame = Frame(DirectMulti, Base.parse_input_line(src))
+    @test frame isa Frame
+    @test JuliaInterpreter.finish_and_return!(frame, true) == 12
+    @test @invokelatest(isdefinedglobal(DirectMulti, :Pt))
+    @test @invokelatest(DirectMulti.v) == 12
+    @test @invokelatest(DirectMulti.area(DirectMulti.Pt(2, 5))) == 10
+    @test @invokelatest(DirectMulti.typ(1.0)) === Float64
+    @test @invokelatest(DirectMulti.K) == 7
+
+    # Nested modules interpreted as a single `Frame`.
+    srcn = """
+        module Inner
+            inner_f() = 10
+            module Deep
+                deep_v = 99
+            end
+        end
+        outer = Inner.inner_f() + Inner.Deep.deep_v
+        """
+    JuliaInterpreter.finish_and_return!(Frame(DirectNest, Base.parse_input_line(srcn)), true)
+    @test @invokelatest(isdefinedglobal(DirectNest, :Inner))
+    @test @invokelatest(isdefinedglobal(DirectNest.Inner, :Deep))
+    @test @invokelatest(DirectNest.outer) == 109
+
+    # Issue #427: a `local` in a toplevel block must not leak to module scope.
+    JuliaInterpreter.finish_and_return!(Frame(DirectLocal, Expr(:toplevel, :(local foo = 10; bar = sin(foo)))), true)
+    @test !@invokelatest(isdefinedglobal(DirectLocal, :foo))
+    @test @invokelatest(DirectLocal.bar) == sin(10)
+
+    # A macrocall expanding to multiple definitions (constructors + keyword defaults).
+    srck = """
+        Base.@kwdef struct KW; a::Int = 1; b::Int = 2; end
+        p = KW(); q = KW(a = 10)
+        """
+    JuliaInterpreter.finish_and_return!(Frame(DirectKwdef, Base.parse_input_line(srck)), true)
+    @test @invokelatest(DirectKwdef.p) == @invokelatest(DirectKwdef.KW(1, 2))
+    @test @invokelatest(DirectKwdef.q) == @invokelatest(DirectKwdef.KW(10, 2))
+end

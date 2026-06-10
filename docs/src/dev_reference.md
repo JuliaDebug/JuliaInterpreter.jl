@@ -21,6 +21,7 @@ JuliaInterpreter.method_table
 ```@docs
 Frame(mod::Module, ex::Expr)
 ExprSplitter
+JuliaInterpreter.find_or_create_module
 JuliaInterpreter.enter_call
 JuliaInterpreter.enter_call_expr
 JuliaInterpreter.prepare_frame

@@ -601,3 +601,58 @@ end
     frame, bp = @interpret g3()
     @test isa(frame, Frame) && isa(bp, JuliaInterpreter.BreakpointRef)
 end
+
+module BPResumeToplevel
+callee(x) = 2x
+end
+
+@testset "breakpoint resume in direct toplevel frames" begin
+    # Module-scoped frames created by direct `:toplevel` interpretation have a caller, so the
+    # resume machinery must identify them as toplevel by scope, not by stack position: the
+    # interrupted thunk still contains `:latestworld`/`:method` statements to execute.
+    # Distinct values per scenario keep each run's assertions independent of the previous run.
+    resume_stmts(x, y) = Any[
+        :(a = callee($x)),
+        :(begin b = callee($y); k() = $x + $y; c = k() end),   # `:method` after the call, same thunk
+        :(d = k() + 1),
+    ]
+    getglob(name) = invokelatest(getproperty, BPResumeToplevel, name)
+    breakpoint(BPResumeToplevel.callee)
+    try
+        # Resume with `:c` (`finish_stack!`)
+        frame = Frame(BPResumeToplevel, Expr(:toplevel, resume_stmts(3, 4)...))
+        ret = JuliaInterpreter.debug_command(frame, :c, true)
+        nhits = 0
+        while ret !== nothing && nhits < 10
+            leafframe, bp = ret
+            @test bp isa JuliaInterpreter.BreakpointRef
+            nhits += 1
+            ret = JuliaInterpreter.debug_command(leafframe, :c, true)
+        end
+        @test nhits == 2
+        @test getglob(:a) == 6
+        @test getglob(:b) == 8
+        @test getglob(:c) == 7
+        @test getglob(:d) == 8
+
+        # Resume with `:finish` and `:n` (`maybe_reset_frame!`): `:finish` returns from the
+        # callee into the interrupted thunk, then `:n` steps the toplevel frames to completion.
+        frame = Frame(BPResumeToplevel, Expr(:toplevel, resume_stmts(5, 6)...))
+        leafframe, bp = JuliaInterpreter.debug_command(frame, :c, true)      # first hit
+        leafframe, bp = JuliaInterpreter.debug_command(leafframe, :c, true)  # second hit, mid-thunk
+        ret = JuliaInterpreter.debug_command(leafframe, :finish, true)
+        nsteps = 0
+        while ret !== nothing && (nsteps += 1) < 50
+            fr, pc = ret
+            @test !isa(pc, JuliaInterpreter.BreakpointRef)
+            ret = JuliaInterpreter.debug_command(fr, :n, true)
+        end
+        @test nsteps < 50
+        @test getglob(:a) == 10
+        @test getglob(:b) == 12
+        @test getglob(:c) == 11
+        @test getglob(:d) == 12
+    finally
+        remove()
+    end
+end

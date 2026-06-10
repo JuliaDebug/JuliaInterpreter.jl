@@ -141,6 +141,9 @@ struct FrameCode
     generator::Bool   # true if this is for the expression-generator of a @generated function
     report_coverage::Bool
     unique_files::Set{Symbol}
+    # true if `src.code` holds *unlowered* surface statements of a `:toplevel`/`:module`
+    # expression that must be interpreted statement-by-statement (see `step_toplevel!`)
+    is_toplevel_surface::Bool
 end
 
 """
@@ -192,7 +195,8 @@ end
 # stepping even if new code is defined mid-session; toplevel frames refresh it per statement.
 default_world() = Base.get_world_counter()
 
-function FrameCode(scope, src::CodeInfo; generator=false, optimize=true, world::UInt=default_world())
+function FrameCode(scope, src::CodeInfo; generator=false, optimize=true, world::UInt=default_world(),
+                   is_toplevel_surface::Bool=false)
     if optimize
         src, methodtables = optimize!(copy(src), scope, world)
     else
@@ -224,7 +228,7 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true, world::
     end
     end # @static if
 
-    framecode = FrameCode(scope, src, methodtables, breakpoints, slotnamelists, used, generator, report_coverage, unique_files)
+    framecode = FrameCode(scope, src, methodtables, breakpoints, slotnamelists, used, generator, report_coverage, unique_files, is_toplevel_surface)
     if scope isa Method
         for bp in _breakpoints
             # Manual union splitting
@@ -344,19 +348,62 @@ function Frame(mod::Module, src::CodeInfo; world::UInt=default_world(), kwargs..
     framecode = FrameCode(mod, src; world, kwargs...)
     return Frame(framecode, prepare_framedata(framecode, []), 1, nothing, world)
 end
+# Build a synthetic `CodeInfo` whose `code` holds the *unlowered* surface statements of a
+# `:toplevel`/`:module` body. Such a frame is stepped statement-by-statement by `step_toplevel!`,
+# which lowers ordinary statements to child frames and handles `:module`/`:using`/... directly.
+function toplevel_codeinfo(mod::Module, stmts::Vector{Any})
+    ci = (Meta.lower(mod, :(1 + 1)).args[1])::CodeInfo   # a throwaway skeleton; we overwrite its body
+    code = copy(stmts)
+    lastreal = findlast(s -> !isa(s, LineNumberNode), code)
+    push!(code, Core.ReturnNode(lastreal === nothing ? nothing : Core.SSAValue(lastreal)))
+    n = length(code)
+    ci.code = code
+    ci.ssavaluetypes = n
+    ci.ssaflags = zeros(eltype(ci.ssaflags), n)
+    ci.slotnames = Symbol[Symbol("#self#")]
+    ci.slotflags = UInt8[0x00]
+    # `step_toplevel!` reads line info from the surface `LineNumberNode`s in `code` directly and
+    # never consults the `CodeInfo`'s line tables, so the skeleton's debuginfo is left untouched on
+    # 1.12+ (where `codelocs` was folded into `debuginfo`); on older versions `codelocs` must match
+    # the new code length.
+    @static if !(VERSION ≥ v"1.12.0-DEV.173")
+        ci.codelocs = fill(Int32(1), n)
+    end
+    return ci
+end
+
+function toplevel_frame(mod::Module, stmts::Vector{Any}; world::UInt=default_world())
+    ci = toplevel_codeinfo(mod, stmts)
+    framecode = FrameCode(mod, ci; optimize=false, is_toplevel_surface=true, world)
+    return Frame(framecode, prepare_framedata(framecode, []), 1, nothing, world)
+end
+
 """
     frame = Frame(mod::Module, ex::Expr)
 
 Construct a `Frame` to evaluate `ex` in module `mod`.
 
+`ex` may be an ordinary expression (lowered to a `:thunk`) or a `:toplevel`/`:module`
+expression, in which case the resulting frame interprets the surface statements directly.
+
 This constructor can error, for example if lowering `ex` results in an `:error` or `:incomplete`
 expression, or if it otherwise fails to return a `:thunk`.
 """
-function Frame(mod::Module, ex::Expr)
+function Frame(mod::Module, ex::Expr; world::UInt=default_world())
+    if isexpr(ex, :toplevel)
+        return toplevel_frame(mod, ex.args; world)
+    elseif isexpr(ex, :module)
+        newmod, modbody = find_or_create_module(mod, ex)
+        return toplevel_frame(newmod, modbody.args; world)
+    end
     lwr = Meta.lower(mod, ex)
-    isexpr(lwr, :thunk) && return Frame(mod, lwr.args[1])
+    isexpr(lwr, :thunk, 1) && return Frame(mod, (lwr.args[1])::CodeInfo; world)
     if isexpr(lwr, :error) || isexpr(lwr, :incomplete)
         throw(ArgumentError("lowering returned an error, $lwr"))
+    end
+    # `macroexpand` inside lowering can surface a `:toplevel`/`:module` (lowering leaves these intact)
+    if isexpr(lwr, (:toplevel, :module))
+        return Frame(mod, lwr::Expr; world)
     end
     throw(ArgumentError("lowering did not return a `:thunk` expression, got $lwr"))
 end
