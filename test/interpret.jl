@@ -1126,3 +1126,61 @@ end
     end
     @test sort(flavors) == [false, true]
 end
+
+module WrapperDepTest
+    const MYLIB = Base.Math.libm
+    powf_constlib(a, b) = ccall(("powf", MYLIB), Float32, (Float32, Float32), a, b)
+    powf_chainlib(a, b) = ccall(("powf", Base.Math.libm), Float32, (Float32, Float32), a, b)
+    # `Int32`/`i32` keeps the signature exact on both 32- and 64-bit platforms
+    # (`llvmcall` does not convert its arguments).
+    const IR = """
+        %3 = add i32 %0, %1
+        ret i32 %3
+        """
+    llvmadd(x, y) = Base.llvmcall(IR, Int32, Tuple{Int32, Int32}, x, y)
+end
+
+@testset "world-bound compiled ccall/llvmcall wrappers" begin
+    # Library names and llvmcall ingredients are resolved at framecode-build time and baked into
+    # compiled wrappers (see `build_compiled_foreigncall!`/`build_compiled_llvmcall!`).
+    @test @interpret(WrapperDepTest.powf_constlib(2f0, 3f0)) == 8f0
+    @test @interpret(WrapperDepTest.powf_chainlib(2f0, 3f0)) == 8f0
+    @test @interpret(WrapperDepTest.llvmadd(Int32(30), Int32(12))) == 42
+
+    @static if JuliaInterpreter.isbindingresolved_deprecated
+        # On Julia 1.12+ a `const` may be redefined, so every binding resolved at build time is
+        # recorded in `FrameCode.world_deps`; redefining one must invalidate the cached framecode.
+        w = Base.get_world_counter()
+        mlib = only(methods(WrapperDepTest.powf_constlib))
+        fc, _ = JuliaInterpreter.prepare_framecode(mlib, Tuple{typeof(WrapperDepTest.powf_constlib), Float32, Float32}; world=w)
+        @test !isempty(fc.world_deps)   # the `(name, lib)` tuple resolution
+        @test JuliaInterpreter.framecode_valid_world(fc, w)
+        mchain = only(methods(WrapperDepTest.powf_chainlib))
+        fcchain, _ = JuliaInterpreter.prepare_framecode(mchain, Tuple{typeof(WrapperDepTest.powf_chainlib), Float32, Float32}; world=w)
+        @test !isempty(fcchain.world_deps)   # the `Base.Math.libm` getproperty-chain resolution
+
+        # Rebinding the library const (e.g. after dlclosing one library and dlopening another)
+        # invalidates the framecode; the rebuild resolves the new value, so the call fails on the
+        # bogus path instead of silently calling into the stale library.
+        Core.eval(WrapperDepTest, :(const MYLIB = "/nonexistent_library_path"))
+        w2 = Base.get_world_counter()
+        @test !JuliaInterpreter.framecode_valid_world(fc, w2)
+        fc2, _ = JuliaInterpreter.prepare_framecode(mlib, Tuple{typeof(WrapperDepTest.powf_constlib), Float32, Float32}; world=w2)
+        @test fc2 !== fc
+        @test_throws "nonexistent_library_path" @interpret(WrapperDepTest.powf_constlib(2f0, 3f0))
+        # An unrelated rebinding must not invalidate the chain-library framecode.
+        @test JuliaInterpreter.framecode_valid_world(fcchain, w2)
+
+        # The llvmcall IR string is likewise baked into its compiled wrapper.
+        mll = only(methods(WrapperDepTest.llvmadd))
+        fcll, _ = JuliaInterpreter.prepare_framecode(mll, Tuple{typeof(WrapperDepTest.llvmadd), Int32, Int32}; world=w2)
+        @test !isempty(fcll.world_deps)
+        Core.eval(WrapperDepTest, :(const IR = """
+            %3 = sub i32 %0, %1
+            ret i32 %3
+            """))
+        w3 = Base.get_world_counter()
+        @test !JuliaInterpreter.framecode_valid_world(fcll, w3)
+        @test @interpret(WrapperDepTest.llvmadd(Int32(30), Int32(12))) == 18   # rebuilt wrapper uses the new IR
+    end
+end

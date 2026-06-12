@@ -1,7 +1,39 @@
 const compiled_calls = Dict{Any,Any}()
 
-# Pre-frame-construction lookup
-function lookup_stmt(stmts::Vector{Any}, @nospecialize(arg), world::UInt)
+# Record the binding partition of `gr` in `world_deps` (a `FrameCode.world_deps` vector under
+# construction). Call this whenever a binding's *value* is resolved at framecode-build time and
+# baked into the framecode (e.g. into a compiled `ccall` wrapper): the partition lets
+# `framecode_valid_world` reject the framecode for worlds in which the binding was redefined.
+# Pass `world_deps=nothing` at resolution sites that bake nothing (the value is only inspected,
+# as in llvmcall detection or breakpoint-marker checks). Pre-1.12 a binding cannot be replaced
+# in a way the world age tracks, so there is nothing to record.
+function record_world_dep!(world_deps::Union{Nothing,Vector{BindingPartition}}, world::UInt, gr::GlobalRef)
+    @static if isbindingresolved_deprecated
+        world_deps === nothing && return nothing
+        push!(world_deps, Base.lookup_binding_partition(world, gr))
+    end
+    return nothing
+end
+
+# Record every `GlobalRef` reachable in `arg` (recursing through `Expr`s, but not chasing
+# `SSAValue`s). Used when a whole expression's value is baked at framecode-build time, e.g. a
+# `(name, lib)` tuple evaluated for a compiled `ccall` wrapper or the feeder statements of an
+# `llvmcall`. Over-recording is safe: a spurious entry only forces a rebuild, never staleness.
+function record_globalref_deps!(world_deps::Union{Nothing,Vector{BindingPartition}}, world::UInt, @nospecialize(arg))
+    if isa(arg, GlobalRef)
+        record_world_dep!(world_deps, world, arg)
+    elseif isa(arg, Expr)
+        for a in arg.args
+            record_globalref_deps!(world_deps, world, a)
+        end
+    end
+    return nothing
+end
+
+# Pre-frame-construction lookup. When the result is baked into the framecode, pass `world_deps`
+# so the resolved bindings are recorded (see `record_world_dep!`).
+function lookup_stmt(stmts::Vector{Any}, @nospecialize(arg), world::UInt,
+                     world_deps::Union{Nothing,Vector{BindingPartition}}=nothing)
     # this converts a statement into something else, without the slightest interest in correctness:
     if isa(arg, SSAValue)
         arg = stmts[arg.id]
@@ -17,14 +49,16 @@ function lookup_stmt(stmts::Vector{Any}, @nospecialize(arg), world::UInt)
         #  :(Base.getproperty(%2, :llvmcall))
         q = arg.args[3]
         if isa(q, QuoteNode) && (qval = q.value; qval isa Symbol)
-            mod = lookup_stmt(stmts, arg.args[2], world)
+            mod = lookup_stmt(stmts, arg.args[2], world, world_deps)
             if isa(mod, GlobalRef)
                 if invoke_in_world(world, isdefinedglobal, mod.mod, mod.name)
+                    record_world_dep!(world_deps, world, mod)
                     mod = invoke_in_world(world, getglobal, mod.mod, mod.name)
                 end
             end
             if isa(mod, Module)
                 if invoke_in_world(world, isdefinedglobal, mod, qval)
+                    record_world_dep!(world_deps, world, GlobalRef(mod, qval))
                     return invoke_in_world(world, getglobal, mod, qval)
                 end
             end
@@ -85,20 +119,22 @@ end
 # HACK This isn't optimization really, but necessary to bypass llvmcall and foreigncall
 # TODO This "optimization" should be refactored into a "minimum compilation" necessary to
 # execute `llvmcall` and `foreigncall` and pure optimizations on the lowered code representation.
-# In particular, the optimization that replaces `GlobalRef` with `QuoteNode` is invalid and
-# should be removed: This is because it is not possible to know when and where the binding
-# will be resolved without executing the code.
-# Since the current `build_compiled_[llvmcall|foreigncall]!` relies on this replacement,
-# they also need to be reimplemented.
+# On Julia 1.12+ the GlobalRef -> QuoteNode folding is disabled (`lookup_global_ref` returns the
+# ref unchanged) because a redefinable `const` makes the folded value world-dependent; values
+# that *must* be resolved at build time (library names and llvmcall ingredients baked into the
+# compiled wrappers below) record their bindings in `world_deps` so the framecode can be
+# invalidated when a binding is redefined.
 
 """
-    optimize!(code::CodeInfo, mod::Module)
+    optimize!(code::CodeInfo, scope, world::UInt) -> code, methodtables, world_deps
 
 Perform minor optimizations on the lowered AST in `code` to reduce execution time
 of the interpreter.
-Currently it looks up `GlobalRef`s (for which it needs `mod` to know the scope in
+Currently it looks up `GlobalRef`s (for which it needs `scope` to know the module in
 which this will run) and ensures that no statement includes nested `:call` expressions
 (splitting them out into multiple SSA-form statements if needed).
+`world_deps` collects the binding partitions of globals whose values were baked into
+the code (see `record_world_dep!`); it becomes `FrameCode.world_deps`.
 """
 function optimize!(code::CodeInfo, scope, world::UInt)
     mod = moduleof(scope)
@@ -106,6 +142,10 @@ function optimize!(code::CodeInfo, scope, world::UInt)
     sparams = scope isa Method ? sparam_syms(scope) : Symbol[]
     replace_coretypes!(code)
 
+    # Binding partitions of globals whose values get baked into this framecode (compiled
+    # `ccall`/`llvmcall` wrappers); recorded so a cached `FrameCode` can be invalidated once any
+    # baked value goes stale (see `FrameCode.world_deps`).
+    world_deps = BindingPartition[]
     # TODO: because of builtins.jl, for CodeInfos like
     #   %1 = Core.apply_type
     #   %2 = (%1)(args...)
@@ -140,18 +180,18 @@ function optimize!(code::CodeInfo, scope, world::UInt)
                 larg1 = lookup_stmt(code.code, arg1, world)
                 if (arg1 === :llvmcall || larg1 === Base.llvmcall || is_global_ref_egal(larg1, :llvmcall, Core.Intrinsics.llvmcall)) && isempty(sparams) && scope isa Method
                     # Call via `invokelatest` to avoid compiling it until we need it
-                    @invokelatest build_compiled_llvmcall!(stmt, code, idx, evalmod, world)
+                    @invokelatest build_compiled_llvmcall!(stmt, code, idx, evalmod, world, world_deps)
                     methodtables[idx] = Compiled()
                 end
             elseif stmt.head === :foreigncall && scope isa Method
                 # Call via `invokelatest` to avoid compiling it until we need it
-                @invokelatest build_compiled_foreigncall!(stmt, code, sparams, evalmod, world)
+                @invokelatest build_compiled_foreigncall!(stmt, code, sparams, evalmod, world, world_deps)
                 methodtables[idx] = Compiled()
             end
         end
     end
 
-    return code, methodtables
+    return code, methodtables, world_deps
 end
 
 function parametric_type_to_expr(@nospecialize(t::Type))
@@ -173,13 +213,22 @@ function parametric_type_to_expr(@nospecialize(t::Type))
     return t
 end
 
-function build_compiled_llvmcall!(stmt::Expr, code::CodeInfo, idx::Int, evalmod::Module, world::UInt)
+function build_compiled_llvmcall!(stmt::Expr, code::CodeInfo, idx::Int, evalmod::Module, world::UInt,
+                                  world_deps::Union{Nothing,Vector{BindingPartition}}=nothing)
     # Run a mini-interpreter to extract the types
     framecode = FrameCode(CompiledCalls, code; optimize=false, world)
     frame = Frame(framecode, prepare_framedata(framecode, []), 1, nothing, world)
     idxstart = idx
     for i = 2:4
         idxstart = smallest_ref(code.code, stmt.args[i], idxstart)
+    end
+    # The mini-interpreter resolves any globals among the feeder statements, and their values are
+    # baked into the compiled wrapper below; record them so the framecode can be invalidated.
+    for i = idxstart:idx-1
+        record_globalref_deps!(world_deps, world, code.code[i])
+    end
+    for i = 2:4
+        record_globalref_deps!(world_deps, world, stmt.args[i])
     end
     frame.pc = idxstart
     if idxstart < idx
@@ -211,7 +260,8 @@ function build_compiled_llvmcall!(stmt::Expr, code::CodeInfo, idx::Int, evalmod:
 end
 
 # Handle :llvmcall & :foreigncall (issue #28)
-function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector{Symbol}, evalmod::Module, world::UInt)
+function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector{Symbol}, evalmod::Module, world::UInt,
+                                     world_deps::Union{Nothing,Vector{BindingPartition}}=nothing)
     TVal = evalmod == Core.Compiler ? Core.Compiler.Val : Val
     RetType, ArgType = stmt.args[2], stmt.args[3]::SimpleVector
 
@@ -224,13 +274,19 @@ function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector
         end
     else
         while isa(cfunc, SSAValue)
-            cfunc = lookup_stmt(code.code, cfunc, world)
+            cfunc = lookup_stmt(code.code, cfunc, world, world_deps)
             cfunc isa Symbol && (cfunc = QuoteNode(cfunc))
         end
         # n.b. Base.memhash is deprecated (continued use would cause serious faults) in the same version as the syntax is deprecated
         # so this is only needed as a legacy hack
         if isa(cfunc, Expr) || (cfunc isa GlobalRef && cfunc == GlobalRef(Base, :memhash))
-            cfunc = something(try QuoteNode(Core.eval(evalmod, cfunc)) catch nothing end, cfunc)
+            evaluated = try QuoteNode(Core.eval(evalmod, cfunc)) catch nothing end
+            if evaluated !== nothing
+                # The expression's value (e.g. a `(name, lib)` tuple) is baked into the compiled
+                # wrapper; record the bindings it resolved.
+                record_globalref_deps!(world_deps, world, cfunc)
+                cfunc = evaluated
+            end
         end
         if !(isa(cfunc, Union{String, Tuple}) || (isa(cfunc, QuoteNode) && isa(cfunc.value, Union{String, Tuple, Symbol})))
             dynamic_ccall = true
