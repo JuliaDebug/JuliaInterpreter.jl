@@ -297,6 +297,22 @@ end
 
 @static if VERSION ≥ v"1.12.0-DEV.173"
 
+getfirstline(arg) = getfirstline(linetable(arg))
+function getfirstline(debuginfo::Core.DebugInfo)
+    while true
+        ltnext = debuginfo.linetable
+        ltnext === nothing && break
+        debuginfo = ltnext
+    end
+    firstline = typemax(Int)
+    for k = 0:typemax(Int)
+        codeloc = Core.Compiler.getdebugidx(debuginfo, k)
+        line::Int = codeloc[1]
+        line < 0 && break
+        line > 0 && (firstline = min(firstline, line))
+    end
+    return firstline == typemax(Int) ? 0 : firstline
+end
 getlastline(arg) = getlastline(linetable(arg))
 function getlastline(debuginfo::Core.DebugInfo)
     while true
@@ -432,7 +448,8 @@ function linenumber(framecode::FrameCode, pc)
     end
     codeloc = codelocation(framecode.src, pc)
     codeloc == 0 && return nothing
-    return getline(linetable(framecode, codeloc))
+    lineinfo = linetable(framecode, codeloc)
+    return lineinfo === nothing ? nothing : getline(lineinfo)
 end
 linenumber(frame::Frame, pc=frame.pc) = linenumber(frame.framecode, pc)
 
@@ -444,7 +461,8 @@ function getfile(framecode::FrameCode, pc)
     end
     codeloc = codelocation(framecode.src, pc)
     codeloc == 0 && return nothing
-    return getfile(linetable(framecode, codeloc))
+    lineinfo = linetable(framecode, codeloc)
+    return lineinfo === nothing ? nothing : getfile(lineinfo)
 end
 getfile(frame::Frame, pc=frame.pc) = getfile(frame.framecode, pc)
 
@@ -820,7 +838,7 @@ function Base.StackTraces.StackFrame(frame::Frame)
     end
     Base.StackFrame(
         fname,
-        Symbol(getfile(frame)),
+        Symbol(@something(getfile(frame), :none)),
         @something(linenumber(frame), getfirstline(frame)),
         mi,
         false,

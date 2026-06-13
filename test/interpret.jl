@@ -762,6 +762,19 @@ end
 frame = JuliaInterpreter.enter_call(f_345)
 @test JuliaInterpreter.whereis(frame) == (@__FILE__(), @__LINE__() - 2)
 
+# Building a `StackFrame` must not throw when a statement has no recoverable line
+# information (the cause of `getfile(::Nothing)` in Revise#931). `getfile`/`linenumber`
+# return `nothing` and the frame is reported at the `none:0` sentinel.
+@testset "StackFrame with missing line info" begin
+    lwr = Meta.lower(@__MODULE__, :(f_missing_lineinfo(x) = x + does_not_exist(x)))
+    frame = JuliaInterpreter.Frame(@__MODULE__, lwr.args[1])
+    for pc in 1:length(frame.framecode.src.code)
+        frame.pc = pc
+        @test Base.StackTraces.StackFrame(frame) isa Base.StackTraces.StackFrame
+    end
+    @test JuliaInterpreter.getfirstline(frame) isa Integer
+end
+
 # issue #285
 using LinearAlgebra, SparseArrays, Random
 @testset "issue 285" begin
