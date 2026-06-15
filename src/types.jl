@@ -2,7 +2,7 @@
     abstract type Interpreter end
 
 An interpreter that subtypes this type can implement its own evaluation strategies, by
-overloading the certain methods in JuliaInterpreter that are defined for this base type.
+overloading certain methods in JuliaInterpreter that are defined for this base type.
 The default behavior of `Interpreter` is same as that of [`RecursiveInterpreter`](@ref),
 meaning it will recursively interpret all `:call` expressions.
 """
@@ -33,8 +33,7 @@ struct NonRecursiveInterpreter <: Interpreter end
     const Compiled = NonRecursiveInterpreter
 
 As of JuliaInterpreter v0.10, `Compiled` is now an alias for [`NonRecursiveInterpreter`](@ref).
-This remains for backward compatibility for packages using `Compiled`, and may be removed or
-redefined as a completely different type in v0.11 or later.
+This alias remains for backward compatibility. Prefer [`NonRecursiveInterpreter`](@ref) in new code.
 """
 const Compiled = NonRecursiveInterpreter # for backward compatibility
 Base.similar(::Compiled, sz) = Compiled()  # to support similar(stack, 0)
@@ -316,7 +315,7 @@ struct _INACTIVE_EXCEPTION end
 Fields:
 - `framecode`: the [`FrameCode`](@ref) for this frame.
 - `framedata`: the [`FrameData`](@ref) for this frame.
-- `pc`: the program counter (integer index of the next statment to be evaluated) for this frame.
+- `pc`: the program counter (integer index of the next statement to be evaluated) for this frame.
 - `caller`: the parent caller of this frame, or `nothing`.
 - `callee`: the frame called by this one, or `nothing`.
 
@@ -358,9 +357,11 @@ function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing,
     end
 end
 """
-    frame = Frame(mod::Module, src::CodeInfo; kwargs...)
+    frame = Frame(mod::Module, src::CodeInfo; world=get_world_counter(), kwargs...)
 
-Construct a `Frame` to evaluate `src` in module `mod`.
+Construct a `Frame` to evaluate `src` in module `mod`. `world` sets the world
+age used for dispatch (defaults to the latest committed world). Additional
+keyword arguments (`generator`, `optimize`) are forwarded to [`FrameCode`](@ref).
 """
 function Frame(mod::Module, src::CodeInfo; world::UInt=default_world(), kwargs...)
     framecode = FrameCode(mod, src; world, kwargs...)
