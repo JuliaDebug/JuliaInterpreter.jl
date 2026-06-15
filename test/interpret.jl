@@ -1060,3 +1060,127 @@ JuliaInterpreter.method_table(::OverlayInterpreter) = ex_method_table
     end
     @test cos(42.0) == @interpret interp=OverlayInterpreter() call_func_overlay(42.0)
 end
+
+module DispatchWorldTest
+    inner(::Number) = 1
+    helper() = inner(1)
+end
+
+@testset "local dispatch cache world-age invalidation" begin
+    # Within a single interpretation run, defining a more-specific method must invalidate the
+    # local method-table cache so a later call to the same helper dispatches to the new method.
+    # Across separate `@interpret` calls `clear_caches` masks this; it is only observable when the
+    # world advances mid-run, as in toplevel/module interpretation. The cached `DispatchableMethod`
+    # is stamped with its resolution world, and a higher frame world forces re-resolution.
+    stmts = Any[
+        :(x = helper()),
+        :(inner(::Int) = 2),   # advances the world age with a more-specific method
+        :(y = helper()),       # must re-dispatch to `inner(::Int)`
+        :(z = helper()),       # hits the refreshed cache entry at the now-current world
+    ]
+    frame = JuliaInterpreter.Frame(DispatchWorldTest, Expr(:toplevel, stmts...))
+    JuliaInterpreter.debug_command(JuliaInterpreter.RecursiveInterpreter(), frame, :c, true)
+    @test invokelatest(getproperty, DispatchWorldTest, :x) == 1
+    @test invokelatest(getproperty, DispatchWorldTest, :y) == 2   # stale cache would yield 1
+    @test invokelatest(getproperty, DispatchWorldTest, :z) == 2
+end
+
+module GenCacheTest
+    @generated gfun(x) = :(x + 1)
+    gcaller(x) = gfun(x)
+end
+
+@testset "dispatch cache keeps generator and body entries distinct" begin
+    # For a `@generated` method, the same call site can be resolved in two flavors: the
+    # specialized body (`enter_generated=false`) and the generator (`enter_generated=true`).
+    # Both must coexist in the `DispatchableMethod` chain; if the refresh-in-place store keyed
+    # on the signature alone, alternating flavors would overwrite a single entry and every
+    # alternation would re-dispatch.
+    m = only(methods(GenCacheTest.gcaller))
+    w = Base.get_world_counter()
+    fc, _ = JuliaInterpreter.prepare_framecode(m, Tuple{typeof(GenCacheTest.gcaller), Int}; world=w)
+    idx = findfirst(JuliaInterpreter.is_call, fc.src.code)   # the `gfun(x)` call, the only call
+    @test idx !== nothing
+    chainlength(idx) = begin
+        d = fc.methodtables[idx]
+        n = 0
+        while d !== nothing
+            n += 1
+            d = d.next
+        end
+        n
+    end
+    JuliaInterpreter.get_call_framecode(Any[GenCacheTest.gfun, 1], fc, idx; enter_generated=false, world=w)
+    @test chainlength(idx) == 1
+    JuliaInterpreter.get_call_framecode(Any[GenCacheTest.gfun, 1], fc, idx; enter_generated=true, world=w)
+    @test chainlength(idx) == 2
+    JuliaInterpreter.get_call_framecode(Any[GenCacheTest.gfun, 1], fc, idx; enter_generated=false, world=w)
+    @test chainlength(idx) == 2   # body entry still present: pure cache hit, no third entry
+    flavors = let d = fc.methodtables[idx], fl = Bool[]
+        while d !== nothing
+            fi = d.frameinstance
+            push!(fl, fi isa JuliaInterpreter.FrameInstance && fi.enter_generated)
+            d = d.next
+        end
+        fl
+    end
+    @test sort(flavors) == [false, true]
+end
+
+module WrapperDepTest
+    const MYLIB = Base.Math.libm
+    powf_constlib(a, b) = ccall(("powf", MYLIB), Float32, (Float32, Float32), a, b)
+    powf_chainlib(a, b) = ccall(("powf", Base.Math.libm), Float32, (Float32, Float32), a, b)
+    # `Int32`/`i32` keeps the signature exact on both 32- and 64-bit platforms
+    # (`llvmcall` does not convert its arguments).
+    const IR = """
+        %3 = add i32 %0, %1
+        ret i32 %3
+        """
+    llvmadd(x, y) = Base.llvmcall(IR, Int32, Tuple{Int32, Int32}, x, y)
+end
+
+@testset "world-bound compiled ccall/llvmcall wrappers" begin
+    # Library names and llvmcall ingredients are resolved at framecode-build time and baked into
+    # compiled wrappers (see `build_compiled_foreigncall!`/`build_compiled_llvmcall!`).
+    @test @interpret(WrapperDepTest.powf_constlib(2f0, 3f0)) == 8f0
+    @test @interpret(WrapperDepTest.powf_chainlib(2f0, 3f0)) == 8f0
+    @test @interpret(WrapperDepTest.llvmadd(Int32(30), Int32(12))) == 42
+
+    @static if JuliaInterpreter.isbindingresolved_deprecated
+        # On Julia 1.12+ a `const` may be redefined, so every binding resolved at build time is
+        # recorded in `FrameCode.world_deps`; redefining one must invalidate the cached framecode.
+        w = Base.get_world_counter()
+        mlib = only(methods(WrapperDepTest.powf_constlib))
+        fc, _ = JuliaInterpreter.prepare_framecode(mlib, Tuple{typeof(WrapperDepTest.powf_constlib), Float32, Float32}; world=w)
+        @test !isempty(fc.world_deps)   # the `(name, lib)` tuple resolution
+        @test JuliaInterpreter.framecode_valid_world(fc, w)
+        mchain = only(methods(WrapperDepTest.powf_chainlib))
+        fcchain, _ = JuliaInterpreter.prepare_framecode(mchain, Tuple{typeof(WrapperDepTest.powf_chainlib), Float32, Float32}; world=w)
+        @test !isempty(fcchain.world_deps)   # the `Base.Math.libm` getproperty-chain resolution
+
+        # Rebinding the library const (e.g. after dlclosing one library and dlopening another)
+        # invalidates the framecode; the rebuild resolves the new value, so the call fails on the
+        # bogus path instead of silently calling into the stale library.
+        Core.eval(WrapperDepTest, :(const MYLIB = "/nonexistent_library_path"))
+        w2 = Base.get_world_counter()
+        @test !JuliaInterpreter.framecode_valid_world(fc, w2)
+        fc2, _ = JuliaInterpreter.prepare_framecode(mlib, Tuple{typeof(WrapperDepTest.powf_constlib), Float32, Float32}; world=w2)
+        @test fc2 !== fc
+        @test_throws "nonexistent_library_path" @interpret(WrapperDepTest.powf_constlib(2f0, 3f0))
+        # An unrelated rebinding must not invalidate the chain-library framecode.
+        @test JuliaInterpreter.framecode_valid_world(fcchain, w2)
+
+        # The llvmcall IR string is likewise baked into its compiled wrapper.
+        mll = only(methods(WrapperDepTest.llvmadd))
+        fcll, _ = JuliaInterpreter.prepare_framecode(mll, Tuple{typeof(WrapperDepTest.llvmadd), Int32, Int32}; world=w2)
+        @test !isempty(fcll.world_deps)
+        Core.eval(WrapperDepTest, :(const IR = """
+            %3 = sub i32 %0, %1
+            ret i32 %3
+            """))
+        w3 = Base.get_world_counter()
+        @test !JuliaInterpreter.framecode_valid_world(fcll, w3)
+        @test @interpret(WrapperDepTest.llvmadd(Int32(30), Int32(12))) == 18   # rebuilt wrapper uses the new IR
+    end
+end

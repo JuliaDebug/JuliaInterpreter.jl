@@ -104,6 +104,7 @@ mutable struct _DispatchableMethod{FrameCode}
     next::Union{Nothing,_DispatchableMethod{FrameCode}}  # linked-list representation
     frameinstance::Union{Compiled,_FrameInstance{FrameCode}} # really a Union{Compiled, FrameInstance} but we have a cyclic dependency
     sig::Type # for speed of matching, this is a *concrete* signature. `sig <: frameinstance.framecode.scope.sig`
+    world::UInt # world age in which `frameinstance` was resolved for `sig`; a later world forces re-resolution
 end
 
 # 0: none
@@ -117,6 +118,16 @@ function do_coverage(m::Module)
        return root !== Base && root !== Core
     end
     return false
+end
+
+# Element type of `FrameCode.world_deps`: the binding partitions of globals whose *values*
+# `optimize!` resolved at framecode-build time (e.g. a library name baked into a compiled `ccall`
+# wrapper; see `record_world_dep!`). `Core.BindingPartition` only exists on Julia 1.12+; pre-1.12
+# a binding cannot be replaced in a way the world age tracks, so `world_deps` is always empty there.
+@static if isbindingresolved_deprecated
+    const BindingPartition = Core.BindingPartition
+else
+    const BindingPartition = Union{}
 end
 
 """
@@ -144,6 +155,12 @@ struct FrameCode
     # true if `src.code` holds *unlowered* surface statements of a `:toplevel`/`:module`
     # expression that must be interpreted statement-by-statement (see `step_toplevel!`)
     is_toplevel_surface::Bool
+    # `Core.BindingPartition`s for globals whose values `optimize!` baked into this framecode's
+    # compiled `ccall`/`llvmcall` wrappers (empty unless any were baked). Each is an in-place
+    # invalidation token: redefining the binding drops its `max_world`, so `framecode_valid_world`
+    # can reject this cached `FrameCode` for worlds in which a baked value would be stale.
+    # Only populated on Julia 1.12+ (see `record_world_dep!`).
+    world_deps::Vector{BindingPartition}
 end
 
 """
@@ -198,10 +215,11 @@ default_world() = Base.get_world_counter()
 function FrameCode(scope, src::CodeInfo; generator=false, optimize=true, world::UInt=default_world(),
                    is_toplevel_surface::Bool=false)
     if optimize
-        src, methodtables = optimize!(copy(src), scope, world)
+        src, methodtables, world_deps = optimize!(copy(src), scope, world)
     else
         src = replace_coretypes!(copy(src))
         methodtables = Vector{Union{Compiled,DispatchableMethod}}(undef, length(src.code))
+        world_deps = BindingPartition[]
     end
     breakpoints = Vector{BreakpointState}(undef, length(src.code))
     for (i, pc_expr) in enumerate(src.code)
@@ -228,7 +246,7 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true, world::
     end
     end # @static if
 
-    framecode = FrameCode(scope, src, methodtables, breakpoints, slotnamelists, used, generator, report_coverage, unique_files, is_toplevel_surface)
+    framecode = FrameCode(scope, src, methodtables, breakpoints, slotnamelists, used, generator, report_coverage, unique_files, is_toplevel_surface, world_deps)
     if scope isa Method
         for bp in _breakpoints
             # Manual union splitting

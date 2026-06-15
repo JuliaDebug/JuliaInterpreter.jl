@@ -200,6 +200,12 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
     else
         framecode = get(framedict, method, nothing)
     end
+    # A cached `FrameCode` that baked a binding's value (e.g. a library name in a compiled `ccall`
+    # wrapper) is only valid in worlds where the binding still holds that value; if not, drop it
+    # so a fresh one is built and re-cached below.
+    if framecode !== nothing && !framecode_valid_world(framecode, world)
+        framecode = nothing
+    end
     if framecode === nothing
         if is_generated(method) && !enter_generated
             # If we're stepping into a staged function, we need to use
@@ -236,15 +242,30 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
     return framecode, lenv
 end
 
-function get_framecode(method)
+function get_framecode(method; world::UInt=default_world())
     framecode = get(framedict, method, nothing)
+    if framecode !== nothing && !framecode_valid_world(framecode, world)
+        framecode = nothing
+    end
     if framecode === nothing
         @assert !is_generated(method)
         code = get_source(method)
-        framecode = FrameCode(method, code; generator=false)
+        framecode = FrameCode(method, code; generator=false, world)
         framedict[method] = framecode
     end
     return framecode
+end
+
+# A `FrameCode` whose `optimize!` baked binding values into compiled wrappers (recorded in
+# `world_deps`) is only valid in worlds where every such binding still covers `world`. Each
+# `Core.BindingPartition` is an in-place invalidation token: a redefinition drops its `max_world`
+# below the redefinition world. Returns `true` for the overwhelmingly common case of no baked
+# bindings.
+function framecode_valid_world(framecode::FrameCode, world::UInt)
+    for p in framecode.world_deps
+        (p.min_world <= world <= p.max_world) || return false
+    end
+    return true
 end
 
 """
