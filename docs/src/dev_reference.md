@@ -46,6 +46,7 @@ JuliaInterpreter.step_expr!
 JuliaInterpreter.finish!
 JuliaInterpreter.finish_and_return!
 JuliaInterpreter.finish_stack!
+JuliaInterpreter.finish_latestworld!
 JuliaInterpreter.get_return
 JuliaInterpreter.next_until!
 JuliaInterpreter.maybe_next_until!
@@ -103,6 +104,7 @@ JuliaInterpreter.genframedict
 JuliaInterpreter.compiled_methods
 JuliaInterpreter.compiled_modules
 JuliaInterpreter.interpreted_methods
+JuliaInterpreter.framecode_valid_world
 ```
 
 ## Utilities

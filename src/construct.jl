@@ -256,11 +256,15 @@ function get_framecode(method; world::UInt=default_world())
     return framecode
 end
 
-# A `FrameCode` whose `optimize!` baked binding values into compiled wrappers (recorded in
-# `world_deps`) is only valid in worlds where every such binding still covers `world`. Each
-# `Core.BindingPartition` is an in-place invalidation token: a redefinition drops its `max_world`
-# below the redefinition world. Returns `true` for the overwhelmingly common case of no baked
-# bindings.
+"""
+    JuliaInterpreter.framecode_valid_world(framecode, world)
+
+Return `true` if `framecode`'s baked-in binding resolutions are valid in `world`.
+On Julia 1.12+, `optimize!` may bake `const`-global values (e.g. library names for
+`ccall` wrappers) into a `FrameCode`; if any such binding is later redefined, the cached
+`FrameCode` must be rebuilt. `prepare_framecode` and `get_framecode` call this before
+returning a cached entry.
+"""
 function framecode_valid_world(framecode::FrameCode, world::UInt)
     for p in framecode.world_deps
         (p.min_world <= world <= p.max_world) || return false

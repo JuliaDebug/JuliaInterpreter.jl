@@ -486,11 +486,13 @@ end
 # in `step_expr!`
 const _location = Dict{Tuple{Method,Int},Int}()
 
-# Run a child frame to completion with the task's world age raised to the latest committed
-# world. Per Julia's world-age rules, a binding/method defined by a previous toplevel statement
-# is only visible once the running task's world age advances to the global counter — which can
-# only happen at a toplevel boundary. `invoke_in_world` provides exactly that boundary, so the
-# child (and the `Core.eval`s it performs for definitions) sees all earlier toplevel definitions.
+"""
+    JuliaInterpreter.finish_latestworld!(interp, frame)
+
+Run `frame` to completion with the task's world age raised to the latest committed world,
+so that methods and bindings defined by earlier top-level statements are visible. This is
+used internally by toplevel/module driver frames to execute each child frame.
+"""
 function finish_latestworld!(interp::Interpreter, frame::Frame)
     return invoke_in_world(Base.get_world_counter(), finish!, interp, frame, true)
 end
