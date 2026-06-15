@@ -1,8 +1,13 @@
 using JuliaInterpreter
 using Test
 using Logging
+using Aqua
 
 @test isempty(detect_ambiguities(JuliaInterpreter, Base, Core))
+Aqua.test_all(JuliaInterpreter; deps_compat=(
+    ignore=[:InteractiveUtils, :Random, :UUIDs],
+    check_extras=(ignore=[:Dates, :Distributed, :LinearAlgebra, :Logging, :Mmap, :SHA, :SparseArrays, :Test],),
+))
 
 if isdefined(Test, :detect_closure_boxes)
     @test isempty(Test.detect_closure_boxes(JuliaInterpreter))
