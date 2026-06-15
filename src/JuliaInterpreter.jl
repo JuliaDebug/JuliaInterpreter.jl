@@ -9,7 +9,7 @@ module JuliaInterpreter
 # This somewhat unusual structure is in place to support
 # the VS Code extension integration.
 
-using CodeTracking
+using CodeTracking: CodeTracking, whereis
 
 include("packagedef.jl")
 

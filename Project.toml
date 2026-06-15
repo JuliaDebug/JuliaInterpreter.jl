@@ -11,11 +11,13 @@ UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 
 [compat]
 CodeTracking = "2, 3"
+ExplicitImports = "1.15"
 julia = "1.10"
 
 [extras]
 CassetteOverlay = "d78b62d4-37fa-4a6f-acd8-2f19986eb9ee"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+ExplicitImports = "7d51a73a-1435-4ff3-83d9-f097790105c7"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 DeepDiffs = "ab62b9b5-e342-54a8-a765-a90f495de1a6"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
@@ -29,4 +31,4 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["CassetteOverlay", "DataFrames", "Dates", "DeepDiffs", "Distributed", "FunctionWrappers", "LinearAlgebra", "Logging", "LoopVectorization", "Mmap", "SHA", "SparseArrays", "Test"]
+test = ["CassetteOverlay", "DataFrames", "Dates", "DeepDiffs", "Distributed", "ExplicitImports", "FunctionWrappers", "LinearAlgebra", "Logging", "LoopVectorization", "Mmap", "SHA", "SparseArrays", "Test"]

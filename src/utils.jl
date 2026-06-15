@@ -474,7 +474,7 @@ function compute_corrected_linerange(method::Method)
     _, line1 = whereis(method)
     offset = line1 - method.line
     @assert !is_generated(method)
-    src = JuliaInterpreter.get_source(method)
+    src = get_source(method)
     lastline = getlastline(src)
     return line1:lastline + offset
 end
@@ -832,7 +832,7 @@ function Base.show_backtrace(io::IO, frame::Frame)
     stackframes = Tuple{Base.StackTraces.StackFrame, Int}[]
     while frame !== nothing
         push!(stackframes, (Base.StackTraces.StackFrame(frame), 1))
-        frame = JuliaInterpreter.caller(frame)
+        frame = caller(frame)
     end
     print(io, "\nStacktrace:")
     try invokelatest(Base.update_stackframes_callback[], stackframes) catch end
