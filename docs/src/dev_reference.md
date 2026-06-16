@@ -1,5 +1,9 @@
 # Function reference
 
+```@docs
+JuliaInterpreter.JuliaInterpreter
+```
+
 ## Running the interpreter
 
 ```@docs
