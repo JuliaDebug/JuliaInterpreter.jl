@@ -246,11 +246,14 @@ mktemp() do path, io
     close(io)
     breakpoint(path, 3)
     include(path)
-    frame, bp = @interpret somefunc(2, 3)
+    # `somefunc` is defined by `include` in a world later than this closure's, so the calls
+    # must be resolved in the latest world to see it (issue #617).
+    w = Base.get_world_counter()
+    frame, bp = @interpret world=w somefunc(2, 3)
     @test bp isa BreakpointRef
     @test whereis(frame) == (path, 3)
     breakpoint(path, 2)
-    frame, bp = @interpret somefunc(2, 3)
+    frame, bp = @interpret world=w somefunc(2, 3)
     @test bp isa BreakpointRef
     @test whereis(frame) == (path, 2)
     remove()
@@ -258,13 +261,13 @@ mktemp() do path, io
     mktempdir(dirname(path)) do tmp
         cd(tmp) do
             breakpoint(joinpath("..", basename(path)), 3)
-            frame, bp = @interpret somefunc(2, 3)
+            frame, bp = @interpret world=w somefunc(2, 3)
             @test bp isa BreakpointRef
             @test whereis(frame) == (path, 3)
             remove()
             breakpoint(joinpath("..", basename(path)), 3)
             cd(homedir()) do
-                frame, bp = @interpret somefunc(2, 3)
+                frame, bp = @interpret world=w somefunc(2, 3)
                 @test bp isa BreakpointRef
                 @test whereis(frame) == (path, 3)
             end
@@ -568,15 +571,18 @@ end
         flush(io)
         include(path)
 
+        # `f_check` is defined by `include` in a world later than this closure's, so the
+        # calls must be resolved in the latest world to see it (issue #617).
+        w = Base.get_world_counter()
         with_logger(NullLogger()) do
-            frame, bp = @interpret f_check(1)
+            frame, bp = @interpret world=w f_check(1)
             file, ln = whereis(frame)
             @test file == path # Should not have stopped in logging.jl at line `line_logging`
             @test ln == line_logging
             remove(bp_f)
-            @test (@interpret f_check(1)) == 1
+            @test (@interpret world=w f_check(1)) == 1
             breakpoint(f_check, line_logging)
-            frame, bp = @interpret f_check(1)
+            frame, bp = @interpret world=w f_check(1)
             file, ln = whereis(frame)
             @test file == path # Should not have stopped in logging.jl at line `line_logging`
             @test ln == line_logging
