@@ -237,7 +237,14 @@ function maybe_eval_with_scope(@nospecialize(f), fargs::Vector{Any}, frame::Fram
         end
         # `Core.eval` only installs the dynamic scope (a lowering construct) and so runs in
         # the latest world; pin the call itself to the frame's world inside the expression.
-        ex = Expr(:tryfinally, :($(invoke_in_world)($(frame.world), $f, $(fargs...))), nothing, newscope)
+        # Quote every spliced value: AST-significant arguments (e.g. the `Symbol` property name
+        # in `getproperty(mod, :name)`) must enter the expression as literals, not be re-evaluated
+        # as variable references.
+        call = Expr(:call, invoke_in_world, frame.world, QuoteNode(f))
+        for a in fargs
+            push!(call.args, QuoteNode(a))
+        end
+        ex = Expr(:tryfinally, call, nothing, newscope)
         return Some{Any}(Core.eval(moduleof(frame), ex))
     end
     return nothing
