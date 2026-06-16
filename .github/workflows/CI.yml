@@ -35,9 +35,9 @@ jobs:
           - version: '1' # x64 windows
             os: windows-latest
             arch: x64
-          - version: '1' # x64 macOS
+          - version: '1' # aarch64 macOS (Apple Silicon)
             os: macos-latest
-            arch: x64
+            arch: aarch64
     env:
       PYTHON: ""
     steps:
