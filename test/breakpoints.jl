@@ -246,6 +246,10 @@ mktemp() do path, io
     close(io)
     breakpoint(path, 3)
     include(path)
+    # `somefunc` is defined by `include` in a world later than this closure's; bind a local in
+    # the latest world so the references below don't read the global at an earlier world (which
+    # warns under Julia 1.12's strict binding semantics).
+    somefunc = Base.invokelatest(getglobal, @__MODULE__, :somefunc)
     frame, bp = @interpret somefunc(2, 3)
     @test bp isa BreakpointRef
     @test whereis(frame) == (path, 3)
@@ -567,6 +571,10 @@ end
         bp_f = breakpoint(path, line_logging)
         flush(io)
         include(path)
+        # `f_check` is defined by `include` in a world later than this closure's; bind a local in
+        # the latest world so the references below don't read the global at an earlier world (which
+        # warns under Julia 1.12's strict binding semantics).
+        f_check = Base.invokelatest(getglobal, @__MODULE__, :f_check)
 
         with_logger(NullLogger()) do
             frame, bp = @interpret f_check(1)
