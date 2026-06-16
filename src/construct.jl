@@ -834,7 +834,7 @@ function interpret(mod::Module, @nospecialize(ex0); interp=RecursiveInterpreter(
     end
     quote
         local theargs = $(esc(args))
-        local frame = JuliaInterpreter.enter_call_expr(Expr(:call, theargs...))
+        local frame = enter_call_expr(Expr(:call, theargs...))
         if frame === nothing
             eval(Expr(:call, map(QuoteNode, theargs)...))
         elseif shouldbreak(frame, 1)
