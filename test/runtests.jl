@@ -1,9 +1,14 @@
 using JuliaInterpreter
 using Test
 using Logging
+using Aqua
 using ExplicitImports
 
 @test isempty(detect_ambiguities(JuliaInterpreter, Base, Core))
+Aqua.test_all(JuliaInterpreter; deps_compat=(
+    ignore=[:InteractiveUtils, :Random, :UUIDs],
+    check_extras=(ignore=[:Dates, :Distributed, :LinearAlgebra, :Logging, :Mmap, :SHA, :SparseArrays, :Test],),
+))
 
 @testset "ExplicitImports" begin
     # #Internal is dynamically included and cannot be statically analyzed.
