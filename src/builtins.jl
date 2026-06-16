@@ -20,6 +20,24 @@ function maybe_recurse_expanded_builtin(interp::Interpreter, frame::Frame, new_e
     end
 end
 
+# Evaluate the target of an expanded `invokelatest`/`_call_latest` in the latest world, so that
+# bindings, methods, and types defined since the enclosing frame's world are visible.
+function recurse_expanded_builtin_latest(interp::Interpreter, frame::Frame, new_expr::Expr)
+    world = Base.get_world_counter()
+    oldworld = frame.world
+    frame.world = world
+    try
+        f = new_expr.args[1]
+        if supertype(typeof(f)) === Core.Builtin || isa(f, Core.IntrinsicFunction)
+            return invoke_in_world(world, maybe_evaluate_builtin, interp, frame, new_expr, true)
+        end
+        fargs = collect_args(interp, frame, new_expr)
+        return Some{Any}(invoke_in_world(world, evaluate_call!, interp, frame, fargs, false))
+    finally
+        frame.world = oldworld
+    end
+end
+
 """
     ret = maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Expr, expand::Bool)
 
@@ -288,7 +306,7 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         for x in args
             push!(new_expr.args, QuoteNode(x))
         end
-        return maybe_recurse_expanded_builtin(interp, frame, new_expr)
+        return recurse_expanded_builtin_latest(interp, frame, new_expr)
 
     elseif f === isa
         if nargs == 2
@@ -532,7 +550,7 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         for x in args
             push!(new_expr.args, QuoteNode(x))
         end
-        return maybe_recurse_expanded_builtin(interp, frame, new_expr)
+        return recurse_expanded_builtin_latest(interp, frame, new_expr)
 
     elseif f === Core.Intrinsics.llvmcall
         return Some{Any}(Core.Intrinsics.llvmcall(getargs(interp, args, frame)...))

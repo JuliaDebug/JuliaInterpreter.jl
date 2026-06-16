@@ -1079,6 +1079,43 @@ module DispatchWorldTest
     helper() = inner(1)
 end
 
+module InvokeLatestWorldTest
+    const REBOUND = 1
+    gen(::Any) = 1
+end
+
+@testset "invokelatest runs in the latest world" begin
+    # `invokelatest`/`_call_latest` must execute their target in the latest world even when the
+    # interpreter expands them. The world is raised uniformly, not keyed to the target: a builtin
+    # is evaluated inline, an ordinary function in a child frame, but both see methods/bindings
+    # defined since the frame's world. Each call is pinned to `world` (before the new definitions),
+    # as toplevel interpretation does; the old world would yield the stale result.
+    world = Base.get_world_counter()
+    finish(f) = Base.invoke_in_world(world, JuliaInterpreter.finish_and_return!,
+                                     JuliaInterpreter.RecursiveInterpreter(),
+                                     JuliaInterpreter.enter_call(f))
+
+    # Ordinary-function target: a more-specific method added mid-run must be dispatched to.
+    # `gen` exists before `world`, so reading the binding is fine; only dispatch depends on the world.
+    function dispatch_reader()
+        Core.eval(InvokeLatestWorldTest, :(gen(::Int) = 2))
+        return Base.invokelatest(InvokeLatestWorldTest.gen, 5)
+    end
+    @test finish(dispatch_reader) == 2   # the old world would dispatch to `gen(::Any) == 1`
+
+    # Builtin target: `Base.Docs.meta` relies on this to read back a `##meta##` const it has just
+    # created. A rebound const keeps its old value in the old world (Julia 1.12 partitions const
+    # bindings by world), so the world of the read is observable; earlier versions reject the
+    # rebinding and do not partition bindings, so the distinction does not exist there.
+    if VERSION >= v"1.12"
+        function binding_reader()
+            Core.eval(InvokeLatestWorldTest, :(const REBOUND = 2))
+            return Base.invokelatest(getglobal, InvokeLatestWorldTest, :REBOUND)
+        end
+        @test finish(binding_reader) == 2   # the old world would read `REBOUND == 1`
+    end
+end
+
 @testset "local dispatch cache world-age invalidation" begin
     # Within a single interpretation run, defining a more-specific method must invalidate the
     # local method-table cache so a later call to the same helper dispatches to the new method.
