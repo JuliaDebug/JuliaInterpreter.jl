@@ -1197,6 +1197,8 @@ end
             """))
         w3 = Base.get_world_counter()
         @test !JuliaInterpreter.framecode_valid_world(fcll, w3)
-        @test @interpret(WrapperDepTest.llvmadd(Int32(30), Int32(12))) == 18   # rebuilt wrapper uses the new IR
+        # `IR` was rebound later than this testset's world, so resolve in `w3` to see the new
+        # value; the rebuilt wrapper then bakes in the `sub` IR (issue #617).
+        @test (@interpret world=w3 WrapperDepTest.llvmadd(Int32(30), Int32(12))) == 18
     end
 end
