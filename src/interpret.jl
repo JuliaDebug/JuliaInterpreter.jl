@@ -202,6 +202,23 @@ function evaluate_foreigncall(interp::Interpreter, frame::Frame, call_expr::Expr
     return Core.eval(moduleof(frame), Expr(head, args...))
 end
 
+"""
+    ret = evaluate_foreignglobal(interp, frame::Frame, call_expr)
+
+Evaluate a `:foreignglobal` (from a `cglobal`) statement `call_expr` in the context of `frame`.
+"""
+function evaluate_foreignglobal(interp::Interpreter, frame::Frame, call_expr::Expr)
+    target = call_expr.args[1]
+    if isexpr(target, :tuple)
+        # Name/library form, e.g. `(:sym,)` or `(:sym, lib)`
+        arg = target
+    else
+        # Pointer form: resolve the runtime pointer value.
+        arg = lookup(interp, frame, target)
+    end
+    return Core.eval(moduleof(frame), Expr(:foreignglobal, arg))
+end
+
 # We have to intercept ccalls / llvmcalls before we try it as a builtin
 function bypass_builtins(interp::Interpreter, frame::Frame, call_expr::Expr, pc::Int)
     if isassigned(frame.framecode.methodtables, pc)
@@ -423,6 +440,8 @@ function eval_rhs(interp::Interpreter, frame::Frame, node::Expr)
         return evaluate_call!(interp, frame, node)
     elseif head === :foreigncall || head === :cfunction
         return evaluate_foreigncall(interp, frame, node)
+    elseif head === :foreignglobal
+        return evaluate_foreignglobal(interp, frame, node)
     elseif head === :copyast
         val = (node.args[1]::QuoteNode).value
         return isa(val, Expr) ? copy(val) : val

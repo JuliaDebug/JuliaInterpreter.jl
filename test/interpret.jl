@@ -257,6 +257,10 @@ function cglobal_query_chain(x)
 end
 @test @interpret(cglobal_query_str(0)) === cglobal_query_str(0) === Union{}
 @test @interpret(cglobal_query_chain(0)) === cglobal_query_chain(0) === Union{}
+cglobal_from_ptr(p::Ptr{Cvoid}) = cglobal(p)
+let p = Ptr{Cvoid}(UInt(0xdeadbeef))
+    @test @interpret(cglobal_from_ptr(p)) === cglobal_from_ptr(p) === p
+end
 # Issue #354: an `llvmcall` argument computed from a function argument cannot be
 # interpreted directly. `build_compiled_llvmcall!` runs a mini-interpreter (with
 # no arguments) over the statements feeding the call's type parameters; here the

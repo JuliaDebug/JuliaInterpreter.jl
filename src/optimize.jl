@@ -157,6 +157,8 @@ function optimize!(code::CodeInfo, scope, world::UInt)
         elseif isa(stmt, Expr)
             if stmt.head === :call && stmt.args[1] === :cglobal  # cglobal requires literals
                 continue
+            elseif stmt.head === :foreignglobal  # foreignglobal requires literals
+                continue
             else
                 lookup_global_refs!(stmt, world)
                 code.code[i] = lookup_getproperties(code.code, stmt, world)

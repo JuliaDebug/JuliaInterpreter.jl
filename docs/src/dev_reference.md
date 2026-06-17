@@ -57,6 +57,7 @@ JuliaInterpreter.maybe_next_until!
 JuliaInterpreter.through_methoddef_or_done!
 JuliaInterpreter.evaluate_call!
 JuliaInterpreter.evaluate_foreigncall
+JuliaInterpreter.evaluate_foreignglobal
 JuliaInterpreter.maybe_evaluate_builtin
 JuliaInterpreter.next_call!
 JuliaInterpreter.maybe_next_call!
