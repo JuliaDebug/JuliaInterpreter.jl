@@ -837,6 +837,9 @@ end
     @test (true === @interpret issue476())
 end
 
+# A method redefined inside the running function is not visible to the function's own
+# fixed world age. Interpretation must use that same task-local world (issue #617), so the
+# interpreted call sees the original `foobar`, exactly as the compiled call does.
 @noinline foobar() = (GC.safepoint(); 42)
 function run_foobar()
     @eval foobar() = "nope"
@@ -844,7 +847,7 @@ function run_foobar()
 end
 @testset "unreachable worlds" begin
     interpret, compiled = run_foobar()
-    @test_broken interpret == compiled == 42
+    @test interpret == compiled == 42
 end
 
 @testset "issue #479" begin
@@ -1231,6 +1234,8 @@ end
             """))
         w3 = Base.get_world_counter()
         @test !JuliaInterpreter.framecode_valid_world(fcll, w3)
-        @test @interpret(WrapperDepTest.llvmadd(Int32(30), Int32(12))) == 18   # rebuilt wrapper uses the new IR
+        # `IR` was rebound later than this testset's world, so resolve in `w3` to see the new
+        # value; the rebuilt wrapper then bakes in the `sub` IR (issue #617).
+        @test (@interpret world=w3 WrapperDepTest.llvmadd(Int32(30), Int32(12))) == 18
     end
 end

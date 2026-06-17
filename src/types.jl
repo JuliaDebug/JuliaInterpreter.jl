@@ -209,11 +209,22 @@ function pushuniquefiles!(unique_files::Set{Symbol}, lt)
 end
 end
 
-# The default world for entering interpretation is the latest committed world, so that
-# freshly-defined methods and bindings are visible (matching `Base.invokelatest` semantics).
-# A frame captures this once at construction and holds it, giving a consistent world while
-# stepping even if new code is defined mid-session; toplevel frames refresh it per statement.
-default_world() = Base.get_world_counter()
+# The running task's current world age. Unlike `Base.get_world_counter()` (the latest
+# committed world), this is the world the calling code itself executes in, so interpreted
+# method frames see exactly the methods and bindings a compiled call from the same point
+# would see — including raising a world-age error for a method defined too recently.
+@static if isdefined(Base, :tls_world_age)
+    const tls_world_age = Base.tls_world_age
+else
+    tls_world_age() = ccall(:jl_get_tls_world_age, UInt, ())
+end
+
+# The default world for entering interpretation is the caller's task world, matching the
+# semantics of an ordinary (non-`invokelatest`) call. A frame captures this once at
+# construction and holds it, giving a consistent world while stepping even if new code is
+# defined mid-session; toplevel frames refresh to the latest committed world per statement
+# so that definitions from earlier statements become visible.
+default_world() = tls_world_age()
 
 function FrameCode(scope, src::CodeInfo; generator=false, optimize=true, world::UInt=default_world(),
                    is_toplevel_surface::Bool=false)

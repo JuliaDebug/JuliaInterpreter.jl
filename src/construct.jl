@@ -143,11 +143,11 @@ end
 
 get_source(meth::Method) = Base.uncompressed_ast(meth)
 
-function get_source(g::GeneratedFunctionStub, source::Method, env)
+function get_source(g::GeneratedFunctionStub, source::Method, env, world::UInt)
     b = @static if VERSION < v"1.12.0-DEV.1968"   # julia #57230
-        g(Base.get_world_counter(), LineNumberNode(Int(source.line), source.file), env..., g.argnames...)
+        g(world, LineNumberNode(Int(source.line), source.file), env..., g.argnames...)
     else
-        g(Base.get_world_counter(), source, env..., g.argnames...)
+        g(world, source, env..., g.argnames...)
     end
     b isa CodeInfo && return b
     return eval(b)
@@ -211,12 +211,12 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
             # If we're stepping into a staged function, we need to use
             # the specialization, rather than stepping through the
             # unspecialized method.
-            code = get_staged(Core.Compiler.specialize_method(method, argtypes, lenv))
+            code = get_staged(Core.Compiler.specialize_method(method, argtypes, lenv), world)
             code === nothing && return nothing
             generator = false
         else
             if is_generated(method)
-                code = get_source(method.generator, method, lenv)
+                code = get_source(method.generator, method, lenv, world)
                 generator = true
             else
                 code = get_source(method)
@@ -830,15 +830,17 @@ function extract_args(__module__, ex0)
                * "break it down to simpler parts if possible")
 end
 
-function interpret(mod::Module, @nospecialize(ex0); interp=RecursiveInterpreter())
+function interpret(mod::Module, @nospecialize(ex0); interp=RecursiveInterpreter(), world=nothing)
     args = try
         extract_args(mod, ex0)
     catch e
         return :(throw($e))
     end
+    entercall = world === nothing ? :(enter_call_expr(Expr(:call, theargs...))) :
+                                    :(enter_call_expr(Expr(:call, theargs...); world=convert(UInt, $world)))
     quote
         local theargs = $(esc(args))
-        local frame = enter_call_expr(Expr(:call, theargs...))
+        local frame = $entercall
         if frame === nothing
             eval(Expr(:call, map(QuoteNode, theargs)...))
         elseif shouldbreak(frame, 1)
@@ -859,6 +861,8 @@ function interpret(mod::Module, opt, xs...; kwargs...)
         optname isa Symbol || error("Invalid @interpret call: $optname is not a symbol")
         if optname === :interp
             return interpret(mod, xs...; interp=esc(optval), kwargs...)
+        elseif optname === :world
+            return interpret(mod, xs...; world=esc(optval), kwargs...)
         else
             error("Invalid @interpret call: $optname is not a recognized option")
         end
@@ -868,9 +872,14 @@ function interpret(mod::Module, opt, xs...; kwargs...)
 end
 
 """
-    @interpret [interp] f(args; kwargs...)
+    @interpret [interp] [world=w] f(args; kwargs...)
 
 Evaluate `f` on the specified arguments using the interpreter.
+
+The optional `world=w` selects the world age in which the call is resolved and run,
+defaulting to the calling task's current world. Pass `world=Base.get_world_counter()`
+to reach methods defined more recently than the caller's world — for example a method
+just brought in by `include` within the same function.
 
 # Example
 

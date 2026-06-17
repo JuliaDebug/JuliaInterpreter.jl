@@ -226,7 +226,7 @@ end
 
 is_generated(meth::Method) = isdefined(meth, :generator)
 
-get_staged(mi::MethodInstance) = Core.Compiler.get_staged(mi, Base.get_world_counter())
+get_staged(mi::MethodInstance, world::UInt) = Core.Compiler.get_staged(mi, world)
 
 """
     is_doc_expr(ex)
