@@ -109,6 +109,7 @@ JuliaInterpreter.compiled_methods
 JuliaInterpreter.compiled_modules
 JuliaInterpreter.interpreted_methods
 JuliaInterpreter.framecode_valid_world
+JuliaInterpreter.clear_caches
 ```
 
 ## Utilities

@@ -19,14 +19,16 @@ function get_call_framecode(fargs::Vector{Any}, parentframe::FrameCode, idx::Int
         local d_methprev
         depth = 1
         while true
-            # Reuse a cached dispatch only if it was resolved in the current world. A world advance
-            # can change which method applies (e.g. a newly defined, more-specific method), so an
-            # entry stamped at an older world must be re-resolved rather than trusted by argument
-            # type alone. Method lookup reports no usable upper world bound for a live match (it
-            # returns `typemax`), so the resolution world itself is the invalidation key.
+            # Reuse a cached dispatch only if it was resolved in the current world and with the same
+            # method table. A world advance can change which method applies (e.g. a newly defined,
+            # more-specific method), so an entry stamped at an older world must be re-resolved rather
+            # than trusted by argument type alone. Method lookup reports no usable upper world bound
+            # for a live match (it returns `typemax`), so the resolution world itself is the
+            # invalidation key. The method table is part of the dispatch context — the same call
+            # resolves differently under an overlay table — so it too must match.
             # Determine whether the argument types match the signature
             sig = d_meth.sig.parameters::SimpleVector
-            if d_meth.world == world && length(sig) == nargs
+            if d_meth.world == world && d_meth.mt === method_table && length(sig) == nargs
                 # If this is generated, match only if `enter_generated` also matches
                 fi = d_meth.frameinstance
                 if fi isa FrameInstance
@@ -86,12 +88,12 @@ function get_call_framecode(fargs::Vector{Any}, parentframe::FrameCode, idx::Int
     # superseded entries; otherwise prepend a new entry, dropping the oldest once the chain
     # exceeds `max_methods`.
     if isassigned(parentframe.methodtables, idx)
-        existing = find_dispatchable(parentframe.methodtables[idx]::DispatchableMethod, argtypes, fi)
+        existing = find_dispatchable(parentframe.methodtables[idx]::DispatchableMethod, argtypes, fi, method_table)
         if existing !== nothing
             existing.frameinstance = fi
             existing.world = world
         else
-            d_meth = DispatchableMethod(parentframe.methodtables[idx]::DispatchableMethod, fi, argtypes, world)
+            d_meth = DispatchableMethod(parentframe.methodtables[idx]::DispatchableMethod, fi, argtypes, world, method_table)
             d_methtmp = d_meth.next::DispatchableMethod
             depth = 2
             while d_methtmp.next !== nothing
@@ -105,7 +107,7 @@ function get_call_framecode(fargs::Vector{Any}, parentframe::FrameCode, idx::Int
             parentframe.methodtables[idx] = d_meth
         end
     else
-        parentframe.methodtables[idx] = DispatchableMethod(nothing, fi, argtypes, world)
+        parentframe.methodtables[idx] = DispatchableMethod(nothing, fi, argtypes, world, method_table)
     end
     if is_compiled
         return Compiled(), nothing
@@ -115,15 +117,17 @@ function get_call_framecode(fargs::Vector{Any}, parentframe::FrameCode, idx::Int
 end
 
 # Return the cached entry that stores the same kind of dispatch as `fi`: the (concrete) signature
-# must be `argtypes` and the entry's generator/body flavor must match, since for a `@generated`
-# method the generator and the specialized body are distinct entries that coexist in the chain
-# (see the `enter_generated` check in the cache-hit loop). Returns `nothing` if there is no such
-# entry. Types are interned, so an identity comparison of signatures suffices and is cheap.
-function find_dispatchable(d::DispatchableMethod, @nospecialize(argtypes), fi::Union{Compiled,FrameInstance})
+# must be `argtypes`, the entry's generator/body flavor must match (since for a `@generated`
+# method the generator and the specialized body are distinct entries that coexist in the chain;
+# see the `enter_generated` check in the cache-hit loop), and the method table must match (an
+# overlay table is a distinct resolution context that coexists in the chain). Returns `nothing`
+# if there is no such entry. Types are interned, so an identity comparison of signatures suffices
+# and is cheap.
+function find_dispatchable(d::DispatchableMethod, @nospecialize(argtypes), fi::Union{Compiled,FrameInstance}, mt::Union{Nothing,MethodTable})
     wants_generator = fi isa FrameInstance && fi.enter_generated
     dd = d
     while true
-        if dd.sig === argtypes
+        if dd.sig === argtypes && dd.mt === mt
             dfi = dd.frameinstance
             (dfi isa FrameInstance && dfi.enter_generated) == wants_generator && return dd
         end

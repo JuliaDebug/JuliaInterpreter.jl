@@ -109,6 +109,16 @@ function find_or_create_module(parentmod::Module, ex::Expr)
     return mod, modbody::Expr
 end
 
+"""
+    JuliaInterpreter.clear_caches()
+
+Empty the internal caches of interpreted code: [`framedict`](@ref), [`genframedict`](@ref),
+the pools of reusable `FrameData`/`Frame` objects, and the per-breakpoint instance lists.
+
+This is not called automatically; framecodes are individually invalidated by world age (see
+[`framecode_valid_world`](@ref)) when their cached state goes stale. `clear_caches` is a
+coarse reset useful during debugging and development of JuliaInterpreter itself.
+"""
 function clear_caches()
     empty!(junk_framedata)
     empty!(framedict)
@@ -724,7 +734,6 @@ function enter_call_expr(expr::Expr;
                          enter_generated::Bool=false,
                          world::UInt=default_world(),
                          method_table::Union{Nothing,MethodTable}=nothing)
-    clear_caches()
     r = determine_method_for_expr(expr; enter_generated, world, method_table)
     if r !== nothing && !isa(r[1], Compiled)
         return prepare_frame(Base.front(r)...; world)
@@ -767,7 +776,6 @@ function enter_call(@nospecialize(finfo), @nospecialize(args...);
                     world::UInt=default_world(),
                     method_table::Union{Nothing,MethodTable}=nothing,
                     kwargs...)
-    clear_caches()
     if isa(finfo, Tuple)
         f = finfo[1]
         enter_generated = finfo[2]::Bool
