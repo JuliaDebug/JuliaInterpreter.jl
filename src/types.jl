@@ -104,10 +104,11 @@ mutable struct _DispatchableMethod{FrameCode}
     frameinstance::Union{Compiled,_FrameInstance{FrameCode}} # really a Union{Compiled, FrameInstance} but we have a cyclic dependency
     sig::Type # for speed of matching, this is a *concrete* signature. `sig <: frameinstance.framecode.scope.sig`
     world::UInt # world age in which `frameinstance` was resolved for `sig`; a later world forces re-resolution
+    mt::Union{Nothing,MethodTable} # method table the resolution used; a different table forces re-resolution
     # Without this explicit inner constructor, Julia auto-generates an outer one where
     # `FrameCode` is unbound when next=nothing and frameinstance=Compiled().
-    _DispatchableMethod{FrameCode}(next, frameinstance, sig, world) where {FrameCode} =
-        new{FrameCode}(next, frameinstance, sig, world)
+    _DispatchableMethod{FrameCode}(next, frameinstance, sig, world, mt) where {FrameCode} =
+        new{FrameCode}(next, frameinstance, sig, world, mt)
 end
 
 # 0: none

@@ -996,6 +996,26 @@ end
     @test JuliaInterpreter.finish_and_return!(fr) isa JuliaInterpreter.BreakpointRef
 end
 
+@testset "clear_caches" begin
+    # `clear_caches` is not called automatically on entry to the interpreter; this test keeps it
+    # exercised so it stays usable for debugging and development.
+    cleared_caches(x) = x + 1
+    @interpret cleared_caches(1)
+    @test haskey(JuliaInterpreter.framedict, only(methods(cleared_caches)))
+
+    bp = @breakpoint cleared_caches(1)
+    @interpret cleared_caches(1)
+    @test !isempty(bp.instances)
+
+    JuliaInterpreter.clear_caches()
+    @test isempty(JuliaInterpreter.framedict)
+    @test isempty(JuliaInterpreter.genframedict)
+    @test isempty(JuliaInterpreter.junk_framedata)
+    @test isempty(JuliaInterpreter.junk_frames)
+    @test isempty(bp.instances)
+    remove(bp)
+end
+
 # CassetteOverlay, issue #552
 using CassetteOverlay
 function cassette_overlay_func()
@@ -1075,6 +1095,10 @@ JuliaInterpreter.method_table(::OverlayInterpreter) = ex_method_table
         @test JuliaInterpreter.finish_and_return!(OverlayInterpreter(), frame) == cos(42.0)
     end
     @test cos(42.0) == @interpret interp=OverlayInterpreter() call_func_overlay(42.0)
+    # The local dispatch cache is keyed by method table: alternating interpreters must each
+    # re-resolve `func_overlay` through their own table rather than reuse the other's cached entry.
+    @test sin(42.0) == @interpret call_func_overlay(42.0)
+    @test cos(42.0) == @interpret interp=OverlayInterpreter() call_func_overlay(42.0)
 end
 
 module DispatchWorldTest
@@ -1122,9 +1146,9 @@ end
 @testset "local dispatch cache world-age invalidation" begin
     # Within a single interpretation run, defining a more-specific method must invalidate the
     # local method-table cache so a later call to the same helper dispatches to the new method.
-    # Across separate `@interpret` calls `clear_caches` masks this; it is only observable when the
-    # world advances mid-run, as in toplevel/module interpretation. The cached `DispatchableMethod`
-    # is stamped with its resolution world, and a higher frame world forces re-resolution.
+    # This is observable when the world advances mid-run, as in toplevel/module interpretation:
+    # the cached `DispatchableMethod` is stamped with its resolution world, and a higher frame
+    # world forces re-resolution.
     stmts = Any[
         :(x = helper()),
         :(inner(::Int) = 2),   # advances the world age with a more-specific method
