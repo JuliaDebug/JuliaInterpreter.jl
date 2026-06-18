@@ -17,7 +17,10 @@ jobs:
           - version: '1' # current stable
             os: ubuntu-latest
             arch: x64
-          - version: '1.10' # lowest version supported
+          - version: 'min' # lowest version supported
+            os: ubuntu-latest
+            arch: x64
+          - version: 'pre' # upcoming release, or duplicate of '1'
             os: ubuntu-latest
             arch: x64
           - version: 'nightly' # dev
