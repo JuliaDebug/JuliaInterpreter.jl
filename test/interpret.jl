@@ -775,6 +775,15 @@ frame = JuliaInterpreter.enter_call(f_345)
     @test JuliaInterpreter.getfirstline(frame) isa Integer
 end
 
+@testset "issue #701 LineNumberNode with `nothing` file" begin
+    # Macros such as MacroTools' `@q`/`@qq` can emit `LineNumberNode`s whose file is
+    # `nothing`; building the framecode must not choke when collecting source files.
+    ex = Expr(:function, Expr(:call, :f_nothing_file),
+              Expr(:block, LineNumberNode(0, nothing), :(return 701)))
+    Core.eval(@__MODULE__, ex)
+    @test @interpret(f_nothing_file()) == 701
+end
+
 # issue #285
 using LinearAlgebra, SparseArrays, Random
 @testset "issue 285" begin

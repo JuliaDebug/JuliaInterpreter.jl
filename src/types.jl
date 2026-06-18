@@ -257,6 +257,9 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true, world::
     pushuniquefiles!(unique_files, lt)
     else # VERSION < v"1.12.0-DEV.173"
     for entry in lt
+        # issue #701: macro-generated `LineNumberNode`s (e.g. MacroTools' `@q`/`@qq`) can
+        # carry a `nothing` file, which has no path to match a breakpoint against.
+        entry.file === nothing && continue
         push!(unique_files, entry.file)
     end
     end # @static if
