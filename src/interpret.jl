@@ -140,6 +140,9 @@ function resolvefc(frame::Frame, @nospecialize(expr))
     isa(expr, Tuple{String,String}) && return expr
     isa(expr, Tuple{Symbol,String}) && return expr
     isa(expr, Tuple{String,Symbol}) && return expr
+    # Julia 1.13 (`:syntacticccall`) keeps the foreigncall target as a literal `(name, lib)`
+    # tuple expression; the eval'd `:foreigncall` expects that form unchanged.
+    isexpr(expr, :tuple) && return expr
     if isexpr(expr, :call)
         a = (expr::Expr).args[1]
         (isa(a, QuoteNode) && a.value === Core.tuple) || error("unexpected ccall to ", expr)

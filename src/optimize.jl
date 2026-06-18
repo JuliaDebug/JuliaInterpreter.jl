@@ -267,10 +267,19 @@ function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector
 
     dynamic_ccall = false
     argcfunc = cfunc = stmt.args[1]
+    cfunc_resolved = nothing
     if @isdefined(__has_internal_change) && __has_internal_change(v"1.13.0", :syntacticccall)
         if !isexpr(cfunc, :tuple)
             dynamic_ccall = true
             cfunc = gensym("ptr")
+        else
+            # The `(name, lib)` tuple expression is baked into the compiled wrapper, so the
+            # library binding it references is resolved at framecode-build time: record it.
+            # The wrapper body keeps the symbolic tuple, but its resolved value is folded into
+            # the cache key (below) so that rebinding the library const builds a fresh wrapper
+            # that rebakes the current value rather than reusing the stale one.
+            record_globalref_deps!(world_deps, world, cfunc)
+            cfunc_resolved = try Core.eval(evalmod, cfunc) catch nothing end
         end
     else
         while isa(cfunc, SSAValue)
@@ -300,7 +309,7 @@ function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector
     end
     args = stmt.args[6:end]
     # When the ccall is dynamic we pass the pointer as an argument so can reuse the function
-    cc_key = ((dynamic_ccall ? :ptr : cfunc), RetType, ArgType, evalmod, length(sparams), length(args))  # compiled call key
+    cc_key = ((dynamic_ccall ? :ptr : @something(cfunc_resolved, cfunc)), RetType, ArgType, evalmod, length(sparams), length(args))  # compiled call key
     f = get(compiled_calls, cc_key, nothing)
     if f === nothing
         ArgType = Expr(:tuple, Any[parametric_type_to_expr(t) for t in ArgType::SimpleVector]...)

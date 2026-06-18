@@ -859,7 +859,11 @@ function Base.show_backtrace(io::IO, frame::Frame)
     for (i, (last_frame, n)) in enumerate(stackframes)
         frame_counter += 1
         println(io)
-        Base.print_stackframe(io, i, last_frame, n, nd, Base.info_color())
+        @static if VERSION >= v"1.13.0-DEV.927"
+            Base.print_stackframe(io, i, last_frame, nd, 0, 0, 0, Base.info_color())
+        else
+            Base.print_stackframe(io, i, last_frame, n, nd, Base.info_color())
+        end
     end
 end
 

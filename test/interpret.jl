@@ -628,12 +628,12 @@ qcopy = @interpret deepcopy(q)
 f217() = <:(Float64, Float32, Float16)
 @test_throws ArgumentError @interpret(f217())
 
-# issue #220
-function hash220(x::Tuple{Ptr{UInt8},Int}, h::UInt)
-    h += Base.memhash_seed
-    ccall(Base.memhash, UInt, (Ptr{UInt8}, Csize_t, UInt32), x[1], x[2], h % UInt32) + h
-end
-@test @interpret(hash220((Ptr{UInt8}(0),0), UInt(1))) == hash220((Ptr{UInt8}(0),0), UInt(1))
+# issue #220: a `ccall` whose target is a runtime function-pointer value reached through a
+# binding (the original report used `Base.memhash`, removed in 1.13; see issue #696).
+add_one_220(x::Cint)::Cint = x + Cint(1)
+const PTR_220 = @cfunction(add_one_220, Cint, (Cint,))
+call220(x) = ccall(PTR_220, Cint, (Cint,), x)
+@test @interpret(call220(Cint(41))) == call220(Cint(41)) == Cint(42)
 
 # ccall with type parameters
 @static if VERSION < v"1.11-"
