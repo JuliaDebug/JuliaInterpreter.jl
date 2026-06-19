@@ -844,10 +844,27 @@ function interpret(mod::Module, @nospecialize(ex0); interp=RecursiveInterpreter(
     catch e
         return :(throw($e))
     end
-    entercall = world === nothing ? :(enter_call_expr(Expr(:call, theargs...))) :
-                                    :(enter_call_expr(Expr(:call, theargs...); world=convert(UInt, $world)))
+    if world === nothing
+        wexpr = :nothing
+        theargs = :($(esc(args)))
+        entercall = :(enter_call_expr(Expr(:call, theargs...)))
+    else
+        if world === :latest
+            # Resolve the function and arguments in the latest committed world captured here at call time
+            wexpr = :(Base.get_world_counter())
+            theargs = :(Base.invoke_in_world(w, () -> $(esc(args))))
+        else
+            # Numeric world: the interpreted call runs in `world`, but the function and arguments are
+            # resolved in the caller's current world.
+            wexpr = :(convert(UInt, $world))
+            theargs = :($(esc(args)))
+        end
+        # The call itself always runs in the world that will be resolved from evaluating `wexpr`
+        entercall = :(enter_call_expr(Expr(:call, theargs...); world=w))
+    end
     quote
-        local theargs = $(esc(args))
+        local w = $wexpr
+        local theargs = $theargs
         local frame = $entercall
         if frame === nothing
             eval(Expr(:call, map(QuoteNode, theargs)...))
@@ -870,7 +887,10 @@ function interpret(mod::Module, opt, xs...; kwargs...)
         if optname === :interp
             return interpret(mod, xs...; interp=esc(optval), kwargs...)
         elseif optname === :world
-            return interpret(mod, xs...; world=esc(optval), kwargs...)
+            # `world=:latest` is a literal flag handled specially; any other value is an escaped
+            # expression evaluating to a `UInt` world age.
+            islatest = isa(optval, QuoteNode) && optval.value === :latest
+            return interpret(mod, xs...; world=(islatest ? :latest : esc(optval)), kwargs...)
         else
             error("Invalid @interpret call: $optname is not a recognized option")
         end
@@ -880,14 +900,22 @@ function interpret(mod::Module, opt, xs...; kwargs...)
 end
 
 """
-    @interpret [interp] [world=w] f(args; kwargs...)
+    @interpret [interp] [world=w | world=:latest] f(args; kwargs...)
 
 Evaluate `f` on the specified arguments using the interpreter.
 
-The optional `world=w` selects the world age in which the call is resolved and run,
-defaulting to the calling task's current world. Pass `world=Base.get_world_counter()`
-to reach methods defined more recently than the caller's world — for example a method
-just brought in by `include` within the same function.
+The optional `world` argument selects the world age for the call:
+
+- omitted (default): `f` and the arguments are resolved, and the call is run, in the calling
+  task's current world.
+- `world=:latest`: resolve `f`/arguments and run the call in the latest committed world,
+  sampled when the call is made. Use this to reach methods or bindings defined more recently
+  than the calling task's (possibly frozen) world — for example a method just brought in by
+  `include` within the same function (issue #617).
+- `world=w`, where `w` is a `UInt` world age: run the interpreted call in world `w`. The
+  function and arguments are still resolved in the caller's current world, so `w` controls only
+  the methods visible *during* interpretation. The caller is responsible for choosing a usable
+  `w`; to also resolve recently-defined functions, use `world=:latest`.
 
 # Example
 

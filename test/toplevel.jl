@@ -119,7 +119,10 @@ module Toplevel end
 @testset "toplevel" begin
     modexs = ExprSplitter(Toplevel, read_and_parse(joinpath(@__DIR__, "toplevel_script.jl")))
     for (mod, ex) in modexs
-        frame = Frame(mod, ex)
+        # Build each frame in the latest world so framecode construction (e.g. resolving a
+        # `struct`'s supertype) sees the modules/types defined by earlier statements; `Frame`
+        # otherwise captures the caller's task world, which is frozen across this loop.
+        frame = Frame(mod, ex; world=Base.get_world_counter())
         while true
             invokelatest(JuliaInterpreter.through_methoddef_or_done!, frame) === nothing && break
         end
@@ -168,7 +171,9 @@ module Toplevel end
     @test Toplevel.ftrue(1) == 3
     @test Toplevel.fctrue(0) == 1
     @test_throws UndefVarError Toplevel.fcfalse(0)
-    @test !Toplevel.Consts.b2
+    # `Consts` was defined by the interpreter above, in a world later than this testset's,
+    # so its binding must be resolved in the latest world to be seen (issue #617).
+    @test !invokelatest(() -> Toplevel.Consts.b2)
     @test Toplevel.fb1true(0) == 1
     @test_throws UndefVarError Toplevel.fb1false(0)
     @test Toplevel.fb2false(0) == 1
@@ -191,7 +196,7 @@ module Toplevel end
     @test Toplevel.Inner.g() == 5
     @test Toplevel.Inner.InnerInner.g() == 6
     @test isdefinedglobal(Toplevel, :Beat)
-    @test Toplevel.Beat <: Toplevel.DatesMod.Period
+    @test invokelatest(() -> Toplevel.Beat <: Toplevel.DatesMod.Period)
 
     @test @interpret(Toplevel.f1(0)) == 1
     @test @interpret(Toplevel.f1(0.0)) == 2
