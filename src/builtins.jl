@@ -282,11 +282,11 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         end
     elseif f === getglobal
         if nargs == 2
-            return Some{Any}(getglobal(lookup(interp, frame, args[2]), lookup(interp, frame, args[3])))
+            return Some{Any}(Base.invoke_in_world(frame.world, getglobal, lookup(interp, frame, args[2]), lookup(interp, frame, args[3])))
         elseif nargs == 3
-            return Some{Any}(getglobal(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4])))
+            return Some{Any}(Base.invoke_in_world(frame.world, getglobal, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4])))
         else
-            return Some{Any}(getglobal(getargs(interp, args, frame)...))
+            return Some{Any}(Base.invoke_in_world(frame.world, getglobal, getargs(interp, args, frame)...))
         end
     elseif f === invoke
         if !expand
@@ -323,7 +323,7 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
             return Some{Any}(isdefined(getargs(interp, args, frame)...))
         end
     elseif @static isdefinedglobal(Core, :isdefinedglobal) && f === isdefinedglobal
-        return Some{Any}(isdefinedglobal(getargs(interp, args, frame)...))
+        return Some{Any}(Base.invoke_in_world(frame.world, isdefinedglobal, getargs(interp, args, frame)...))
     elseif f === modifyfield!
         if nargs == 4
             return Some{Any}(modifyfield!(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))

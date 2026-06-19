@@ -37,7 +37,12 @@ const RECENTLY_REMOVED = GlobalRef.(Ref(Core), [
     :_apply_pure, :_call_in_world, :_call_latest,
 ])
 const kwinvoke = Core.kwfunc(Core.invoke)
+# Builtins whose result depends on the world age (binding resolution): they must run in
+# `frame.world` rather than the interpreter's ambient world. Every entry here takes a `Module`
+# as its first argument, so the dependence is unconditional.
 const REQUIRES_WORLD = Core.Builtin[
+    getglobal,
+    isdefinedglobal,
     setglobal!,
     Core.get_binding_type,
     swapglobal!,
