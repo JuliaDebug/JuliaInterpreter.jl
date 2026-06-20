@@ -83,15 +83,22 @@ end
                     """)
         end
         @eval using TmpPkg1
-        # Every package is technically parented in Main but the name may not be visible in Main
         @test @eval isdefinedglobal(@__MODULE__, :TmpPkg1)
         @test @eval !isdefinedglobal(@__MODULE__, :TmpPkg2)
-        collect(ExprSplitter(@__MODULE__, quote
-                module TmpPkg2
-                f() = 2
-                end
-            end))
-        @test @eval isdefinedglobal(@__MODULE__, :TmpPkg1)
+        # A top-level `module TmpPkg2` (the form used when a package loads itself, evaluated
+        # into `Base.__toplevel__`) resolves to the already-loaded package rather than
+        # building a duplicate, even when the name is not visible in the parsing module.
+        for (m, _) in ExprSplitter(Base.__toplevel__, :(module TmpPkg2; f() = 2; end))
+            @test nameof(m) === :TmpPkg2 && parentmodule(m) === m
+        end
+        @test @eval !isdefinedglobal(@__MODULE__, :TmpPkg2)
+        # The same declaration nested in an ordinary module is a *local* module that merely
+        # shares the package's name: it is built fresh as a submodule of that module and
+        # shadows the package, matching `include` (Revise issue #747).
+        for (m, _) in ExprSplitter(JIVisible, :(module TmpPkg2; f() = 3; end))
+            @test parentmodule(m) === JIVisible
+        end
+        @test isdefinedglobal(JIVisible, :TmpPkg2)
         @test @eval !isdefinedglobal(@__MODULE__, :TmpPkg2)
     end
 
