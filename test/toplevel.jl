@@ -410,6 +410,26 @@ end
     @test invokelatest(() -> M.z) == [4,7,12]
 end
 
+module ApplyIterateSplit end
+module ApplyIterateDirect end
+@testset "_apply_iterate world age ($(nameof(M)))" for (M, eval!) in toplevel_eval_pairs(ApplyIterateSplit, ApplyIterateDirect)
+    ex = Base.parse_input_line(raw"""
+        for n = 1:4
+            func_name = Symbol("fn$n")
+            arg_names = Tuple(Symbol("child$j") for j in 1:n)
+            @eval function $func_name(
+                    w,
+                    $((:($arg_name::Int) for arg_name in arg_names)...)
+                )
+                return (w, ($(arg_names...),))
+            end
+        end
+        """)
+    eval!(M, ex)
+    @test invokelatest(() -> M.fn1(:w, 1)) == (:w, (1,))
+    @test invokelatest(() -> M.fn4(:w, 1, 2, 3, 4)) == (:w, (1, 2, 3, 4))
+end
+
 @testset "Docstrings" begin
     ex = quote
         """
@@ -461,7 +481,6 @@ end
     JuliaInterpreter.finish!(frame, true)
     @test Toplevel.Node isa Type
 end
-
 
 @testset "Non-frames" begin
     ex = Base.parse_input_line("""
