@@ -88,14 +88,14 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
     elseif f === Core._apply_iterate
         argswrapped = getargs(interp, args, frame)
         if !expand
-            return Some{Any}(Core._apply_iterate(argswrapped...))
+            return Some{Any}(invoke_in_world(frame.world, Core._apply_iterate, argswrapped...))
         end
         aw1 = argswrapped[1]::Function
         @assert aw1 === Core.iterate || aw1 === Core.Compiler.iterate || aw1 === Base.iterate "cannot handle `_apply_iterate` with non iterate as first argument, got $(aw1), $(typeof(aw1))"
         new_expr = Expr(:call, argswrapped[2])
         popfirst!(argswrapped) # pop the iterate
         popfirst!(argswrapped) # pop the function
-        argsflat = append_any(argswrapped...)
+        argsflat = invoke_in_world(frame.world, append_any, argswrapped...)
         for x in argsflat
             push!(new_expr.args, QuoteNode(x))
         end
