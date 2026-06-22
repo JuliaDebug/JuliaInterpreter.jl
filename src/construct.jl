@@ -61,6 +61,49 @@ function link_caller_callee!(caller::Frame, callee::Frame)
     return callee
 end
 
+# Resolve a `module newname` declaration nested in `parentmod` to the module it should be
+# evaluated into, creating an empty module if necessary.
+#
+# A `module` declaration at the top level of a package (`parentmod === Base.__toplevel__`)
+# may name an already-loaded package, in which case we attach to that loaded module rather
+# than build a duplicate. A `module` nested in any ordinary module (e.g. one `includet`ed
+# into `Main`) is a *local* module: it is reused only when `newname` already names a genuine
+# submodule of `parentmod` (re-revision of a module we created), and otherwise is built
+# fresh — even if `newname` happens to match a package imported into `parentmod`. This
+# mirrors `include`, where `module Test` shadows any `using`-imported `Test`.
+function resolve_module(parentmod::Module, newname::Symbol, std_imports, syntax_version, loc)
+    newnamestr = String(newname)
+    reusemod = nothing
+    if invokelatest(isdefinedglobal, parentmod, newname)
+        found = invokelatest(getglobal, parentmod, newname)
+        found isa Module || throw(ErrorException("invalid redefinition of constant $(newname)"))
+        if parentmod === Base.__toplevel__ || parentmodule(found) === parentmod
+            reusemod = found
+        end
+    elseif parentmod === Base.__toplevel__
+        id = Base.identify_package(parentmod, newnamestr)
+        # If we're in a test environment and Julia's internal stdlibs are not a declared
+        # dependency of the package, we might fail to find it. Try really hard to find it.
+        if id === nothing
+            for loaded_id in keys(Base.loaded_modules)
+                if loaded_id.name == newnamestr
+                    id = loaded_id
+                    break
+                end
+            end
+        end
+        if id !== nothing && haskey(Base.loaded_modules, id)
+            reusemod = Base.root_module(id)::Module
+        end
+    end
+    reusemod !== nothing && return reusemod
+    module_ex = Expr(:module, std_imports, newname, Expr(:block, loc))
+    if syntax_version !== nothing
+        pushfirst!(module_ex.args, syntax_version)
+    end
+    return Core.eval(parentmod, module_ex)::Module
+end
+
 """
     mod, body = find_or_create_module(parentmod::Module, ex::Expr)
 
@@ -79,33 +122,7 @@ function find_or_create_module(parentmod::Module, ex::Expr)
         error("unexpected :module form with $(length(ex.args)) args")
     end
     newname = newname::Symbol
-    if invokelatest(isdefinedglobal, parentmod, newname)
-        mod = invokelatest(getglobal, parentmod, newname)
-        mod isa Module || throw(ErrorException("invalid redefinition of constant $(newname)"))
-    else
-        newnamestr = String(newname)
-        id = Base.identify_package(parentmod, newnamestr)
-        # If we're in a test environment and Julia's internal stdlibs are not a declared dependency
-        # of the package, we might fail to find it. Try really hard to find it.
-        if id === nothing && parentmod === Base.__toplevel__
-            for loaded_id in keys(Base.loaded_modules)
-                if loaded_id.name == newnamestr
-                    id = loaded_id
-                    break
-                end
-            end
-        end
-        if id !== nothing && haskey(Base.loaded_modules, id)
-            mod = Base.root_module(id)::Module
-        else
-            loc = firstline(ex)
-            module_ex = Expr(:module, std_imports, newname, Expr(:block, loc))
-            if syntax_version !== nothing
-                pushfirst!(module_ex.args, syntax_version)
-            end
-            mod = Core.eval(parentmod, module_ex)::Module
-        end
-    end
+    mod = resolve_module(parentmod, newname, std_imports, syntax_version, firstline(ex))
     return mod, modbody::Expr
 end
 
@@ -581,34 +598,7 @@ function queuenext!(iter::ExprSplitter)
         elseif length(ex.args) == 4
             (syntax_version, std_imports, newname, modbody) = ex.args[1:4]
         else @assert false "unexpected :module form" end
-        if invokelatest(isdefinedglobal, mod, newname)
-            newmod = invokelatest(getglobal, mod, newname)
-            newmod isa Module || throw(ErrorException("invalid redefinition of constant $(newname)"))
-            mod = newmod
-        else
-            newnamestr = String(newname)
-            id = Base.identify_package(mod, newnamestr)
-            # If we're in a test environment and Julia's internal stdlibs are not a declared dependency of the package,
-            # we might fail to find it. Try really hard to find it.
-            if id === nothing && mod === Base.__toplevel__
-                for loaded_id in keys(Base.loaded_modules)
-                    if loaded_id.name == newnamestr
-                        id = loaded_id
-                        break
-                    end
-                end
-            end
-            if id !== nothing && haskey(Base.loaded_modules, id)
-                mod = Base.root_module(id)::Module
-            else
-                loc = firstline(ex)
-                module_ex = Expr(:module, std_imports, newname, Expr(:block, loc))
-                if syntax_version !== nothing
-                    pushfirst!(module_ex.args, syntax_version)
-                end
-                mod = Core.eval(mod, module_ex)::Module
-            end
-        end
+        mod = resolve_module(mod, newname::Symbol, std_imports, syntax_version, firstline(ex))
         # We've handled the module declaration, remove it and queue the body
         pop!(iter.stack)
         ex = modbody::Expr
