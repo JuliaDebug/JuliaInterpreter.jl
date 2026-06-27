@@ -553,6 +553,49 @@ locs = JuliaInterpreter.locals(JuliaInterpreter.enter_call(foo, ""))
 @test JuliaInterpreter.Variable("", :x, false) in locs
 @test JuliaInterpreter.Variable(String, :T, true) in locs
 
+# Subtyping envout markers from newer Julia versions must not leak into
+# interpreted static-parameter values.
+function envout_marker_optional_sparam(::Type{<:Tuple{Vararg{E}}}) where E
+    return E
+end
+function envout_marker_required_sparam(::Type{<:Tuple{E}}) where E
+    return E
+end
+let m = first(methods(envout_marker_optional_sparam)),
+    argtypes = (Tuple{typeof(envout_marker_optional_sparam), Type{Tuple{Vararg{Int,N}}}} where N),
+    ret = JuliaInterpreter.prepare_framecode(m, argtypes)
+
+    if ret isa Tuple
+        framecode, lenv = ret
+        if lenv[1] isa Core.SimpleVector
+            @test lenv[1][2] === false
+            frame = JuliaInterpreter.prepare_frame(framecode,
+                Any[envout_marker_optional_sparam, Tuple{Vararg{Int}}], lenv)
+            err = try
+                JuliaInterpreter.finish_and_return!(frame, true)
+            catch err
+                err
+            end
+            @test err isa UndefVarError
+            @test err.var === :E
+        end
+    end
+end
+let m = first(methods(envout_marker_required_sparam)),
+    argtypes = Tuple{typeof(envout_marker_required_sparam), Type{Tuple{Int}}},
+    ret = JuliaInterpreter.prepare_framecode(m, argtypes)
+
+    if ret isa Tuple
+        framecode, lenv = ret
+        if lenv[1] isa Core.SimpleVector
+            @test lenv[1][2] === true
+            frame = JuliaInterpreter.prepare_frame(framecode,
+                Any[envout_marker_required_sparam, Tuple{Int}], lenv)
+            @test JuliaInterpreter.finish_and_return!(frame, true) === Int
+        end
+    end
+end
+
 # Test interpreting subtypes finishes in a reasonable time
 @test @interpret subtypes(Integer) == subtypes(Integer)
 @test @interpret subtypes(Main, Integer) == subtypes(Main, Integer)
