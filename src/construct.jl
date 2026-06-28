@@ -81,7 +81,7 @@ end
 # stdlib-in-test case).
 function find_toplevel_module(newnamestr::AbstractString, ex::Expr)
     lnn = firstline(ex)
-    exfile = lnn === nothing ? nothing : String(lnn.file)
+    exfile = (lnn === nothing || lnn.file === nothing) ? nothing : String(lnn.file)
     fallback = nothing
     for loaded_id in keys(Base.loaded_modules)
         loaded_id.name == newnamestr || continue

@@ -334,6 +334,7 @@ end
 # disambiguates by source file.
 let
     dir = mktempdir()
+    atexit(() -> rm(dir; recursive=true, force=true))
     global const collFileA = joinpath(dir, "hostA", "Coll.jl")
     global const collFileB = joinpath(dir, "hostB", "Coll.jl")
     mkpath(dirname(collFileA)); mkpath(dirname(collFileB))
