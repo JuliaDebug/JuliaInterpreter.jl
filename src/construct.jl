@@ -61,6 +61,39 @@ function link_caller_callee!(caller::Frame, callee::Frame)
     return callee
 end
 
+_module_deffile(mod::Module) = @static if isdefined(Base, :moduleloc)
+    String(Base.moduleloc(mod).file)
+else
+    String(first(methods(getfield(mod, :eval))).file)
+end
+
+# Resolve a `module Name ... end` that is being evaluated into
+# `Base.__toplevel__` to an already-loaded module. `Base.identify_package`
+# returns `nothing` when `Name` is not a declared dependency of the active
+# project (an stdlib in a bare test environment, or a package extension), so we
+# search `Base.loaded_modules` by name. Names are not unique: two packages might
+# load extensions with the same name, and `loaded_modules` is a `Dict` whose key
+# iteration is hash order. Picking the first name match would bind the file to
+# whichever same-named module happens to come first, cross-wiring one package's
+# extension code into another's module. Disambiguate by the source file of the
+# module expression, which uniquely identifies the intended extension; fall back
+# to the first name match when no file matches (preserving resolution for the
+# stdlib-in-test case).
+function find_toplevel_module(newnamestr::AbstractString, ex::Expr)
+    lnn = firstline(ex)
+    exfile = lnn === nothing ? nothing : String(lnn.file)
+    fallback = nothing
+    for loaded_id in keys(Base.loaded_modules)
+        loaded_id.name == newnamestr || continue
+        fallback === nothing && (fallback = loaded_id)
+        exfile === nothing && continue
+        mod = get(Base.loaded_modules, loaded_id, nothing)
+        mod === nothing && continue
+        _module_deffile(mod) == exfile && return loaded_id
+    end
+    return fallback
+end
+
 """
     mod, body = find_or_create_module(parentmod::Module, ex::Expr)
 
@@ -88,12 +121,7 @@ function find_or_create_module(parentmod::Module, ex::Expr)
         # If we're in a test environment and Julia's internal stdlibs are not a declared dependency
         # of the package, we might fail to find it. Try really hard to find it.
         if id === nothing && parentmod === Base.__toplevel__
-            for loaded_id in keys(Base.loaded_modules)
-                if loaded_id.name == newnamestr
-                    id = loaded_id
-                    break
-                end
-            end
+            id = find_toplevel_module(newnamestr, ex)
         end
         if id !== nothing && haskey(Base.loaded_modules, id)
             mod = Base.root_module(id)::Module
@@ -591,12 +619,7 @@ function queuenext!(iter::ExprSplitter)
             # If we're in a test environment and Julia's internal stdlibs are not a declared dependency of the package,
             # we might fail to find it. Try really hard to find it.
             if id === nothing && mod === Base.__toplevel__
-                for loaded_id in keys(Base.loaded_modules)
-                    if loaded_id.name == newnamestr
-                        id = loaded_id
-                        break
-                    end
-                end
+                id = find_toplevel_module(newnamestr, ex)
             end
             if id !== nothing && haskey(Base.loaded_modules, id)
                 mod = Base.root_module(id)::Module
