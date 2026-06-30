@@ -330,7 +330,7 @@ end
 # Two packages can load extensions sharing a name. When such a module is
 # re-parsed into `Base.__toplevel__`, `identify_package` returns `nothing` and
 # the name-only fallback over `Base.loaded_modules` (hash order) would bind the
-# file to whichever same-named module hashes first. `find_toplevel_module`
+# file to whichever same-named module hashes first. `find_toplevel_module_id`
 # disambiguates by source file.
 let
     dir = mktempdir()
@@ -356,8 +356,8 @@ Base.include(CollHostB, collFileB)
         mkmod(file) = Expr(:module, false, :ReviseColl,
                            Expr(:block, LineNumberNode(1, Symbol(file)), :(f() = :x)))
         # Resolve to the module defined in the matching file regardless of hash order.
-        @test JuliaInterpreter.find_toplevel_module("ReviseColl", mkmod(fileA)) === idA
-        @test JuliaInterpreter.find_toplevel_module("ReviseColl", mkmod(fileB)) === idB
+        @test JuliaInterpreter.find_toplevel_module_id(Base.__toplevel__, :ReviseColl, mkmod(fileA)) === idA
+        @test JuliaInterpreter.find_toplevel_module_id(Base.__toplevel__, :ReviseColl, mkmod(fileB)) === idB
         # And drive the full ExprSplitter path that hits the fallback.
         exsplit = JuliaInterpreter.ExprSplitter(Base.__toplevel__, mkmod(fileB))
         (mod1, _), _ = iterate(exsplit)

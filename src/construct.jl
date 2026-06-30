@@ -67,28 +67,32 @@ else
     String(first(methods(getfield(mod, :eval))).file)
 end
 
-# Resolve a `module Name ... end` that is being evaluated into
-# `Base.__toplevel__` to an already-loaded module. `Base.identify_package`
-# returns `nothing` when `Name` is not a declared dependency of the active
-# project (an stdlib in a bare test environment, or a package extension), so we
-# search `Base.loaded_modules` by name. Names are not unique: two packages might
-# load extensions with the same name, and `loaded_modules` is a `Dict` whose key
-# iteration is hash order. Picking the first name match would bind the file to
-# whichever same-named module happens to come first, cross-wiring one package's
-# extension code into another's module. Disambiguate by the source file of the
-# module expression, which uniquely identifies the intended extension; fall back
-# to the first name match when no file matches (preserving resolution for the
-# stdlib-in-test case).
-function find_toplevel_module(newnamestr::AbstractString, ex::Expr)
+# Resolve `module newname ... end` (with source expression `ex`), evaluated into
+# `parentmod`, to the `PkgId` of the module it refers to, or `nothing`.
+# `Base.identify_package` is the normal lookup; it returns `nothing` when
+# `newname` is not a declared dependency of the active project (an stdlib in a
+# bare test environment, or a package extension), in which case toplevel
+# evaluation falls back to searching `Base.loaded_modules` by name.
+#
+# Names are not unique: two packages might load extensions with the same name,
+# and `loaded_modules` is a `Dict` whose iteration is hash order. Picking the
+# first name match would bind the file to whichever same-named module happens to
+# come first, cross-wiring one package's extension code into another's module.
+# Disambiguate by the source file of `ex`, which uniquely identifies the intended
+# extension; fall back to the first name match when no file matches (preserving
+# resolution for the stdlib-in-test case).
+function find_toplevel_module_id(parentmod::Module, newname::Symbol, ex::Expr)
+    newnamestr = String(newname)
+    id = Base.identify_package(parentmod, newnamestr)
+    id === nothing || return id
+    parentmod === Base.__toplevel__ || return nothing
     lnn = firstline(ex)
     exfile = (lnn === nothing || lnn.file === nothing) ? nothing : String(lnn.file)
     fallback = nothing
-    for loaded_id in keys(Base.loaded_modules)
+    @lock Base.require_lock for (loaded_id, mod) in Base.loaded_modules
         loaded_id.name == newnamestr || continue
         fallback === nothing && (fallback = loaded_id)
         exfile === nothing && continue
-        mod = get(Base.loaded_modules, loaded_id, nothing)
-        mod === nothing && continue
         _module_deffile(mod) == exfile && return loaded_id
     end
     return fallback
@@ -116,15 +120,14 @@ function find_or_create_module(parentmod::Module, ex::Expr)
         mod = invokelatest(getglobal, parentmod, newname)
         mod isa Module || throw(ErrorException("invalid redefinition of constant $(newname)"))
     else
-        newnamestr = String(newname)
-        id = Base.identify_package(parentmod, newnamestr)
-        # If we're in a test environment and Julia's internal stdlibs are not a declared dependency
-        # of the package, we might fail to find it. Try really hard to find it.
-        if id === nothing && parentmod === Base.__toplevel__
-            id = find_toplevel_module(newnamestr, ex)
-        end
-        if id !== nothing && haskey(Base.loaded_modules, id)
-            mod = Base.root_module(id)::Module
+        id = find_toplevel_module_id(parentmod, newname, ex)
+        # Atomically fetch the loaded module under `require_lock` (see
+        # `find_toplevel_module_id`); `nothing` means `id` is identifiable but
+        # not yet loaded, so we create the module below.
+        existing = id === nothing ? nothing :
+            @lock Base.require_lock get(Base.loaded_modules, id, nothing)
+        if existing !== nothing
+            mod = existing::Module
         else
             loc = firstline(ex)
             module_ex = Expr(:module, std_imports, newname, Expr(:block, loc))
@@ -474,7 +477,10 @@ end
 
 Given a module `mod` and a top-level expression `ex` in `mod`, create an iterable that returns
 individual expressions together with their module of evaluation.
-Optionally supply an initial `LineNumberNode` `lnn`.
+`module` statements are handled specially: `ExprSplitter` is used in *re*interpreting code, so
+it is conservative about creating modules: it will check to see whether the module already exists
+and if so return it rather than try to create a new module with the same name.
+Optionally supply an initial `LineNumberNode` `lnn` to endow returned expressions with file/line context.
 
 # Example
 
@@ -512,9 +518,7 @@ mod = Main
 ex = :($(Expr(:toplevel, :(#= REPL[7]:6 =#), :(const threshold = 0.1))))
 ```
 
-`ExprSplitter` created `Main.Private` was created for you so that its internal expressions could be evaluated.
-`ExprSplitter` will check to see whether the module already exists and if so return it rather than
-try to create a new module with the same name.
+`ExprSplitter` created `Main.Private` so that its internal expressions could be evaluated.
 
 In general each returned expression is a block with two parts: a `LineNumberNode` followed by a single expression.
 In some cases the returned expression may be `:toplevel`, as shown in the `const` declaration,
@@ -603,38 +607,10 @@ function queuenext!(iter::ExprSplitter)
     mod, ex = iter.stack[end]
     head = ex.head
     if head === :module
-        if length(ex.args) == 3
-            (std_imports, newname::Symbol, modbody) = ex.args[1:3]
-            syntax_version = nothing
-        elseif length(ex.args) == 4
-            (syntax_version, std_imports, newname, modbody) = ex.args[1:4]
-        else @assert false "unexpected :module form" end
-        if invokelatest(isdefinedglobal, mod, newname)
-            newmod = invokelatest(getglobal, mod, newname)
-            newmod isa Module || throw(ErrorException("invalid redefinition of constant $(newname)"))
-            mod = newmod
-        else
-            newnamestr = String(newname)
-            id = Base.identify_package(mod, newnamestr)
-            # If we're in a test environment and Julia's internal stdlibs are not a declared dependency of the package,
-            # we might fail to find it. Try really hard to find it.
-            if id === nothing && mod === Base.__toplevel__
-                id = find_toplevel_module(newnamestr, ex)
-            end
-            if id !== nothing && haskey(Base.loaded_modules, id)
-                mod = Base.root_module(id)::Module
-            else
-                loc = firstline(ex)
-                module_ex = Expr(:module, std_imports, newname, Expr(:block, loc))
-                if syntax_version !== nothing
-                    pushfirst!(module_ex.args, syntax_version)
-                end
-                mod = Core.eval(mod, module_ex)::Module
-            end
-        end
+        mod, modbody = find_or_create_module(mod, ex)
         # We've handled the module declaration, remove it and queue the body
         pop!(iter.stack)
-        ex = modbody::Expr
+        ex = modbody
         push_modex!(iter, mod, ex)
         return queuenext!(iter)
     elseif head === :macrocall
