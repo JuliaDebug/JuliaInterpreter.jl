@@ -334,6 +334,47 @@ end
     end
 end
 
+# Two packages can load extensions sharing a name. When such a module is
+# re-parsed into `Base.__toplevel__`, `identify_package` returns `nothing` and
+# the name-only fallback over `Base.loaded_modules` (hash order) would bind the
+# file to whichever same-named module hashes first. `find_toplevel_module_id`
+# disambiguates by source file.
+let
+    dir = mktempdir()
+    atexit(() -> rm(dir; recursive=true, force=true))
+    global const collFileA = joinpath(dir, "hostA", "Coll.jl")
+    global const collFileB = joinpath(dir, "hostB", "Coll.jl")
+    mkpath(dirname(collFileA)); mkpath(dirname(collFileB))
+    write(collFileA, "module ReviseColl\nf() = :A\nend\n")
+    write(collFileB, "module ReviseColl\nf() = :B\nend\n")
+end
+module CollHostA end
+module CollHostB end
+Base.include(CollHostA, collFileA)
+Base.include(CollHostB, collFileB)
+@testset "Namespace collision disambiguation" begin
+    modA, modB = CollHostA.ReviseColl, CollHostB.ReviseColl
+    idA = Base.PkgId(Base.UUID("aaaaaaaa-0000-4000-8000-000000000001"), "ReviseColl")
+    idB = Base.PkgId(Base.UUID("bbbbbbbb-0000-4000-8000-000000000002"), "ReviseColl")
+    Base.loaded_modules[idA] = modA
+    Base.loaded_modules[idB] = modB
+    fileA, fileB = collFileA, collFileB
+    try
+        mkmod(file) = Expr(:module, false, :ReviseColl,
+                           Expr(:block, LineNumberNode(1, Symbol(file)), :(f() = :x)))
+        # Resolve to the module defined in the matching file regardless of hash order.
+        @test JuliaInterpreter.find_toplevel_module_id(Base.__toplevel__, :ReviseColl, mkmod(fileA)) === idA
+        @test JuliaInterpreter.find_toplevel_module_id(Base.__toplevel__, :ReviseColl, mkmod(fileB)) === idB
+        # And drive the full ExprSplitter path that hits the fallback.
+        exsplit = JuliaInterpreter.ExprSplitter(Base.__toplevel__, mkmod(fileB))
+        (mod1, _), _ = iterate(exsplit)
+        @test mod1 === modB
+    finally
+        delete!(Base.loaded_modules, idA)
+        delete!(Base.loaded_modules, idB)
+    end
+end
+
 # incremental interpretation solves world-age problems
 # Taken straight from Julia's test/tuple.jl
 module IncTest
