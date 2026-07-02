@@ -257,6 +257,11 @@ function cglobal_query_chain(x)
 end
 @test @interpret(cglobal_query_str(0)) === cglobal_query_str(0) === Union{}
 @test @interpret(cglobal_query_chain(0)) === cglobal_query_chain(0) === Union{}
+# On Julia ≥ 1.14, `cglobal` name lookups lower to `Expr(:foreignglobal, spec)`
+# (JuliaLang/julia#61709), which the interpreter must evaluate itself (issue #734).
+cglobal_foreignglobal() = cglobal(:jl_options)
+@test @interpret(cglobal_foreignglobal()) == cglobal_foreignglobal() != C_NULL
+@test @interpret(Base.JLOptions()) == Base.JLOptions()
 # Issue #354: an `llvmcall` argument computed from a function argument cannot be
 # interpreted directly. `build_compiled_llvmcall!` runs a mini-interpreter (with
 # no arguments) over the statements feeding the call's type parameters; here the
