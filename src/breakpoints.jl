@@ -86,8 +86,8 @@ function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointSignat
         ft = Base.unwrap_unionall(ft0)
         if ft <: Function && isa(ft, DataType) && isdefined(ft, :instance)
             return ft.instance
-        elseif isa(ft, DataType) && ft.name === Type.body.name
-            return ft.parameters[1]
+        elseif _isType(ft)
+            return _Type_parameter(ft)
         else
             return ft
         end
