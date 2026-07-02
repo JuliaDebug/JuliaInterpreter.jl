@@ -261,6 +261,15 @@ end
 # (JuliaLang/julia#61709), which the interpreter must evaluate itself (issue #734).
 cglobal_foreignglobal() = cglobal(:jl_options)
 @test @interpret(cglobal_foreignglobal()) == cglobal_foreignglobal() != C_NULL
+# The argument may also be a runtime value rather than a (quoted)
+# symbol/string/tuple literal, in which case it must already be a pointer:
+# `cglobal(p)` is then a typechecked cast to `Ptr{Cvoid}`, and a non-pointer
+# argument is a `TypeError`, matching the compiled semantics.
+cglobal_ptr_passthrough(p) = cglobal(p)
+let p = cglobal(:jl_options)
+    @test @interpret(cglobal_ptr_passthrough(p)) === cglobal_ptr_passthrough(p) === p
+    @test_throws TypeError @interpret(cglobal_ptr_passthrough(1))
+end
 @test @interpret(Base.JLOptions()) == Base.JLOptions()
 # Issue #354: an `llvmcall` argument computed from a function argument cannot be
 # interpreted directly. `build_compiled_llvmcall!` runs a mini-interpreter (with
