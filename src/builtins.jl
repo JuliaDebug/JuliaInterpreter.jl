@@ -104,8 +104,6 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         return Some{Any}(Core._call_in_world_total(getargs(interp, args, frame)...))
     elseif f === Core._compute_sparams
         return Some{Any}(Core._compute_sparams(getargs(interp, args, frame)...))
-    elseif @static isdefinedglobal(Core, :_defaultctors) && f === Core._defaultctors
-        return Some{Any}(Core._defaultctors(getargs(interp, args, frame)...))
     elseif f === Core._equiv_typedef
         return Some{Any}(Core._equiv_typedef(getargs(interp, args, frame)...))
     elseif f === Core._expr
@@ -118,6 +116,12 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         return Some{Any}(Core._setsuper!(getargs(interp, args, frame)...))
     elseif f === Core._structtype
         return Some{Any}(Core._structtype(getargs(interp, args, frame)...))
+    elseif @static isdefinedglobal(Core, :_svec_len) && f === Core._svec_len
+        if nargs == 1
+            return Some{Any}(Core._svec_len(lookup(interp, frame, args[2])))
+        else
+            return Some{Any}(Core._svec_len(getargs(interp, args, frame)...))
+        end
     elseif f === Core._svec_ref
         if nargs == 2
             return Some{Any}(Core._svec_ref(lookup(interp, frame, args[2]), lookup(interp, frame, args[3])))
@@ -249,6 +253,12 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
             return Some{Any}(Core.memoryrefswap!(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))
         else
             return Some{Any}(Core.memoryrefswap!(getargs(interp, args, frame)...))
+        end
+    elseif @static isdefinedglobal(Core, :memoryrefunset!) && f === Core.memoryrefunset!
+        if nargs == 3
+            return Some{Any}(Core.memoryrefunset!(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4])))
+        else
+            return Some{Any}(Core.memoryrefunset!(getargs(interp, args, frame)...))
         end
     elseif f === Core.sizeof
         if nargs == 1
@@ -552,6 +562,8 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         end
         return recurse_expanded_builtin_latest(interp, frame, new_expr)
 
+    elseif @static (isdefinedglobal(Core, :_defaultctors) && Core._defaultctors isa Core.Builtin) && f === Core._defaultctors
+        return Some{Any}(Core._defaultctors(getargs(interp, args, frame)...))
     elseif f === Core.Intrinsics.llvmcall
         return Some{Any}(Core.Intrinsics.llvmcall(getargs(interp, args, frame)...))
     end

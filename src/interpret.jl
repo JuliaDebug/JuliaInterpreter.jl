@@ -69,6 +69,18 @@ function lookup_expr(interp::Interpreter, frame::Frame, e::Expr)
         end
     end
     head === :boundscheck && length(e.args) == 0 && return true
+    if head === :foreignglobal
+        # On Julia ≥ 1.14, `cglobal` name lookups lower to `Expr(:foreignglobal, spec)`
+        # (JuliaLang/julia#61709), where `spec` is a (possibly quoted) symbol, string,
+        # or `(name, lib)` tuple. Evaluate it the same way the runtime interpreter
+        # does: resolve the symbol and return the raw `Ptr{Cvoid}` (issue #734).
+        fptr = e.args[1]
+        isa(fptr, QuoteNode) && (fptr = fptr.value)
+        if isexpr(fptr, :tuple)
+            fptr = Core.tuple(Any[lookup_nested(interp, frame, arg) for arg in (fptr::Expr).args]...)
+        end
+        return ccall(:jl_cglobal_auto, Any, (Any,), fptr)
+    end
     if head === :call
         f = lookup(interp, frame, e.args[1])
         if (@static VERSION < v"1.11.0-DEV.1180" && true) && f === Core.svec

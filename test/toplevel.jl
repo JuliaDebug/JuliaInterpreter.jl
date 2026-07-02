@@ -209,7 +209,14 @@ function check_toplevel_script(M::Module)
     @test M.feval_add!(0) == 1
     @test M.feval_min!(0) == 1
     @test M.paramtype(Vector{Int8}) == Int8
-    @test M.paramtype(Vector) == M.NoParam
+    if VERSION < v"1.14.0-DEV"
+        # On 1.14-DEV this compiled (non-interpreted) call currently crashes with
+        # "Unreachable reached" (upstream regression in the in-progress
+        # static-parameter definedness work; see JuliaLang/julia#62001). Re-enable —
+        # possibly expecting the TypeVar instead of NoParam — once the upstream
+        # semantics settle.
+        @test M.paramtype(Vector) == M.NoParam
+    end
     @test M.Inner.g() == 5
     @test M.Inner.InnerInner.g() == 6
     @test isdefinedglobal(M, :Beat)

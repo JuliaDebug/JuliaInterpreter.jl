@@ -257,6 +257,11 @@ function cglobal_query_chain(x)
 end
 @test @interpret(cglobal_query_str(0)) === cglobal_query_str(0) === Union{}
 @test @interpret(cglobal_query_chain(0)) === cglobal_query_chain(0) === Union{}
+# On Julia ≥ 1.14, `cglobal` name lookups lower to `Expr(:foreignglobal, spec)`
+# (JuliaLang/julia#61709), which the interpreter must evaluate itself (issue #734).
+cglobal_foreignglobal() = cglobal(:jl_options)
+@test @interpret(cglobal_foreignglobal()) == cglobal_foreignglobal() != C_NULL
+@test @interpret(Base.JLOptions()) == Base.JLOptions()
 # Issue #354: an `llvmcall` argument computed from a function argument cannot be
 # interpreted directly. `build_compiled_llvmcall!` runs a mini-interpreter (with
 # no arguments) over the statements feeding the call's type parameters; here the
@@ -553,6 +558,49 @@ locs = JuliaInterpreter.locals(JuliaInterpreter.enter_call(foo, ""))
 @test JuliaInterpreter.Variable("", :x, false) in locs
 @test JuliaInterpreter.Variable(String, :T, true) in locs
 
+# Subtyping envout markers from newer Julia versions must not leak into
+# interpreted static-parameter values.
+function envout_marker_optional_sparam(::Type{<:Tuple{Vararg{E}}}) where E
+    return E
+end
+function envout_marker_required_sparam(::Type{<:Tuple{E}}) where E
+    return E
+end
+let m = first(methods(envout_marker_optional_sparam)),
+    argtypes = (Tuple{typeof(envout_marker_optional_sparam), Type{Tuple{Vararg{Int,N}}}} where N),
+    ret = JuliaInterpreter.prepare_framecode(m, argtypes)
+
+    if ret isa Tuple
+        framecode, lenv = ret
+        if lenv[1] isa Core.SimpleVector
+            @test lenv[1][2] === false
+            frame = JuliaInterpreter.prepare_frame(framecode,
+                Any[envout_marker_optional_sparam, Tuple{Vararg{Int}}], lenv)
+            err = try
+                JuliaInterpreter.finish_and_return!(frame, true)
+            catch err
+                err
+            end
+            @test err isa UndefVarError
+            @test err.var === :E
+        end
+    end
+end
+let m = first(methods(envout_marker_required_sparam)),
+    argtypes = Tuple{typeof(envout_marker_required_sparam), Type{Tuple{Int}}},
+    ret = JuliaInterpreter.prepare_framecode(m, argtypes)
+
+    if ret isa Tuple
+        framecode, lenv = ret
+        if lenv[1] isa Core.SimpleVector
+            @test lenv[1][2] === true
+            frame = JuliaInterpreter.prepare_frame(framecode,
+                Any[envout_marker_required_sparam, Tuple{Int}], lenv)
+            @test JuliaInterpreter.finish_and_return!(frame, true) === Int
+        end
+    end
+end
+
 # Test interpreting subtypes finishes in a reasonable time
 @test @interpret subtypes(Integer) == subtypes(Integer)
 @test @interpret subtypes(Main, Integer) == subtypes(Main, Integer)
@@ -567,12 +615,17 @@ line_g = @__LINE__
 
 _contractuser = Base.contractuser
 
+# On 1.14-DEV, method selection currently picks `error(s...)` over
+# `error(s::AbstractString)` for a `String` argument, so the innermost frame shows the
+# packed vararg tuple. Accept both until upstream method specificity settles.
+is_error_frame(line) = occursin(r"\[1\] error\(s::(String|Tuple\{String\})\)", line)
+
 try
     break_on(:error)
     local frame, bp = @interpret g_1(2.0)
     stacktrace_lines = split(sprint(Base.display_error, bp.err, leaf(frame)), '\n')
     @test occursin(string("ERROR: ", sprint(showerror, ErrorException("foo"))), stacktrace_lines[1])
-    @test occursin("[1] error(s::String)", stacktrace_lines[3])
+    @test is_error_frame(stacktrace_lines[3])
     @test occursin("[2] g_3(x::Float64)", stacktrace_lines[5])
     thefile = _contractuser(@__FILE__)
     @test occursin("$thefile:$(line_g - 1)", stacktrace_lines[6])
@@ -594,7 +647,7 @@ try
     frame, bp = JuliaInterpreter.debug_command(frame, :c, true)
     stacktrace_lines = split(sprint(Base.display_error, bp.err, leaf(frame)), '\n')
     @test occursin(string("ERROR: ", sprint(showerror, ErrorException("foo"))), stacktrace_lines[1])
-    @test occursin("[1] error(s::String)", stacktrace_lines[3])
+    @test is_error_frame(stacktrace_lines[3])
     thefile = _contractuser(@__FILE__)
     @test occursin("[2] g_3(x::Float64)", stacktrace_lines[5])
     @test occursin("$thefile:$(line_g - 1)", stacktrace_lines[6])

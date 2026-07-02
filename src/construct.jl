@@ -130,6 +130,8 @@ function clear_caches()
 end
 
 const empty_svec = Core.svec()
+is_envout_marker(@nospecialize(x)) =
+    isa(x, Core.SimpleVector) && length(x) == 2 && x[2] isa Bool
 
 function namedtuple(kwargs)
     names, types, vals = Symbol[], [], []
@@ -415,7 +417,15 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
     # Add static parameters to environment
     for i = 1:length(lenv)
         T = lenv[i]
-        isa(T, TypeVar) && continue  # only fill concrete types
+        if isa(T, TypeVar)
+            continue
+        elseif is_envout_marker(T)
+            T[2]::Bool || continue
+            inner = T[1]
+            inner isa TypeVar || continue
+            inner.lb === inner.ub || continue
+            T = inner.lb
+        end
         sparams[i] = T
     end
     return FrameData(locals, ssavalues, sparams, exception_frames, current_scopes,
