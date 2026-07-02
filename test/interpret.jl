@@ -615,12 +615,17 @@ line_g = @__LINE__
 
 _contractuser = Base.contractuser
 
+# On 1.14-DEV, method selection currently picks `error(s...)` over
+# `error(s::AbstractString)` for a `String` argument, so the innermost frame shows the
+# packed vararg tuple. Accept both until upstream method specificity settles.
+is_error_frame(line) = occursin(r"\[1\] error\(s::(String|Tuple\{String\})\)", line)
+
 try
     break_on(:error)
     local frame, bp = @interpret g_1(2.0)
     stacktrace_lines = split(sprint(Base.display_error, bp.err, leaf(frame)), '\n')
     @test occursin(string("ERROR: ", sprint(showerror, ErrorException("foo"))), stacktrace_lines[1])
-    @test occursin("[1] error(s::String)", stacktrace_lines[3])
+    @test is_error_frame(stacktrace_lines[3])
     @test occursin("[2] g_3(x::Float64)", stacktrace_lines[5])
     thefile = _contractuser(@__FILE__)
     @test occursin("$thefile:$(line_g - 1)", stacktrace_lines[6])
@@ -642,7 +647,7 @@ try
     frame, bp = JuliaInterpreter.debug_command(frame, :c, true)
     stacktrace_lines = split(sprint(Base.display_error, bp.err, leaf(frame)), '\n')
     @test occursin(string("ERROR: ", sprint(showerror, ErrorException("foo"))), stacktrace_lines[1])
-    @test occursin("[1] error(s::String)", stacktrace_lines[3])
+    @test is_error_frame(stacktrace_lines[3])
     thefile = _contractuser(@__FILE__)
     @test occursin("[2] g_3(x::Float64)", stacktrace_lines[5])
     @test occursin("$thefile:$(line_g - 1)", stacktrace_lines[6])
