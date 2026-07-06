@@ -70,16 +70,29 @@ function lookup_expr(interp::Interpreter, frame::Frame, e::Expr)
     end
     head === :boundscheck && length(e.args) == 0 && return true
     if head === :foreignglobal
-        # On Julia ≥ 1.14, `cglobal` name lookups lower to `Expr(:foreignglobal, spec)`
-        # (JuliaLang/julia#61709), where `spec` is a (possibly quoted) symbol, string,
-        # or `(name, lib)` tuple. Evaluate it the same way the runtime interpreter
-        # does: resolve the symbol and return the raw `Ptr{Cvoid}` (issue #734).
+        # On Julia ≥ 1.14, `cglobal` lowers to `Expr(:foreignglobal, spec)`
+        # (JuliaLang/julia#61709). Mirror the runtime interpreter's syntactic
+        # dispatch (`eval_expr` in src/interpreter.c): a (possibly quoted) symbol,
+        # string, or `(name, lib)` tuple resolves through the foreign-symbol
+        # lookup; any other argument must evaluate to a pointer, which is
+        # returned as a raw `Ptr{Cvoid}` (issue #734).
         fptr = e.args[1]
-        isa(fptr, QuoteNode) && (fptr = fptr.value)
-        if isexpr(fptr, :tuple)
-            fptr = Core.tuple(Any[lookup_nested(interp, frame, arg) for arg in (fptr::Expr).args]...)
+        if isa(fptr, QuoteNode) && (isa(fptr.value, String) || isa(fptr.value, Tuple))
+            fptr = fptr.value
         end
-        return ccall(:jl_cglobal_auto, Any, (Any,), fptr)
+        if isexpr(fptr, :tuple)
+            # The `(name, lib)` elements may themselves be `getproperty` chains
+            # (e.g. `Base.Math.libm`), which `lookup_nested` resolves.
+            spec = Core.tuple(Any[lookup_nested(interp, frame, arg) for arg in (fptr::Expr).args]...)
+            return ccall(:jl_cglobal_auto, Any, (Any,), spec)
+        elseif isa(fptr, Tuple) || isa(fptr, String)
+            return ccall(:jl_cglobal_auto, Any, (Any,), fptr)
+        elseif isa(fptr, QuoteNode) && isa(fptr.value, Symbol)
+            return ccall(:jl_cglobal_auto, Any, (Any,), fptr.value)
+        end
+        v = lookup(interp, frame, fptr)
+        isa(v, Ptr) || throw(TypeError(:cglobal, Ptr, v))
+        return convert(Ptr{Cvoid}, v)
     end
     if head === :call
         f = lookup(interp, frame, e.args[1])
