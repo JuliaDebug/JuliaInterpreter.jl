@@ -610,6 +610,17 @@ let m = first(methods(envout_marker_required_sparam)),
     end
 end
 
+# A failed generator must use native dispatch rather than return its call result as frame metadata.
+@generated function unavailable_generated_code(::Val{T}) where T
+    error("generated code unavailable")
+end
+let args = Any[unavailable_generated_code, Val(:test)],
+    ret = JuliaInterpreter.prepare_call(unavailable_generated_code, args)
+
+    @test ret[1] isa JuliaInterpreter.Compiled
+    @test_throws ErrorException unavailable_generated_code(Val(:test))
+end
+
 # Test interpreting subtypes finishes in a reasonable time
 @test @interpret subtypes(Integer) == subtypes(Integer)
 @test @interpret subtypes(Main, Integer) == subtypes(Main, Integer)

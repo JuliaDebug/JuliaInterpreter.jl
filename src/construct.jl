@@ -375,14 +375,13 @@ function prepare_call(@nospecialize(f), allargs;
         method = whichtt(argtypes, method_table; world)
     end
     if method === nothing
-        # Call it to generate the exact error
-        return invoke_in_world(world, f, allargs[2:end]...)
+        return Compiled(), argtypes
     end
     ret = prepare_framecode(method, argtypes; enter_generated, world)
-    # Exceptional returns
+    # Fall back to native dispatch when generated code is unavailable. Calling the
+    # function here would return a value where callers expect frame metadata.
     if ret === nothing
-        # The generator threw an error. Let's generate the same error by calling it.
-        return invoke_in_world(world, f, allargs[2:end]...)
+        return Compiled(), argtypes
     end
     isa(ret, Compiled) && return ret, argtypes
     # Typical return
