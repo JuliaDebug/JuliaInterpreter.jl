@@ -668,6 +668,7 @@ end
     ex = quote
         external_foo() = 1
         Base.Experimental.@MethodTable method_table
+        get_method_table() = method_table
     end
     frame = Frame(Toplevel, ex)
     JuliaInterpreter.finish!(frame, true)
@@ -689,6 +690,12 @@ end
     frame = Frame(Toplevel, ex)
     JuliaInterpreter.finish!(frame, true)
     @test nmethods_in_overlay() == 4
+
+    # The method-table operand remains an inline call in lowered code.
+    ex = :(Base.Experimental.@overlay get_method_table() external_foo(x::Float64) = 5)
+    frame = Frame(Toplevel, ex)
+    JuliaInterpreter.finish!(frame, true)
+    @test nmethods_in_overlay() == 5
 end
 
 # Need to wrap rhs of `:const` expression

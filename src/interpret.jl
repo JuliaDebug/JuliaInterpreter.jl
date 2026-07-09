@@ -355,6 +355,20 @@ evaluate_call!(frame::Frame, call_expr::Expr, enter_generated::Bool=false) =
 
 # The following come up only when evaluating toplevel code
 function evaluate_methoddef(interp::Interpreter, frame::Frame, node::Expr)
+    if is_define_method_call(node)
+        mod = lookup(interp, frame, node.args[2])::Module
+        targetarg = node.args[3]
+        target = targetarg isa Expr ? Core.eval(moduleof(frame), targetarg) :
+                                      lookup(interp, frame, targetarg)
+        @static if isdefinedglobal(Core, :define_method)
+            length(node.args) == 3 &&
+                return invoke_in_world(frame.world, Core.define_method, mod, target)
+            length(node.args) == 5 || error("invalid define_method call")
+            sig = lookup(interp, frame, node.args[4])::SimpleVector
+            body = lookup(interp, frame, node.args[5])::Union{CodeInfo, Expr}
+            return invoke_in_world(frame.world, Core.define_method, mod, target, sig, body)
+        end
+    end
     mt = extract_method_table(frame, node)
     mt !== nothing && return evaluate_overlayed_methoddef(interp, frame, node, mt)
     f = node.args[1]
@@ -389,29 +403,9 @@ function evaluate_overlayed_methoddef(interp::Interpreter, frame::Frame, node::E
     return method
 end
 
-function _is_define_method_ref(@nospecialize(f))
-    is_global_ref(f, Core, :define_method) && return true
-    @static if isdefined(Core, :define_method)
-        is_quotenode_egal(f, Core.define_method) && return true
-    end
-    return false
-end
-
-function _is_define_method_call_4arg(@nospecialize(stmt))
-    isexpr(stmt, :call) || return false
-    length(stmt.args) >= 5 || return false
-    return _is_define_method_ref(stmt.args[1])
-end
-
 function extract_method_table(frame::Frame, node::Expr; eval = true)
-    if _is_define_method_call_4arg(node)
-        # define_method(mod, name_or_mt, sigdata, body): check args[3] for a method table
-        arg = node.args[3]
-    elseif isexpr(node, :method, 3)
-        arg = node.args[1]
-    else
-        return nothing
-    end
+    is_methoddef3(node) || return nothing
+    arg = is_define_method_call(node) ? node.args[3] : node.args[1]
     isa(arg, MethodTable) && return arg
     if !isa(arg, Symbol) && !isa(arg, GlobalRef)
         eval || return nothing

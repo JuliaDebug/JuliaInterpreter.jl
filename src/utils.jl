@@ -168,6 +168,19 @@ end
 is_quotenode(@nospecialize(q), @nospecialize(val)) = isa(q, QuoteNode) && q.value == val
 is_quotenode_egal(@nospecialize(q), @nospecialize(val)) = isa(q, QuoteNode) && q.value === val
 
+function is_define_method_call(@nospecialize(stmt))
+    @static isdefinedglobal(Core, :define_method) || return false
+    isexpr(stmt, :call) || return false
+    f = stmt.args[1]
+    return f === Core.define_method || is_global_ref(f, Core, :define_method) ||
+           is_quotenode_egal(f, Core.define_method)
+end
+
+is_methoddef1(@nospecialize(stmt)) = isexpr(stmt, :method, 1) ||
+                                      (is_define_method_call(stmt) && length(stmt.args) == 3)
+is_methoddef3(@nospecialize(stmt)) = isexpr(stmt, :method, 3) ||
+                                      (is_define_method_call(stmt) && length(stmt.args) == 5)
+
 function is_quoted_type(@nospecialize(a), name::Symbol)
     if isa(a, QuoteNode)
         T = a.value
