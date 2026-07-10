@@ -157,7 +157,7 @@ or defines a new method.
 function through_methoddef_or_done!(interp::Interpreter, frame::Frame)
     pc = next_until!(interp, frame, true) do frame::Frame
         stmt = pc_expr(frame)
-        return isexpr(stmt, :method, 3) || isexpr(stmt, :thunk)
+        return is_methoddef3(stmt) || isexpr(stmt, :thunk)
     end
     (pc === nothing || isa(pc, BreakpointRef)) && return pc
     return step_expr!(interp, frame, true)  # define the method and return

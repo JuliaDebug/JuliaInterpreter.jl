@@ -71,7 +71,15 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
     end
     # By having each call appearing statically in the "switch" block below,
     # each gets call-site optimized.
-    if f === <:
+    if @static isdefinedglobal(Core, :define_method) && f === Core.define_method
+        return Some{Any}(evaluate_methoddef(interp, frame, call_expr))
+    elseif @static isdefinedglobal(Core, :has_free_typevars) && f === Core.has_free_typevars
+        if nargs == 1
+            return Some{Any}(Core.has_free_typevars(lookup(interp, frame, args[2])))
+        else
+            return Some{Any}(Core.has_free_typevars(getargs(interp, args, frame)...))
+        end
+    elseif f === <:
         if nargs == 2
             return Some{Any}(<:(lookup(interp, frame, args[2]), lookup(interp, frame, args[3])))
         else

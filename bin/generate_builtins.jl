@@ -224,7 +224,18 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
     # By having each call appearing statically in the "switch" block below,
     # each gets call-site optimized.
 """)
-    firstcall = true
+    print(io,
+"""
+    if @static isdefinedglobal(Core, :define_method) && f === Core.define_method
+        return Some{Any}(evaluate_methoddef(interp, frame, call_expr))
+    elseif @static isdefinedglobal(Core, :has_free_typevars) && f === Core.has_free_typevars
+        if nargs == 1
+            return Some{Any}(Core.has_free_typevars(lookup(interp, frame, args[2])))
+        else
+            return Some{Any}(Core.has_free_typevars(getargs(interp, args, frame)...))
+        end
+""")
+    firstcall = false
     for ft in subtypes(Core.Builtin)
         ft === Core.IntrinsicFunction && continue
         ft === typeof(kwinvoke) && continue  # handle this one later
@@ -234,6 +245,8 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         # `_defaultctors` is handled below with the recently removed builtins so that
         # its (guarded) clause is emitted even on Julia versions without the builtin.
         nameof(f) === :_defaultctors && continue
+        nameof(f) === :define_method && ft.name.module === Core && continue
+        nameof(f) === :has_free_typevars && ft.name.module === Core && continue
         fname = scopedname(f)
         # Tuple is common, especially for returned values from calls. It's worth avoiding
         # dynamic dispatch through a call to `ntuple`.

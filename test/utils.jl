@@ -112,7 +112,7 @@ function evaluate_limited!(interp::Interpreter, frame::Frame, nstmts::Int, istop
                     frame.pc = pc + 1
                     return nothing, limited_interp.nstmts
                 end
-            elseif istoplevel && stmt.head === :method && length(stmt.args) == 3
+            elseif istoplevel && JuliaInterpreter.is_methoddef3(stmt)
                 step_expr!(interp, frame, stmt, istoplevel)
                 frame.pc = pc + 1
                 return nothing, nstmts - 1

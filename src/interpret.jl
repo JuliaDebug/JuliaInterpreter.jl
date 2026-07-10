@@ -355,6 +355,20 @@ evaluate_call!(frame::Frame, call_expr::Expr, enter_generated::Bool=false) =
 
 # The following come up only when evaluating toplevel code
 function evaluate_methoddef(interp::Interpreter, frame::Frame, node::Expr)
+    if is_define_method_call(node)
+        mod = lookup(interp, frame, node.args[2])::Module
+        targetarg = node.args[3]
+        target = targetarg isa Expr ? Core.eval(moduleof(frame), targetarg) :
+                                      lookup(interp, frame, targetarg)
+        @static if isdefinedglobal(Core, :define_method)
+            length(node.args) == 3 &&
+                return invoke_in_world(frame.world, Core.define_method, mod, target)
+            length(node.args) == 5 || error("invalid define_method call")
+            sig = lookup(interp, frame, node.args[4])::SimpleVector
+            body = lookup(interp, frame, node.args[5])::Union{CodeInfo, Expr}
+            return invoke_in_world(frame.world, Core.define_method, mod, target, sig, body)
+        end
+    end
     mt = extract_method_table(frame, node)
     mt !== nothing && return evaluate_overlayed_methoddef(interp, frame, node, mt)
     f = node.args[1]
@@ -390,8 +404,8 @@ function evaluate_overlayed_methoddef(interp::Interpreter, frame::Frame, node::E
 end
 
 function extract_method_table(frame::Frame, node::Expr; eval = true)
-    isexpr(node, :method, 3) || return nothing
-    arg = node.args[1]
+    is_methoddef3(node) || return nothing
+    arg = is_define_method_call(node) ? node.args[3] : node.args[1]
     isa(arg, MethodTable) && return arg
     if !isa(arg, Symbol) && !isa(arg, GlobalRef)
         eval || return nothing
