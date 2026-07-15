@@ -317,6 +317,14 @@ end
         @test first(err_caught) isa ErrorException
         @test stacklength(fr) == 1
 
+        # Regression: a caught exception recycles the throwing frame twice (once in
+        # `handle_err`, once as `unwind_exception` walks to the catch block). Pooling a
+        # frame twice let it be handed back out while still live, aliasing it into its own
+        # caller chain and hanging `unwind_exception` on the next exception. Recycling must
+        # pool each frame at most once.
+        @test allunique(objectid.(JuliaInterpreter.junk_frames))
+        @test allunique(objectid.(JuliaInterpreter.junk_framedata))
+
         err_caught = Any[nothing]
         fr = JuliaInterpreter.enter_call(f_exc_outer)
         fr, pc = debug_command(fr, :s)
