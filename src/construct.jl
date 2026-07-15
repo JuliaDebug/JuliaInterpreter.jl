@@ -67,8 +67,9 @@ else
     String(first(methods(getfield(mod, :eval))).file)
 end
 
-# Resolve `module newname ... end` (with source expression `ex`), evaluated into
-# `parentmod`, to the `PkgId` of the module it refers to, or `nothing`.
+# Resolve a top-level `module newname ... end` (with source expression `ex`),
+# evaluated into `parentmod === Base.__toplevel__`, to the `PkgId` of the module it
+# refers to, or `nothing`.
 # `Base.identify_package` is the normal lookup; it returns `nothing` when
 # `newname` is not a declared dependency of the active project (an stdlib in a
 # bare test environment, or a package extension), in which case toplevel
@@ -85,7 +86,6 @@ function find_toplevel_module_id(parentmod::Module, newname::Symbol, ex::Expr)
     newnamestr = String(newname)
     id = Base.identify_package(parentmod, newnamestr)
     id === nothing || return id
-    parentmod === Base.__toplevel__ || return nothing
     lnn = firstline(ex)
     exfile = (lnn === nothing || lnn.file === nothing) ? nothing : String(lnn.file)
     fallback = nothing
@@ -116,26 +116,34 @@ function find_or_create_module(parentmod::Module, ex::Expr)
         error("unexpected :module form with $(length(ex.args)) args")
     end
     newname = newname::Symbol
+    mod = nothing
     if invokelatest(isdefinedglobal, parentmod, newname)
-        mod = invokelatest(getglobal, parentmod, newname)
-        mod isa Module || throw(ErrorException("invalid redefinition of constant $(newname)"))
-    else
+        found = invokelatest(getglobal, parentmod, newname)
+        found isa Module || throw(ErrorException("invalid redefinition of constant $(newname)"))
+        # Reuse a loaded package only when it loads itself (`parentmod === Base.__toplevel__`)
+        # or when `newname` already names a genuine submodule of `parentmod` (re-revision of a
+        # module we created). A nested `module newname` that merely shares a loaded package's
+        # name is a fresh local module that shadows the package, matching `include`
+        # (Revise issue #747).
+        if parentmod === Base.__toplevel__ || parentmodule(found) === parentmod
+            mod = found
+        end
+    elseif parentmod === Base.__toplevel__
         id = find_toplevel_module_id(parentmod, newname, ex)
         # Atomically fetch the loaded module under `require_lock` (see
         # `find_toplevel_module_id`); `nothing` means `id` is identifiable but
         # not yet loaded, so we create the module below.
         existing = id === nothing ? nothing :
             @lock Base.require_lock get(Base.loaded_modules, id, nothing)
-        if existing !== nothing
-            mod = existing::Module
-        else
-            loc = firstline(ex)
-            module_ex = Expr(:module, std_imports, newname, Expr(:block, loc))
-            if syntax_version !== nothing
-                pushfirst!(module_ex.args, syntax_version)
-            end
-            mod = Core.eval(parentmod, module_ex)::Module
+        existing === nothing || (mod = existing::Module)
+    end
+    if mod === nothing
+        loc = firstline(ex)
+        module_ex = Expr(:module, std_imports, newname, Expr(:block, loc))
+        if syntax_version !== nothing
+            pushfirst!(module_ex.args, syntax_version)
         end
+        mod = Core.eval(parentmod, module_ex)::Module
     end
     return mod, modbody::Expr
 end
