@@ -1381,3 +1381,16 @@ end
     @test (@interpret invoke_by_method_wrap(invoke_by_method, m, 1)) == 2
 end
 end
+
+@testset "NewvarNode undefines a reused slot" begin
+    function newvar_reuse(flags)
+        out = Bool[]
+        for flag in flags
+            flag && (x = 1)
+            push!(out, @isdefined(x))
+        end
+        out
+    end
+    fr = JuliaInterpreter.enter_call(newvar_reuse, [true, false])
+    @test finish_and_return!(fr) == newvar_reuse([true, false]) == [true, false]
+end

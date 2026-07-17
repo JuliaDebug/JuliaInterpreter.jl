@@ -762,7 +762,12 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
         elseif isa(node, ReturnNode)
             return nothing
         elseif isa(node, NewvarNode)
-            # FIXME: undefine the slot?
+            # A `NewvarNode` marks the (re-)entry of a variable's scope: the slot must be
+            # reset to undefined, e.g. so a value from a previous loop iteration does not
+            # remain visible (native code would throw `UndefVarError`).
+            id = node.slot.id
+            data.locals[id] = nothing
+            data.last_reference[id] = 0
         elseif istoplevel && isa(node, LineNumberNode)
         elseif istoplevel && isa(node, Symbol)
             rhs = invoke_in_world(frame.world, getfield, moduleof(frame), node)
