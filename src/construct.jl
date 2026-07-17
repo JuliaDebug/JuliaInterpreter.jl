@@ -907,7 +907,14 @@ function interpret(mod::Module, @nospecialize(ex0); interp=RecursiveInterpreter(
         local theargs = $theargs
         local frame = $entercall
         if frame === nothing
-            eval(Expr(:call, map(QuoteNode, theargs)...))
+            # Call the (already-resolved) function directly rather than through `Core.eval`:
+            # `eval` would run the call in the latest world, changing the semantics of an
+            # invocation issued from an older task world or an explicitly requested world.
+            if w === nothing
+                theargs[1](theargs[2:end]...)
+            else
+                Base.invoke_in_world(w, theargs[1], theargs[2:end]...)
+            end
         elseif shouldbreak(frame, 1)
             frame, BreakpointRef(frame.framecode, 1)
         else
