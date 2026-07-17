@@ -129,3 +129,17 @@ sparam_slots(x::T, y::S) where {T,S} = (x, y)
 frame = JuliaInterpreter.enter_call(sparam_slots, 1, 2.0)
 eval_code(frame, "S")
 @test frame.framedata.sparams == Any[Int, Float64]  # Int, not Int64: CI runs 32-bit too
+
+# eval_code mutates a captured Core.Box in place
+function box_capture()
+    x = 1
+    setx = () -> (x = 99)
+    getx = () -> x
+    return getx()
+end
+frame = JuliaInterpreter.enter_call(box_capture)
+while !any(v -> v.name === :getx, JuliaInterpreter.locals(frame))
+    JuliaInterpreter.step_expr!(frame)
+end
+eval_code(frame, "x = 42")
+@test JuliaInterpreter.finish_and_return!(frame) == 42
