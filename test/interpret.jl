@@ -1413,3 +1413,9 @@ end
     @test length(unique(last.(ccs))) >= 2
 end
 end
+
+@testset "rethrow() from a callee of a catch block" begin
+    rethrow_callee() = rethrow()
+    rethrow_caller() = try; error("boom"); catch; rethrow_callee(); end
+    @test_throws ErrorException("boom") finish_and_return!(JuliaInterpreter.enter_call(rethrow_caller))
+end
