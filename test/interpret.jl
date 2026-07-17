@@ -1397,3 +1397,9 @@ end
     @test Base.invoke_in_world(w, ApplicableWorld.probe) == false
     @test finish_and_return!(JuliaInterpreter.enter_call(ApplicableWorld.probe; world=w)) == false
 end
+
+@testset "Empty varargs are visible to locals" begin
+    empty_vararg(x...) = x
+    fr = JuliaInterpreter.enter_call(empty_vararg)
+    @test only(filter(v -> v.name === :x, JuliaInterpreter.locals(fr))).value === ()
+end
