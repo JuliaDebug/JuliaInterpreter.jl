@@ -1419,3 +1419,14 @@ end
     rethrow_caller() = try; error("boom"); catch; rethrow_callee(); end
     @test_throws ErrorException("boom") finish_and_return!(JuliaInterpreter.enter_call(rethrow_caller))
 end
+
+@testset "applicable respects the frame world" begin
+    @eval module ApplicableWorld
+    function target end
+    probe() = applicable(target, 1)
+    end
+    w = Base.get_world_counter()
+    @eval ApplicableWorld target(::Int) = 1
+    @test Base.invoke_in_world(w, ApplicableWorld.probe) == false
+    @test finish_and_return!(JuliaInterpreter.enter_call(ApplicableWorld.probe; world=w)) == false
+end
