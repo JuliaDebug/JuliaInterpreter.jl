@@ -677,3 +677,14 @@ end
     @test ret isa Tuple && ret[2] isa BreakpointRef
     remove()
 end
+
+@testset ":sr reports breakpoints in callees" begin
+    remove()
+    sr_callee(x) = x + 1
+    sr_caller(x) = (y = sr_callee(x); y * 2)
+    breakpoint(sr_callee)
+    fr = enter_call(sr_caller, 3)
+    ret = JuliaInterpreter.debug_command(fr, :sr)
+    @test ret isa Tuple && ret[2] isa BreakpointRef
+    remove()
+end
