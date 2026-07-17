@@ -710,3 +710,16 @@ end
         remove()
     end
 end
+
+@testset "@breakpoint conditions see the caller module's globals" begin
+    remove()
+    @eval module BreakpointCondModule
+    using JuliaInterpreter
+    const LIMIT = 0
+    f(x) = x
+    const bp = @breakpoint f(1) x > LIMIT
+    end
+    ret = @interpret BreakpointCondModule.f(1)
+    @test ret isa Tuple && ret[2] isa JuliaInterpreter.BreakpointRef
+    remove()
+end
