@@ -342,10 +342,13 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
             # run it natively.
             return invoke(fargs[2:end]...)
         else
-            f_invoked = which(fargs[2], argtypes)::Method
+            # Select the method in the frame's world; plain `which` would use the task's
+            # (possibly newer) world.
+            f_invoked = whichtt(Base.signature_type(fargs[2], argtypes); world=frame.world)
+            f_invoked === nothing && throw(MethodError(fargs[2], argtypes, frame.world))
         end
         ret = prepare_framecode(f_invoked, sig; enter_generated, world=frame.world)
-        isa(ret, Compiled) && return invoke(fargs[2:end]...)
+        isa(ret, Compiled) && return invoke_in_world(frame.world, invoke, fargs[2:end]...)
         @assert ret !== nothing
         framecode, lenv = ret
         lenv === nothing && return framecode  # this was a Builtin
