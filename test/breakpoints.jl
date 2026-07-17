@@ -743,3 +743,15 @@ end
     @test JuliaInterpreter.shouldbreak(fr, fr.pc)
     remove()
 end
+
+@testset "A replaced breakpoint handle no longer controls the replacement" begin
+    remove()
+    replaced_bp_f(x) = x
+    fr = JuliaInterpreter.enter_call(replaced_bp_f, 1)
+    oldbp = breakpoint(replaced_bp_f)
+    newbp = breakpoint(replaced_bp_f)
+    disable(oldbp)
+    @test newbp.enabled[]
+    @test JuliaInterpreter.shouldbreak(fr, fr.pc)
+    remove()
+end
