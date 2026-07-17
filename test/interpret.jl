@@ -1403,3 +1403,15 @@ end
     fr = JuliaInterpreter.enter_call(empty_vararg)
     @test only(filter(v -> v.name === :x, JuliaInterpreter.locals(fr))).value === ()
 end
+
+@static if VERSION >= v"1.12-"
+@testset "Calling convention is part of the compiled-ccall wrapper key" begin
+    ccall_plain() = @ccall jl_gc_safepoint()::Cvoid
+    ccall_gcsafe() = @ccall gc_safe=true jl_gc_safepoint()::Cvoid
+    @interpret ccall_plain()
+    @interpret ccall_gcsafe()
+    ccs = [k for k in keys(JuliaInterpreter.compiled_calls) if occursin("jl_gc_safepoint", string(k[1]))]
+    # the two ccalls differ only in the calling-convention field and must not share a wrapper
+    @test length(unique(last.(ccs))) >= 2
+end
+end
