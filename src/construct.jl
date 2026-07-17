@@ -726,7 +726,7 @@ function determine_method_for_expr(expr::Expr;
                                    world::UInt=default_world(),
                                    method_table::Union{Nothing,MethodTable}=nothing)
     f = to_function(expr.args[1], world)
-    allargs = expr.args
+    allargs = copy(expr.args)  # keyword extraction below must not mutate the caller's AST
     # Extract keyword args
     kwargs = Expr(:parameters)
     if length(allargs) > 1 && isexpr(allargs[2], :parameters)

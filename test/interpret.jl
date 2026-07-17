@@ -1422,3 +1422,11 @@ end
     @test hash(v) isa UInt
     @test isequal(hash(v), hash(JuliaInterpreter.Variable(missing, :x)))
 end
+
+@testset "determine_method_for_expr does not mutate the caller's AST" begin
+    kwfunc_ast(x; y=2) = x + y
+    ex = Expr(:call, kwfunc_ast, Expr(:parameters, Expr(:kw, :y, 2)), 1)
+    before = deepcopy(ex)
+    JuliaInterpreter.determine_method_for_expr(ex)
+    @test ex == before
+end
