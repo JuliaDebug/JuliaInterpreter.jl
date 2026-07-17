@@ -1430,3 +1430,19 @@ end
     @test Base.invoke_in_world(w, ApplicableWorld.probe) == false
     @test finish_and_return!(JuliaInterpreter.enter_call(ApplicableWorld.probe; world=w)) == false
 end
+
+@testset "@interpret compiled fallback stays in the caller's world" begin
+    @eval world_fallback(::Any) = 1
+    m_fb = which(world_fallback, Tuple{Any})
+    push!(JuliaInterpreter.compiled_methods, m_fb)
+    try
+        function world_fallback_root()
+            @eval world_fallback(::Int) = 2
+            (@interpret(world_fallback(1)), world_fallback(1))
+        end
+        a, b = world_fallback_root()
+        @test a == b
+    finally
+        delete!(JuliaInterpreter.compiled_methods, m_fb)
+    end
+end
