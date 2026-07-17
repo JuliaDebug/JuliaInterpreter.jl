@@ -688,3 +688,27 @@ end
     ret = JuliaInterpreter.debug_command(fr, :until, true)
     @test ret === nothing || ret isa Tuple
 end
+
+@testset "Debugger unwinding must not reuse a consumed handler" begin
+    handler_reuse_inner(tag) = error(String(tag))
+    function handler_reuse_outer()
+        n = 0
+        try
+            handler_reuse_inner(:first)
+        catch
+            n += 1
+        end
+        n < 2 && handler_reuse_inner(:second)
+        n
+    end
+    native = try handler_reuse_outer() catch err; err.msg end
+    fr = enter_call(handler_reuse_outer)
+    leaffr, _ = JuliaInterpreter.debug_command(fr, :s)
+    interp = try
+        JuliaInterpreter.debug_command(leaffr, :c)
+        "no throw"
+    catch err
+        (err::ErrorException).msg
+    end
+    @test native == interp == "second"
+end
