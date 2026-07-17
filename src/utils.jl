@@ -809,7 +809,14 @@ function eval_code(frame::Frame, expr::Expr)
             idx = argmax(data.last_reference[slot_indices])
             slot_idx = slot_indices[idx]
             data.last_reference[slot_idx] = (frame.assignment_counter += 1)
-            data.locals[slot_idx] = Some{Any}(v.value isa Core.Box ? Core.Box(res[i]) : res[i])
+            if v.value isa Core.Box
+                # Mutate the existing Box in place: closures that captured the variable
+                # hold a reference to this same Box and must observe the new value.
+                v.value.contents = res[i]
+                data.locals[slot_idx] = Some{Any}(v.value)
+            else
+                data.locals[slot_idx] = Some{Any}(res[i])
+            end
         end
     end
     eval_res
