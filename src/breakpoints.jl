@@ -148,6 +148,10 @@ function breakpoint(f::Union{Method, Callable}, sig=nothing, line::Integer=0, co
         push!(_breakpoints, bp)
     else  #Replace existing breakpoint
         old_bp = _breakpoints[idx]
+        # Detach the replaced handle: its instances point at the same statement slots the
+        # new breakpoint just (re)installed, so e.g. `disable(old_bp)` must not keep
+        # controlling the replacement.
+        empty!(old_bp.instances)
         _breakpoints[idx] = bp
         firehooks(remove, old_bp)
     end
@@ -181,6 +185,7 @@ function breakpoint(file::AbstractString, line::Integer, condition::Condition=no
         push!(_breakpoints, bp)
     else  # replace existing breakpoint
         old_bp = _breakpoints[idx]
+        empty!(old_bp.instances)  # see the note in the method-breakpoint path above
         _breakpoints[idx] = bp
         firehooks(remove, old_bp)
     end
