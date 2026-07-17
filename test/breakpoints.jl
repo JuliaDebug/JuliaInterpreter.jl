@@ -734,3 +734,12 @@ end
     @test ret isa Tuple && ret[2] isa JuliaInterpreter.BreakpointRef
     remove()
 end
+
+@testset "Conditions tolerate unbound static parameters" begin
+    remove()
+    unbound_sparam(x::T) where {T,S} = x
+    breakpoint(unbound_sparam, :(1 == 1))
+    fr = JuliaInterpreter.enter_call(unbound_sparam, 1)
+    @test JuliaInterpreter.shouldbreak(fr, fr.pc)
+    remove()
+end
