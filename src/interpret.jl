@@ -200,7 +200,15 @@ function evaluate_foreigncall(interp::Interpreter, frame::Frame, call_expr::Expr
     args = collect_args(interp, frame, call_expr; isfc = head === :foreigncall)
     for i = 2:length(args)
         arg = args[i]
-        args[i] = isa(arg, Symbol) ? QuoteNode(arg) : arg
+        if head === :foreigncall && i >= 6
+            # args[2:5] are metadata (return type, argument types, nreq, calling convention);
+            # args[6:end] are the evaluated argument values (plus GC roots). The rebuilt
+            # expression is passed to `Core.eval`, which re-evaluates raw `Expr`/`Symbol`/
+            # `QuoteNode`/`GlobalRef` values as code, so quote every value unconditionally.
+            args[i] = QuoteNode(arg)
+        else
+            args[i] = isa(arg, Symbol) ? QuoteNode(arg) : arg
+        end
     end
     head === :cfunction && (args[2] = QuoteNode(args[2]))
     if head === :foreigncall && !isa(args[5], QuoteNode)
