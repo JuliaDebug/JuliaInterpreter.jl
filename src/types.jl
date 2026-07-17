@@ -306,6 +306,8 @@ Important fields:
   the value of `T` given the particular input `x`.
 - `exception_frames`: a list of indexes to `catch` blocks for handling exceptions within
   the current frame. The active handler is the last one on the list.
+- `exception_scopes`: parallel to `exception_frames`, the depth of `current_scopes` when
+  each handler was entered, so unwinding an exception can restore the scope stack.
 - `last_exception`: the exception `throw`n by this frame or one of its callees.
 """
 struct FrameData
@@ -313,6 +315,7 @@ struct FrameData
     ssavalues::Vector{Any}
     sparams::Vector{Any}
     exception_frames::Vector{Int}
+    exception_scopes::Vector{Int}
     current_scopes::Vector{Scope}
     last_exception::Base.RefValue{Any}
     caller_will_catch_err::Bool
