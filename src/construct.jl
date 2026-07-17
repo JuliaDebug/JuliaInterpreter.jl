@@ -419,6 +419,7 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         olddata = pop!(junk_framedata)
         locals, ssavalues, sparams = olddata.locals, olddata.ssavalues, olddata.sparams
         exception_frames, current_scopes, last_reference = olddata.exception_frames, olddata.current_scopes, olddata.last_reference
+        exception_scopes = olddata.exception_scopes
         last_exception = olddata.last_exception
         callargs = olddata.callargs
         resize!(locals, ns)
@@ -428,6 +429,7 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         # for check_isdefined to work properly, we need sparams to start out unassigned
         resize!(sparams, 0)
         empty!(exception_frames)
+        empty!(exception_scopes)
         empty!(current_scopes)
         resize!(last_reference, ns)
         last_exception[] = _INACTIVE_EXCEPTION.instance
@@ -436,6 +438,7 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         ssavalues = Vector{Any}(undef, ng)
         sparams = Vector{Any}(undef, 0)
         exception_frames = Int[]
+        exception_scopes = Int[]
         current_scopes = Scope[]
         last_reference = Vector{Int}(undef, ns)
         callargs = Any[]
@@ -476,8 +479,8 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         end
         sparams[i] = T
     end
-    return FrameData(locals, ssavalues, sparams, exception_frames, current_scopes,
-                     last_exception, caller_will_catch_err, last_reference, callargs)
+    return FrameData(locals, ssavalues, sparams, exception_frames, exception_scopes,
+                     current_scopes, last_exception, caller_will_catch_err, last_reference, callargs)
 end
 
 """

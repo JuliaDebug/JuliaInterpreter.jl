@@ -426,8 +426,13 @@ function unwind_exception(frame::Frame, @nospecialize(exc))
         if !isempty(frame.framedata.exception_frames)
             # Exception caught
             @assert is_leaf(frame)
-            frame.pc = frame.framedata.exception_frames[end]
-            frame.framedata.last_exception[] = exc
+            data = frame.framedata
+            # Restore the scope stack to its depth when the handler was entered (see
+            # `handle_err`).
+            scope_depth = data.exception_scopes[end]
+            scope_depth < length(data.current_scopes) && resize!(data.current_scopes, scope_depth)
+            frame.pc = data.exception_frames[end]
+            data.last_exception[] = exc
             return frame
         end
         frame = return_from(frame)

@@ -686,11 +686,13 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
             elseif node.head === :enter
                 rhs = node.args[1]::Int
                 push!(data.exception_frames, rhs)
+                push!(data.exception_scopes, length(data.current_scopes))
             elseif node.head === :leave
                 if length(node.args) == 1 && isa(node.args[1], Int)
                     arg = node.args[1]::Int
                     for _ = 1:arg
                         pop!(data.exception_frames)
+                        pop!(data.exception_scopes)
                     end
                 else
                     for i = 1:length(node.args)
@@ -699,6 +701,7 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
                         enterstmt = frame.framecode.src.code[(targ::SSAValue).id]
                         enterstmt === nothing && continue
                         pop!(data.exception_frames)
+                        pop!(data.exception_scopes)
                         if isdefined(enterstmt, :scope)
                             pop!(data.current_scopes)
                         end
@@ -784,6 +787,9 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
         elseif @static (isdefinedglobal(Core.IR, :EnterNode) && true) && isa(node, Core.IR.EnterNode)
             rhs = node.catch_dest
             push!(data.exception_frames, rhs)
+            # Record the scope depth at handler entry (before any scope introduced by this
+            # `EnterNode`), so exception unwinding can restore `current_scopes`.
+            push!(data.exception_scopes, length(data.current_scopes))
             if isdefined(node, :scope)
                 push!(data.current_scopes, lookup(interp, frame, node.scope))
             end
@@ -857,7 +863,12 @@ function handle_err(::Interpreter, frame::Frame, @nospecialize(err))
         rethrow(err)
     end
     data.last_exception[] = err
+    # Native unwinding restores the scope state saved when the handler was entered
+    # (`jl_eh_restore_state`); mirror that by truncating `current_scopes`.
+    scope_depth = data.exception_scopes[end]
+    scope_depth < length(data.current_scopes) && resize!(data.current_scopes, scope_depth)
     pc = @static VERSION >= v"1.11-" ? pop!(data.exception_frames) : data.exception_frames[end] # implicit :leave after https://github.com/JuliaLang/julia/pull/52245
+    @static VERSION >= v"1.11-" && pop!(data.exception_scopes)
     @assert is_leaf(frame)
     frame.pc = pc
     return pc
