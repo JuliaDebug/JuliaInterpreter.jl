@@ -247,7 +247,10 @@ function prepare_slotfunction(framecode::FrameCode, body::Union{Symbol,Expr})
     if isa(scope, Method)
         syms = sparam_syms(scope)
         for i = 1:length(syms)
-            push!(assignments, Expr(:(=), syms[i], :($dataname.sparams[$i])))
+            # A static parameter can be unbound (e.g. declared but unused); guard the read
+            # so conditions that don't reference it still work.
+            push!(assignments, Expr(:(=), syms[i],
+                :(isassigned($dataname.sparams, $i) ? $dataname.sparams[$i] : $default)))
         end
     end
     funcname = isa(scope, Method) ? gensym("slotfunction") : gensym(Symbol(scope, "_slotfunction"))
