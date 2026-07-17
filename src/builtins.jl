@@ -287,7 +287,7 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
     elseif @static isdefinedglobal(Core, :throw_methoderror) && f === Core.throw_methoderror
         return Some{Any}(Core.throw_methoderror(getargs(interp, args, frame)...))
     elseif f === applicable
-        return Some{Any}(applicable(getargs(interp, args, frame)...))
+        return Some{Any}(Base.invoke_in_world(frame.world, applicable, getargs(interp, args, frame)...))
     elseif f === fieldtype
         if nargs == 2
             return Some{Any}(fieldtype(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]))::Type)

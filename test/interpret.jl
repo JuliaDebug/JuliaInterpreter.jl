@@ -1386,3 +1386,14 @@ end
     @test (@interpret oc_wrapper(oc, 1, 2)) == 3
     @test (@interpret interp=NonRecursiveInterpreter() oc_wrapper(oc, 1, 2)) == 3
 end
+
+@testset "applicable respects the frame world" begin
+    @eval module ApplicableWorld
+    function target end
+    probe() = applicable(target, 1)
+    end
+    w = Base.get_world_counter()
+    @eval ApplicableWorld target(::Int) = 1
+    @test Base.invoke_in_world(w, ApplicableWorld.probe) == false
+    @test finish_and_return!(JuliaInterpreter.enter_call(ApplicableWorld.probe; world=w)) == false
+end
