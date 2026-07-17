@@ -329,9 +329,21 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
         rethrow()
     end
     if fargs[1] === Core.invoke # invoke needs special handling
-        f_invoked = which(fargs[2], fargs[3])::Method
+        argtypes = fargs[3]
         fargs_pruned = [fargs[2]; fargs[4:end]]
         sig = Tuple{mapany(_Typeof, fargs_pruned)...}
+        if isa(argtypes, Method)
+            # `invoke(f, method::Method, args...)` (Julia 1.12+)
+            f_invoked = argtypes
+            # An inapplicable method is an error; defer to the native `invoke` to raise it.
+            sig <: f_invoked.sig || return invoke(fargs[2:end]...)
+        elseif isa(argtypes, Core.CodeInstance)
+            # `invoke(f, ci::CodeInstance, args...)` requests that specific compiled code:
+            # run it natively.
+            return invoke(fargs[2:end]...)
+        else
+            f_invoked = which(fargs[2], argtypes)::Method
+        end
         ret = prepare_framecode(f_invoked, sig; enter_generated, world=frame.world)
         isa(ret, Compiled) && return invoke(fargs[2:end]...)
         @assert ret !== nothing

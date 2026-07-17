@@ -1357,3 +1357,12 @@ end
     rethrow_caller() = try; error("boom"); catch; rethrow_callee(); end
     @test_throws ErrorException("boom") finish_and_return!(JuliaInterpreter.enter_call(rethrow_caller))
 end
+
+@static if VERSION >= v"1.12-"
+@testset "invoke(f, ::Method, args...)" begin
+    invoke_by_method(x::Real) = x + 1
+    m = only(methods(invoke_by_method))
+    invoke_by_method_wrap(f, m, x) = invoke(f, m, x)
+    @test (@interpret invoke_by_method_wrap(invoke_by_method, m, 1)) == 2
+end
+end
