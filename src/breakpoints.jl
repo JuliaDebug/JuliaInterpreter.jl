@@ -193,12 +193,21 @@ function breakpoint(file::AbstractString, line::Integer, condition::Condition=no
     return bp
 end
 
+# Like `endswith`, but the match must begin at a path-component boundary, so that
+# a breakpoint on "foo.jl" does not match "notfoo.jl".
+function endswith_at_pathsep(filepath::AbstractString, path::AbstractString)
+    endswith(filepath, path) || return false
+    nprefix = ncodeunits(filepath) - ncodeunits(path)
+    nprefix == 0 && return true
+    return codeunit(filepath, nprefix) in (UInt8('/'), UInt8('\\'))
+end
+
 function add_breakpoint_if_match!(framecode::FrameCode, bp::BreakpointFileLocation)
     framecode_contains_file = false
     matching_file = nothing
     for file in framecode.unique_files
         filepath = CodeTracking.maybe_fix_path(String(file))
-        if Base.samefile(bp.abspath, filepath) || endswith(filepath, bp.path)
+        if Base.samefile(bp.abspath, filepath) || endswith_at_pathsep(filepath, bp.path)
             framecode_contains_file = true
             matching_file = file
             break

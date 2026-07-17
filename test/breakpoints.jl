@@ -744,3 +744,17 @@ end
     @test JuliaInterpreter.shouldbreak(fr, fr.pc)
     remove()
 end
+
+@testset "File suffix matching respects path-component boundaries" begin
+    @test JuliaInterpreter.endswith_at_pathsep("/a/b/foo.jl", "foo.jl")
+    @test JuliaInterpreter.endswith_at_pathsep("/a/b/foo.jl", "b/foo.jl")
+    @test JuliaInterpreter.endswith_at_pathsep("foo.jl", "foo.jl")
+    @test !JuliaInterpreter.endswith_at_pathsep("/a/notfoo.jl", "foo.jl")
+    @test !JuliaInterpreter.endswith_at_pathsep("/a/xb/foo.jl", "b/foo.jl")
+    remove()
+    Base.include_string(@__MODULE__, "suffix_bp_f() = 1", "/tmp/not_target_file.jl")
+    JuliaInterpreter.enter_call(suffix_bp_f)  # cache the framecode
+    bp = breakpoint("target_file.jl", 1)
+    @test isempty(bp.instances)
+    remove()
+end
