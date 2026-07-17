@@ -143,3 +143,9 @@ while !any(v -> v.name === :getx, JuliaInterpreter.locals(frame))
 end
 eval_code(frame, "x = 42")
 @test JuliaInterpreter.finish_and_return!(frame) == 42
+
+# eval_code evaluates every form of a toplevel expression
+toplevel_eval_arg(x) = x
+frame = JuliaInterpreter.enter_call(toplevel_eval_arg, 1)
+@test eval_code(frame, Expr(:toplevel, :(x = 5), :(x + 1))) == 6
+@test only(filter(v -> v.name === :x, JuliaInterpreter.locals(frame))).value == 5
