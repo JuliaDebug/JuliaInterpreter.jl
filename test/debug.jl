@@ -659,3 +659,9 @@ end
     end
     @test r === nothing
 end
+
+@testset "until_line! without location metadata" begin
+    fr = Frame(Main, Base.remove_linenums!(quote nolineinfo_a = 1; nolineinfo_b = nolineinfo_a + 1; nolineinfo_b end))
+    ret = JuliaInterpreter.debug_command(fr, :until, true)
+    @test ret === nothing || ret isa Tuple
+end
