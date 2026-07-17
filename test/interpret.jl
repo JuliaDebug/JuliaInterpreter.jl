@@ -1459,3 +1459,32 @@ end
     # the resolved form still works at the current world
     @test finish_and_return!(JuliaInterpreter.enter_call(InvokeWorld.probe, 1)) === :too_new
 end
+
+@testset "pop_exception restores the active-exception stack" begin
+    function nested_rethrow()
+        try
+            error("outer")
+        catch
+            try
+                error("inner")
+            catch
+            end
+            rethrow()
+        end
+    end
+    native = try nested_rethrow() catch err; err.msg end
+    interp = try finish_and_return!(JuliaInterpreter.enter_call(nested_rethrow)) catch err; (err::ErrorException).msg end
+    @test native == interp == "outer"
+
+    # rethrow() from a callee, after an inner catch completed first
+    popexc_callee() = rethrow()
+    function popexc_caller()
+        try
+            error("outer")
+        catch
+            try error("inner") catch end
+            popexc_callee()
+        end
+    end
+    @test_throws ErrorException("outer") finish_and_return!(JuliaInterpreter.enter_call(popexc_caller))
+end
