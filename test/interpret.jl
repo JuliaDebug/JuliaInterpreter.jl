@@ -1351,3 +1351,9 @@ end
     frame = Frame(Main, :(ccall(:jl_typeof, Any, (Any,), $(QuoteNode(astval)))))
     @test finish_and_return!(frame, true) === Expr
 end
+
+@testset "rethrow() from a callee of a catch block" begin
+    rethrow_callee() = rethrow()
+    rethrow_caller() = try; error("boom"); catch; rethrow_callee(); end
+    @test_throws ErrorException("boom") finish_and_return!(JuliaInterpreter.enter_call(rethrow_caller))
+end

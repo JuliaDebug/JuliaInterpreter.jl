@@ -314,8 +314,19 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
     if fargs[1] === Core.eval
         return Core.eval(fargs[2], fargs[3])  # not a builtin, but worth treating specially
     elseif fargs[1] === Base.rethrow
-        err = length(fargs) > 1 ? fargs[2] : frame.framedata.last_exception[]
-        throw(err)
+        length(fargs) > 1 && throw(fargs[2])
+        # `rethrow()` rethrows the task's innermost exception being handled, which may live
+        # in a caller's frame when it is reached from a function called inside a `catch`
+        # block. Each frame records only its own caught exception, so walk the caller chain.
+        fr = frame
+        while fr !== nothing
+            err = fr.framedata.last_exception[]
+            isa(err, _INACTIVE_EXCEPTION) || throw(err)
+            fr = fr.caller
+        end
+        # No interpreted frame is handling an exception; fall back to the native rethrow
+        # (interpreted code may be running inside a native `catch` block).
+        rethrow()
     end
     if fargs[1] === Core.invoke # invoke needs special handling
         f_invoked = which(fargs[2], fargs[3])::Method
