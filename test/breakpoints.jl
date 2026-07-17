@@ -690,3 +690,23 @@ end
     @test bp isa JuliaInterpreter.BreakpointSignature
     remove()
 end
+
+@testset "Replacement and remove-all fire remove hooks" begin
+    remove()
+    events = []
+    hook = (f, bp) -> push!(events, nameof(f))
+    JuliaInterpreter.on_breakpoints_updated(hook)
+    try
+        hookfire(x) = x
+        JuliaInterpreter.enter_call(hookfire, 1)
+        breakpoint(hookfire)
+        breakpoint(hookfire)    # replacement must fire a remove for the old handle
+        @test count(==(:remove), events) == 1
+        empty!(events)
+        remove()                # remove-all must fire remove hooks
+        @test count(==(:remove), events) == 1
+    finally
+        filter!(!=(hook), JuliaInterpreter.breakpoint_update_hooks)
+        remove()
+    end
+end

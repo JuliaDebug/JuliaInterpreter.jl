@@ -176,7 +176,13 @@ function breakpoint(file::AbstractString, line::Integer, condition::Condition=no
     bp = BreakpointFileLocation(file, apath, line, condition, Ref(true), BreakpointRef[])
     add_to_existing_framecodes(bp)
     idx = findfirst(bp2 -> same_location(bp, bp2), _breakpoints)
-    idx === nothing ? push!(_breakpoints, bp) : (_breakpoints[idx] = bp)
+    if idx === nothing  # creating new
+        push!(_breakpoints, bp)
+    else  # replace existing breakpoint
+        old_bp = _breakpoints[idx]
+        _breakpoints[idx] = bp
+        firehooks(remove, old_bp)
+    end
     firehooks(breakpoint, bp)
     return bp
 end
@@ -335,10 +341,11 @@ disable() = foreach(disable, _breakpoints)
 Remove all breakpoints.
 """
 function remove()
-    for bp in _breakpoints
-        foreach(remove, bp.instances)
+    # Iterate over a copy: `remove(bp)` deletes from `_breakpoints` (and fires the
+    # `remove` hooks, which the previous `empty!`-based implementation skipped).
+    for bp in copy(_breakpoints)
+        remove(bp)
     end
-    empty!(_breakpoints)
 end
 
 """
