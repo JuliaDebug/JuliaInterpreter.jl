@@ -1415,3 +1415,10 @@ end
     @test length(unique(last.(ccs))) >= 2
 end
 end
+
+@testset "Variable equality is total" begin
+    v = JuliaInterpreter.Variable(missing, :x)
+    @test isequal(v, v) === true
+    @test hash(v) isa UInt
+    @test isequal(hash(v), hash(JuliaInterpreter.Variable(missing, :x)))
+end
