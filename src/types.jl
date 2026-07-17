@@ -575,7 +575,7 @@ same_location(::AbstractBreakpoint, ::AbstractBreakpoint) = false
 
 function print_bp_condition(io::IO, cond::Condition)
     if cond !== nothing
-        if isa(cond, Tuple{Module, Expr}) && (expr = expr[2])
+        if isa(cond, Tuple{Module, Expr})
             cond = (cond[1], Base.remove_linenums!(copy(cond[2])))
         elseif isa(cond, Expr)
             cond = Base.remove_linenums!(copy(cond))

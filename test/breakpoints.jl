@@ -660,3 +660,11 @@ end
         remove()
     end
 end
+
+@testset "Showing a module-qualified condition" begin
+    remove()
+    showcond_f(x) = x
+    bp = breakpoint(showcond_f, (Main, :(x > 0)))
+    @test occursin("x > 0", sprint(show, bp))
+    remove()
+end
