@@ -1446,3 +1446,16 @@ end
         delete!(JuliaInterpreter.compiled_methods, m_fb)
     end
 end
+
+@testset "invoke selects its method in the frame world" begin
+    @eval module InvokeWorld
+    function target end
+    probe(x) = invoke(target, Tuple{Real}, x)
+    end
+    w = Base.get_world_counter()
+    @eval InvokeWorld target(::Real) = :too_new
+    @test_throws MethodError Base.invoke_in_world(w, InvokeWorld.probe, 1)
+    @test_throws MethodError finish_and_return!(JuliaInterpreter.enter_call(InvokeWorld.probe, 1; world=w))
+    # the resolved form still works at the current world
+    @test finish_and_return!(JuliaInterpreter.enter_call(InvokeWorld.probe, 1)) === :too_new
+end
