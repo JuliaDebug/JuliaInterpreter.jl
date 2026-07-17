@@ -6,8 +6,12 @@ const _breakpoints = AbstractBreakpoint[]
     breakpoints()::Vector{AbstractBreakpoint}
 
 Return an array with all breakpoints.
+
+The returned array is a copy of the internal breakpoint registry; mutating it does
+not affect the set of breakpoints. Use [`remove`](@ref), [`enable`](@ref), and
+[`disable`](@ref) to update the breakpoints themselves.
 """
-breakpoints() = _breakpoints
+breakpoints() = copy(_breakpoints)
 
 
 const breakpoint_update_hooks = []
