@@ -697,12 +697,11 @@ function Base.iterate(iter::ExprSplitter, state=nothing)
         end
     end
     if ex.head === :block || ex.head === :toplevel
-        # This was a block that we couldn't safely descend into (issue #427)
-        if !isempty(iter.index) && iter.index[end] > length(iter.stack[end][2].args)
-            pop!(iter.stack)
-            pop!(iter.index)
-            queuenext!(iter)
-        end
+        # This was a block that we couldn't safely descend into (issue #427).
+        # Queue the parent container's next statement (`queuenext!` pops exhausted
+        # containers itself); failing to do so would re-yield the parent wholesale,
+        # evaluating the already-returned statements a second time.
+        queuenext!(iter)
         return (mod, ex), nothing
     end
     queuenext!(iter)

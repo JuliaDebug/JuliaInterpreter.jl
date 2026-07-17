@@ -881,3 +881,18 @@ end
     ex = Expr(:toplevel, Expr(:macrocall, GlobalRef(Core, Symbol("@doc")), nothing, "docstr", :(split_nolineinfo() = 1)))
     @test length(collect(ExprSplitter(@__MODULE__, ex))) == 1
 end
+
+@testset "ExprSplitter executes an unsplittable block exactly once" begin
+    hits = Ref(0)
+    ex = quote
+        begin
+            local t = 1
+            $hits[] += t
+        end
+        split_once_after() = 2
+    end
+    for (mod, e) in ExprSplitter(@__MODULE__, ex)
+        JuliaInterpreter.finish_and_return!(Frame(mod, e), true)
+    end
+    @test hits[] == 1
+end
