@@ -876,3 +876,18 @@ module DirectSurface end
     fr = JuliaInterpreter.toplevel_frame(DirectSurface, Any[LineNumberNode(7, :somefile), :(x = 1)])
     @test JuliaInterpreter.whereis(fr, 2) == ("somefile", 7)
 end
+
+@testset "ExprSplitter executes an unsplittable block exactly once" begin
+    hits = Ref(0)
+    ex = quote
+        begin
+            local t = 1
+            $hits[] += t
+        end
+        split_once_after() = 2
+    end
+    for (mod, e) in ExprSplitter(@__MODULE__, ex)
+        JuliaInterpreter.finish_and_return!(Frame(mod, e), true)
+    end
+    @test hits[] == 1
+end
