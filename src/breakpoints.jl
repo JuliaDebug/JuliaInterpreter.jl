@@ -61,7 +61,12 @@ function firehooks(hooked_fun, bp::AbstractBreakpoint)
 end
 
 function add_to_existing_framecodes(bp::AbstractBreakpoint)
-    for framecode in values(framedict)
+    # Cover both caches: `genframedict` holds the framecodes for expanded @generated
+    # bodies, which would otherwise never receive breakpoints added after they were cached.
+    seen = Base.IdSet{FrameCode}()
+    for framecode in Iterators.flatten((values(framedict), values(genframedict)))
+        framecode in seen && continue
+        push!(seen, framecode)
         add_breakpoint_if_match!(framecode, bp)
     end
 end
