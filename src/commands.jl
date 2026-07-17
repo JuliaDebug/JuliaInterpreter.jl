@@ -564,9 +564,9 @@ function debug_command(interp::Interpreter, frame::Frame, cmd::Symbol, rootistop
     catch err
         frame = unwind_exception(frame, err)
         if cmd === :c
-            return debug_command(interp, frame, :c, istoplevel)
+            return debug_command(interp, frame, :c, rootistoplevel)
         else
-            return debug_command(interp, frame, :nc, istoplevel)
+            return debug_command(interp, frame, :nc, rootistoplevel)
         end
     end
     throw(ArgumentError("command $cmd not recognized"))

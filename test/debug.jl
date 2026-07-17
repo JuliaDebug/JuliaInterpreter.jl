@@ -630,3 +630,32 @@ end
     end
     @test ret === nothing || ret isa Tuple
 end
+
+@testset "Exception recovery keeps rootistoplevel" begin
+    ex = quote
+        function unwind_thrower() error("boom") end
+        try
+            unwind_thrower()
+        catch
+            function defined_in_catch() 42 end
+            defined_in_catch()
+        end
+    end
+    fr = Frame(Main, ex)
+    ret = JuliaInterpreter.debug_command(fr, :s, true)
+    count = 0
+    while ret isa Tuple && count < 100
+        cframe = ret[1]
+        sc = JuliaInterpreter.scopeof(cframe)
+        sc isa Method && sc.name === :unwind_thrower && break
+        ret = JuliaInterpreter.debug_command(cframe, :s, true)
+        count += 1
+    end
+    r = JuliaInterpreter.debug_command(ret[1], :n, true)
+    inner = 0
+    while r isa Tuple && !(r[2] isa BreakpointRef) && inner < 200
+        r = JuliaInterpreter.debug_command(r[1], :n, true)
+        inner += 1
+    end
+    @test r === nothing
+end
