@@ -651,7 +651,10 @@ function queuenext!(iter::ExprSplitter)
         push_modex!(iter, mod, ex)
         return queuenext!(iter)
     elseif head === :macrocall
-        iter.lnn = ex.args[2]::LineNumberNode
+        # The canonical second argument is a LineNumberNode, but `nothing` is also legal
+        # (common in programmatically constructed ASTs).
+        a2 = ex.args[2]
+        a2 isa LineNumberNode && (iter.lnn = a2)
     elseif head === :block || head === :toplevel
         # Container expression
         idx = iter.index[end]

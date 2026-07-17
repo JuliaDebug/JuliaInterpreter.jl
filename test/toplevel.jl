@@ -891,3 +891,8 @@ end
     end
     @test hits[] == 1
 end
+
+@testset "macrocall with nothing line info" begin
+    ex = Expr(:toplevel, Expr(:macrocall, GlobalRef(Core, Symbol("@doc")), nothing, "docstr", :(split_nolineinfo() = 1)))
+    @test length(collect(ExprSplitter(@__MODULE__, ex))) == 1
+end
