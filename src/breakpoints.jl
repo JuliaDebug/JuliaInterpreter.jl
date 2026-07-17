@@ -7,7 +7,8 @@ const _breakpoints = AbstractBreakpoint[]
 
 Return an array with all breakpoints.
 """
-breakpoints() = _breakpoints
+breakpoints() = copy(_breakpoints)  # a copy: mutating the registry must go through the API so
+                                    # that frame state stays in sync and update hooks fire
 
 
 const breakpoint_update_hooks = []
