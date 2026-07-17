@@ -869,7 +869,7 @@ function extract_args(__module__, ex0)
             a11 = a1.args[1]
             if a11 === :setindex!
                 return Expr(:tuple,
-                    mapany(x->isexpr(x, :parameters) ? QuoteNode(x) : x, arg.args)...)
+                    mapany(x->isexpr(x, :parameters) ? QuoteNode(x) : x, a1.args)...)
             end
         end
     end
