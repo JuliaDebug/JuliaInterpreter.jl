@@ -765,8 +765,6 @@ end
 function eval_code(frame::Frame, expr::Expr)
     code = frame.framecode
     data = frame.framedata
-    isexpr(expr, :toplevel) && (expr = expr.args[end])
-
     if isexpr(expr, :toplevel)
         expr = Expr(:block, expr.args...)
     end
