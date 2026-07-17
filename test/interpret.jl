@@ -1366,3 +1366,9 @@ end
     JuliaInterpreter.determine_method_for_expr(ex)
     @test ex == before
 end
+
+@testset "Foreigncall values that look like ASTs are passed as data" begin
+    astval = :(1 + 2)
+    frame = Frame(Main, :(ccall(:jl_typeof, Any, (Any,), $(QuoteNode(astval)))))
+    @test finish_and_return!(frame, true) === Expr
+end
