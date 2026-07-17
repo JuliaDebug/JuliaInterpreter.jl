@@ -1394,3 +1394,10 @@ end
     fr = JuliaInterpreter.enter_call(newvar_reuse, [true, false])
     @test finish_and_return!(fr) == newvar_reuse([true, false]) == [true, false]
 end
+
+@testset "Nested OpaqueClosure calls" begin
+    oc = Base.Experimental.@opaque (x, y) -> x + y
+    oc_wrapper(f, x, y) = f(x, y)
+    @test (@interpret oc_wrapper(oc, 1, 2)) == 3
+    @test (@interpret interp=NonRecursiveInterpreter() oc_wrapper(oc, 1, 2)) == 3
+end
