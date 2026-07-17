@@ -618,3 +618,15 @@ end
     frame, _ = JuliaInterpreter.debug_command(frame, :sr)
     @test JuliaInterpreter.get_return(frame) == g()
 end
+
+@testset ":s keeps the (frame, pc) contract on caught errors" begin
+    caught_error_s() = try; throw(ArgumentError("x")); catch; 42; end
+    fr = enter_call(caught_error_s)
+    local ret = nothing
+    for _ in 1:10
+        ret = JuliaInterpreter.debug_command(fr, :s)
+        ret isa Tuple || break
+        fr = ret[1]
+    end
+    @test ret === nothing || ret isa Tuple
+end
