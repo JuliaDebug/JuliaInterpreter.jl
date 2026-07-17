@@ -308,7 +308,11 @@ Important fields:
   the current frame. The active handler is the last one on the list.
 - `exception_scopes`: parallel to `exception_frames`, the depth of `current_scopes` when
   each handler was entered, so unwinding an exception can restore the scope stack.
-- `last_exception`: the exception `throw`n by this frame or one of its callees.
+- `exceptions`: the stack of exceptions currently being handled by this frame (innermost
+  last), mirroring the task's exception stack in native execution. A handler entry pushes;
+  `Expr(:pop_exception, token)` restores the depth recorded at the corresponding `:enter`.
+- `last_exception`: the exception currently being handled by this frame or one of its
+  callees (the top of `exceptions` while nonempty).
 """
 struct FrameData
     locals::Vector{Union{Nothing,Some{Any}}}
@@ -316,6 +320,7 @@ struct FrameData
     sparams::Vector{Any}
     exception_frames::Vector{Int}
     exception_scopes::Vector{Int}
+    exceptions::Vector{Any}
     current_scopes::Vector{Scope}
     last_exception::Base.RefValue{Any}
     caller_will_catch_err::Bool
