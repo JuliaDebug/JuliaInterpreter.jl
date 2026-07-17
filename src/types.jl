@@ -510,9 +510,11 @@ Variable(value, name) = Variable(value, name, false, false)
 Variable(value, name, isparam) = Variable(value, name, isparam, false)
 Base.show(io::IO, var::Variable) = (print(io, var.name, " = "); show(io,var.value))
 Base.isequal(var1::Variable, var2::Variable) =
-    var1.value == var2.value && var1.name === var2.name && var1.isparam == var2.isparam &&
+    isequal(var1.value, var2.value) && var1.name === var2.name && var1.isparam == var2.isparam &&
     var1.is_captured_closure == var2.is_captured_closure
 Base.:(==)(var1::Variable, var2::Variable) = isequal(var1, var2)
+Base.hash(var::Variable, h::UInt) =
+    hash(var.value, hash(var.name, hash(var.isparam, hash(var.is_captured_closure, hash(:Variable, h)))))
 
 # A type that is unique to this package for which there are no valid operations
 struct Unassigned end

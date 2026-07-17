@@ -1351,3 +1351,10 @@ end
     fr = JuliaInterpreter.enter_call(empty_vararg)
     @test only(filter(v -> v.name === :x, JuliaInterpreter.locals(fr))).value === ()
 end
+
+@testset "Variable equality is total" begin
+    v = JuliaInterpreter.Variable(missing, :x)
+    @test isequal(v, v) === true
+    @test hash(v) isa UInt
+    @test isequal(hash(v), hash(JuliaInterpreter.Variable(missing, :x)))
+end
