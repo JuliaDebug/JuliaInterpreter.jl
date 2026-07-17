@@ -385,11 +385,13 @@ function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing,
     end
 end
 """
-    frame = Frame(mod::Module, src::CodeInfo; world=get_world_counter(), kwargs...)
+    frame = Frame(mod::Module, src::CodeInfo; world=JuliaInterpreter.default_world(), kwargs...)
 
-Construct a `Frame` to evaluate `src` in module `mod`. `world` sets the world
-age used for dispatch (defaults to the latest committed world). Additional
-keyword arguments (`generator`, `optimize`) are forwarded to [`FrameCode`](@ref).
+Construct a `Frame` to evaluate `src` in module `mod`. `world` sets the world age used for
+dispatch; it defaults to the calling task's current world, matching the semantics of an
+ordinary (non-`invokelatest`) call. Pass `world=Base.get_world_counter()` to instead resolve
+methods and bindings in the latest committed world. Additional keyword arguments
+(`generator`, `optimize`) are forwarded to [`FrameCode`](@ref).
 """
 function Frame(mod::Module, src::CodeInfo; world::UInt=default_world(), kwargs...)
     framecode = FrameCode(mod, src; world, kwargs...)

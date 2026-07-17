@@ -381,9 +381,10 @@ end
     ret = evaluate_call!(frame::Frame, call_expr::Expr, enter_generated::Bool=false)
 
 Evaluate a `:call` expression `call_expr` in the context of `frame`.
-The first causes it to be executed using Julia's normal dispatch (compiled code),
-whereas the second recurses in via the interpreter.
-`interp` has a default value of [`RecursiveInterpreter`](@ref).
+How the call is executed depends on `interp`: with `NonRecursiveInterpreter()` the call
+runs natively via Julia's normal dispatch (compiled code), whereas the default
+[`RecursiveInterpreter`](@ref) constructs a child frame and interprets the callee's
+lowered code recursively.
 """
 evaluate_call!(frame::Frame, call_expr::Expr, enter_generated::Bool=false) =
     evaluate_call!(RecursiveInterpreter(), frame, call_expr, enter_generated)
