@@ -1372,3 +1372,12 @@ end
     frame = Frame(Main, :(ccall(:jl_typeof, Any, (Any,), $(QuoteNode(astval)))))
     @test finish_and_return!(frame, true) === Expr
 end
+
+@static if VERSION >= v"1.12-"
+@testset "invoke(f, ::Method, args...)" begin
+    invoke_by_method(x::Real) = x + 1
+    m = only(methods(invoke_by_method))
+    invoke_by_method_wrap(f, m, x) = invoke(f, m, x)
+    @test (@interpret invoke_by_method_wrap(invoke_by_method, m, 1)) == 2
+end
+end
