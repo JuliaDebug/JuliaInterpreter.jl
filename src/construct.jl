@@ -383,9 +383,16 @@ function prepare_call(@nospecialize(f), allargs;
     argtypes = Tuple{argtypesv...}
     if f isa Core.OpaqueClosure
         method = f.source
-        # don't try to interpret optimized ir
+        # Don't try to interpret closures whose source is unavailable (e.g. constructed
+        # from an `IRCode`) ...
+        if !(isa(method, Method) && (isdefined(method, :source) || isdefined(method, :generator)))
+            return nothing
+        end
+        # ... or optimized/inferred ir
         src = Base.uncompressed_ir(method)
-        if hasfield(CodeInfo, :inferred) && src.inferred   # xref https://github.com/JuliaLang/julia/pull/53219
+        isinferred = hasfield(CodeInfo, :inferred) ? src.inferred :   # xref https://github.com/JuliaLang/julia/pull/53219
+            !isa(src.ssavaluetypes, Int)  # inferred code has a type vector here
+        if isinferred
             @debug "not interpreting opaque closure $f since it contains inferred code"
             return nothing
         end
