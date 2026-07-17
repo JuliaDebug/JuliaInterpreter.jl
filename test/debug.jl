@@ -665,3 +665,15 @@ end
     ret = JuliaInterpreter.debug_command(fr, :until, true)
     @test ret === nothing || ret isa Tuple
 end
+
+@testset ":sl reports breakpoints in callees" begin
+    remove()
+    sl_callee(x) = x + 1
+    sl_other(x) = x * 2
+    sl_caller(x) = sl_other(sl_callee(x))
+    breakpoint(sl_callee)
+    fr = enter_call(sl_caller, 3)
+    ret = JuliaInterpreter.debug_command(fr, :sl)
+    @test ret isa Tuple && ret[2] isa BreakpointRef
+    remove()
+end
