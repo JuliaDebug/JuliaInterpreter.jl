@@ -362,6 +362,7 @@ function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing,
                world::UInt=default_world())
     if length(junk_frames) > 0
         frame = pop!(junk_frames)
+        delete!(pooled_frames, frame)
         frame.framecode = framecode
         frame.framedata = framedata
         frame.pc = pc
