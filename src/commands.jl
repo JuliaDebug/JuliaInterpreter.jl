@@ -208,10 +208,15 @@ execute until the current frame reaches any line greater than the current line.
 function until_line!(interp::Interpreter, frame::Frame, line::Union{Nothing, Integer}=nothing, istoplevel::Bool=false)
     pc = frame.pc
     initialline, initialfile = linenumber(frame, pc), getfile(frame, pc)
+    if initialline === nothing || initialfile === nothing
+        return step_expr!(interp, frame, istoplevel)
+    end
     line === nothing && (line = initialline + 1)
     line_final = line
     pc = next_until!(interp, frame, istoplevel) do frame::Frame
-        return is_return(pc_expr(frame)) || (linenumber(frame) >= line_final && getfile(frame) == initialfile)
+        is_return(pc_expr(frame)) && return true
+        ln = linenumber(frame)
+        return ln !== nothing && ln >= line_final && getfile(frame) == initialfile
     end
     (pc === nothing || isa(pc, BreakpointRef)) && return pc
     maybe_step_through_kwprep!(interp, frame, istoplevel)
