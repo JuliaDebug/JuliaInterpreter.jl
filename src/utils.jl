@@ -788,11 +788,13 @@ function eval_code(frame::Frame, expr::Expr)
             Expr(:tuple, res, Expr(:tuple, [v.name for v in vars]...))
         ))
     eval_res, res = Core.eval(moduleof(frame), eval_expr)
-    j = 1
     for (i, v) in enumerate(vars)
         if v.isparam
-            data.sparams[j] = res[i]
-            j += 1
+            # `vars` only holds the variables used by `expr`, so look the static parameter
+            # up by name; a running counter would write into the wrong slot whenever an
+            # earlier sparam is not referenced.
+            j = findfirst(==(v.name), sparam_syms(code.scope::Method))
+            j === nothing || (data.sparams[j] = res[i])
         elseif v.is_captured_closure
             selfidx = findfirst(v -> v.name === Symbol("#self#"), vars)
             @assert selfidx !== nothing
