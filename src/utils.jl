@@ -757,6 +757,17 @@ function extract_usage!(s::Set{Symbol}, @nospecialize expr)
     return s
 end
 
+function flatten_toplevel!(args::Vector{Any}, @nospecialize(ex))
+    if isexpr(ex, :toplevel)
+        for a in (ex::Expr).args
+            flatten_toplevel!(args, a)
+        end
+    else
+        push!(args, ex)
+    end
+    return args
+end
+
 function eval_code(frame::Frame, command::AbstractString)
     expr = Base.parse_input_line(command)
     expr === nothing && return nothing
@@ -766,7 +777,10 @@ function eval_code(frame::Frame, expr::Expr)
     code = frame.framecode
     data = frame.framedata
     if isexpr(expr, :toplevel)
-        expr = Expr(:block, expr.args...)
+        # Flatten (possibly nested) `:toplevel` wrappers into a single block:
+        # `parse_input_line` wraps multi-statement input in a nested `:toplevel`, and an
+        # embedded `:toplevel` cannot be lowered inside the `let` built below.
+        expr = Expr(:block, flatten_toplevel!(Any[], expr)...)
     end
 
     used_symbols = Set{Symbol}((Symbol("#self#"),))

@@ -149,3 +149,7 @@ toplevel_eval_arg(x) = x
 frame = JuliaInterpreter.enter_call(toplevel_eval_arg, 1)
 @test eval_code(frame, Expr(:toplevel, :(x = 5), :(x + 1))) == 6
 @test only(filter(v -> v.name === :x, JuliaInterpreter.locals(frame))).value == 5
+
+# Multi-statement strings arrive as a nested :toplevel from parse_input_line
+frame = JuliaInterpreter.enter_call(toplevel_eval_arg, 1)
+@test eval_code(frame, "x = 7; x + 1") == 8
