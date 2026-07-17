@@ -712,3 +712,14 @@ end
     @test ret isa Tuple && ret[2] isa JuliaInterpreter.BreakpointRef
     remove()
 end
+
+@testset "Breakpoints reach cached generated-function framecodes" begin
+    remove()
+    @generated genbp(x) = :(x + 1)
+    fr = JuliaInterpreter.enter_call(genbp, 1)  # warms genframedict
+    JuliaInterpreter.finish_and_return!(fr)
+    breakpoint(genbp)
+    ret = @interpret genbp(1)
+    @test ret isa Tuple && ret[2] isa JuliaInterpreter.BreakpointRef
+    remove()
+end
