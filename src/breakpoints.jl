@@ -428,7 +428,10 @@ macro breakpoint(call_expr, args...)
         end
         args = Base.tail(args)
     end
-    condexpr = condition === nothing ? nothing : esc(Expr(:quote, condition))
+    # Pair the condition with the macro caller's module so it is evaluated with
+    # that module's bindings (see `_unpack`), not in `Main`.
+    condexpr = condition === nothing ? nothing :
+        Expr(:tuple, __module__, esc(Expr(:quote, condition)))
     if haveline
         return quote
             local method = $whichexpr
