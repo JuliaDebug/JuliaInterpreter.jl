@@ -541,7 +541,7 @@ function debug_command(interp::Interpreter, frame::Frame, cmd::Symbol, rootistop
                 ret = @invoke evaluate_call!(BreakOnCall()::Interpreter, frame::Frame, stmt::Expr, enter_generated::Bool)
             catch err
                 ret = handle_err(interp, frame, err)
-                return isa(ret, BreakpointRef) ? (leaf(frame), ret) : ret
+                return isa(ret, BreakpointRef) ? (leaf(frame), ret) : (frame, ret)
             end
             if isa(ret, BreakpointRef)
                 newframe = leaf(frame)
