@@ -1345,3 +1345,9 @@ end
         @test (@interpret world=w3 WrapperDepTest.llvmadd(Int32(30), Int32(12))) == 18
     end
 end
+
+@testset "Empty varargs are visible to locals" begin
+    empty_vararg(x...) = x
+    fr = JuliaInterpreter.enter_call(empty_vararg)
+    @test only(filter(v -> v.name === :x, JuliaInterpreter.locals(fr))).value === ()
+end

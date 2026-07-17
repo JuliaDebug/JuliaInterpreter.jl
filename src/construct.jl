@@ -453,7 +453,9 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
             elseif i <= nargs
                 locals[i], last_reference[i] = Some{Any}(argvals[i]), 1
             else
-                locals[i] = Some{Any}(())
+                # An empty vararg is still a defined local (`x === ()`); mark it referenced
+                # so `locals(frame)`/`eval_code` can see it.
+                locals[i], last_reference[i] = Some{Any}(()), 1
             end
         end
         if islastva
