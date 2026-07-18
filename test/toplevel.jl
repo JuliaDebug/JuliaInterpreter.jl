@@ -896,3 +896,10 @@ end
     end
     @test hits[] == 1
 end
+
+@testset "public declarations" begin
+    @eval module PublicDeclTest end
+    fr = Frame(PublicDeclTest, Expr(:block, Expr(:public, :pubmarked), :(41 + 1)))
+    @test JuliaInterpreter.finish_and_return!(fr, true) == 42
+    @test Base.ispublic(PublicDeclTest, :pubmarked)
+end

@@ -738,7 +738,7 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
                     isa(ret, BreakpointRef) && return ret
                     return_from(newframe)
                     rhs = newmod
-                elseif node.head === :using || node.head === :import || node.head === :export
+                elseif node.head === :using || node.head === :import || node.head === :export || node.head === :public
                     Core.eval(moduleof(frame), node)
                 elseif node.head === :const || node.head === :globaldecl
                     g = node.args[1]
