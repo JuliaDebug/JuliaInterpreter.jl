@@ -83,8 +83,53 @@ function add_breakpoint_if_match!(framecode::FrameCode, bp::BreakpointSignature)
         stmtidxs = bp.line === 0 ? [1] : statementnumbers(framecode, bp.line, matching_file::Symbol)
         stmtidxs === nothing && return
         breakpoint!(framecode, stmtidxs, bp.condition, bp.enabled[])
+        add_signature_condition!(framecode, bp, stmtidxs)
         foreach(stmtidx -> push!(bp.instances, BreakpointRef(framecode, stmtidx)), stmtidxs)
         return
+    end
+end
+
+# A signature breakpoint narrower than the method's own signature must only fire for
+# calls whose arguments actually match `sig`, mirroring dispatch; the framecode is
+# shared by all calls of the method, so this has to be a runtime check (issue #369).
+struct SignatureCondition{C} <: Function
+    sig::Type
+    condition::C
+end
+(c::SignatureCondition)(frame::Frame) = frame_matches_sig(frame, c.sig) && c.condition(frame)::Bool
+
+function frame_matches_sig(frame::Frame, @nospecialize(sig::Type))
+    meth = frame.framecode.scope
+    meth isa Method || return true
+    data = frame.framedata
+    nargs = Int(meth.nargs)
+    length(data.locals) >= nargs || return false
+    argtypes = Any[]
+    for i = 1:nargs
+        local arg = data.locals[i]
+        arg === nothing && return false
+        val = something(arg)
+        if meth.isva && i == nargs
+            val isa Tuple || return false
+            for v in val
+                push!(argtypes, Core.Typeof(v))
+            end
+        else
+            push!(argtypes, Core.Typeof(val))
+        end
+    end
+    return Tuple{argtypes...} <: sig
+end
+
+function add_signature_condition!(framecode::FrameCode, bp::BreakpointSignature, stmtidxs)
+    sig = bp.sig
+    sig === nothing && return
+    meth = framecode.scope
+    meth isa Method || return
+    meth.sig <: sig && return # every call to this method matches; no runtime check needed
+    for stmtidx in stmtidxs
+        state = framecode.breakpoints[stmtidx]
+        framecode.breakpoints[stmtidx] = BreakpointState(state.isactive, SignatureCondition(sig, state.condition))
     end
 end
 

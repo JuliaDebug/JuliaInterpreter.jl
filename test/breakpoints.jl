@@ -333,6 +333,25 @@ end
     @test bp isa BreakpointRef
 end
 
+f369(a) = a
+g369(x) = f369(x)
+v369(a...) = sum(a)
+gv369(xs...) = v369(xs...)
+@testset "sig breakpoints only fire for matching argument types (#369)" begin
+    remove()
+    breakpoint(f369, Tuple{String})
+    @test @interpret(g369(1)) === 1
+    frame, bp = @interpret g369("hi")
+    @test bp isa BreakpointRef
+    remove()
+    # vararg methods: the trailing arguments are matched individually
+    breakpoint(v369, Tuple{Int,Int})
+    @test @interpret(gv369(1.0, 2.0)) === 3.0
+    frame, bp = @interpret gv369(1, 2)
+    @test bp isa BreakpointRef
+    remove()
+end
+
 const breakpoint_update_hooks = JuliaInterpreter.breakpoint_update_hooks
 const on_breakpoints_updated = JuliaInterpreter.on_breakpoints_updated
 @testset "hooks" begin
