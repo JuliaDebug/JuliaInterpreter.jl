@@ -149,12 +149,17 @@ end
             @test isexpr(lt, :line) || isa(lt, Core.LineInfoNode) || isa(lt, Base.IRShow.LineInfoNode)
             @test isa(pc, BreakpointRef)
             @test JuliaInterpreter.scopeof(cframe).name === :generatedfoo
+            # issue #161: the generator must see the argument *types*, not their values
+            cvars = JuliaInterpreter.locals(cframe)
+            @test filter(v -> v.name === :T, cvars)[1].value === Int
             cframe, pc = debug_command(cframe, :finish)
             @test JuliaInterpreter.scopeof(cframe).name === :callgenerated
             # Now finish the regular function
             @test debug_command(cframe, :finish) === nothing
             @test cframe.callee === nothing
-            @test get_return(cframe) === 1
+            # This matches the native result: with the generator seeing `T = Int`
+            # (issue #161), the generated body is `return Int`.
+            @test get_return(cframe) === Int
         end
 
         # Parametric generated function (see #157)

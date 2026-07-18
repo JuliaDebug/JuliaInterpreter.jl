@@ -412,6 +412,12 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
             return framecode  # this was a Builtin
         end
     end
+    if enter_generated && isa(framecode, FrameCode) && framecode.generator
+        # The generator runs on argument *types*. `prepare_call` performs this conversion
+        # but `get_call_framecode` discards the converted arguments, so redo it here
+        # (issue #161).
+        fargs = Any[_Typeof(a) for a in fargs]
+    end
     newframe = prepare_frame_caller(frame, framecode, fargs, lenv)
     npc = newframe.pc
     shouldbreak(newframe, npc) && return BreakpointRef(newframe.framecode, npc)
