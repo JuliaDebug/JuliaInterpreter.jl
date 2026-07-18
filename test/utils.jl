@@ -77,6 +77,10 @@ function evaluate_limited!(interp::Interpreter, frame::Frame, nstmts::Int, istop
     # with limexec! rather than the default finish_and_return!
     pc = frame.pc
     while nstmts > 0
+        # Toplevel code always runs in the latest world (mirrors `step_expr!`): the frame
+        # is created with the task's (possibly frozen) world, and the `:call` branches
+        # below bypass `step_expr!`'s own per-statement refresh.
+        istoplevel && (frame.world = Base.get_world_counter())
         shouldbreak(frame, pc) && return BreakpointRef(frame.framecode, pc), limited_interp.nstmts
         stmt = pc_expr(frame, pc)
         # uncomment the following to calibrate `nstmts` in test/limits.jl
