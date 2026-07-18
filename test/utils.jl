@@ -54,6 +54,12 @@ mutable struct LimitedExec <: Interpreter
     nstmts::Int
 end
 
+# Thrown when the statement budget expires inside a nested call: returning `Aborted`
+# as the callee's value would let interpreted callers keep computing with it.
+struct AbortException <: Exception
+    aborted::Aborted
+end
+
 """
     ret, nstmtsleft = evaluate_limited!(interp::Interpreter, frame, nstmts, istoplevel::Bool=true)
 
@@ -83,6 +89,7 @@ function evaluate_limited!(interp::Interpreter, frame::Frame, nstmts::Int, istop
                     do_assignment!(frame, lhs, rhs)
                     new_pc = pc + 1
                 catch err
+                    err isa AbortException && rethrow()
                     new_pc = handle_err(interp, frame, err)
                 end
                 nstmts = limited_interp.nstmts
@@ -94,6 +101,7 @@ function evaluate_limited!(interp::Interpreter, frame::Frame, nstmts::Int, istop
                     do_assignment!(frame, stmt.args[1], rhs)
                     new_pc = pc + 1
                 catch err
+                    err isa AbortException && rethrow()
                     new_pc = handle_err(interp, frame, err)
                 end
                 nstmts = limited_interp.nstmts
@@ -151,7 +159,8 @@ evaluate_limited!(frame::Union{Frame, Tuple}, nstmts::Int, istoplevel::Bool=fals
 function JuliaInterpreter.finish_and_return!(interp::LimitedExec, newframe::Frame, istoplevel::Bool)
     ret, nleft = evaluate_limited!(interp, newframe, interp.nstmts, istoplevel)
     interp.nstmts = nleft
-    return isa(ret, Aborted) ? ret : something(ret)
+    isa(ret, Aborted) && throw(AbortException(ret))
+    return something(ret)
 end
 
 ### Functions needed on workers for running tests
@@ -202,9 +211,14 @@ function run_test_by_eval(test, fullpath, nstmts)
             # `:thunk`/method definition so that subsequent statements run in the new
             # world; resume the frame until it terminates or aborts.
             local ret
-            while true
-                ret, nstmtsleft = evaluate_limited!(frame, nstmtsleft, true)
-                ret === nothing || break
+            try
+                while true
+                    ret, nstmtsleft = evaluate_limited!(frame, nstmtsleft, true)
+                    ret === nothing || break
+                end
+            catch err
+                err isa AbortException || rethrow()
+                ret = err.aborted
             end
             if isa(ret, Aborted)
                 push!(aborts, ret)
