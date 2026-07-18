@@ -1540,3 +1540,18 @@ end
     @test (@interpret curexc_caller()) == curexc_caller() == 1
     @test isempty(@interpret (() -> Base.current_exceptions())())
 end
+
+@static if hasfield(Core.CodeInfo, :nargs)
+@testset "generated function returning another method's CodeInfo" begin
+    overdubbee54341(a, b) = a + b
+    overdubbee_ci = code_lowered(overdubbee54341, Tuple{Any,Any})[1]
+    overdub_gen54341(world::UInt, source::Method, selftype, fargtypes) = copy(overdubbee_ci)
+    @eval function overdub54341(args...)
+        $(Expr(:meta, :generated, overdub_gen54341))
+        $(Expr(:meta, :generated_only))
+    end
+    # the returned CodeInfo's nargs/isva (2 args, not vararg) differ from the
+    # generated method's signature; the frame must follow the CodeInfo
+    @test (@interpret overdub54341(1, 2)) == 3
+end
+end

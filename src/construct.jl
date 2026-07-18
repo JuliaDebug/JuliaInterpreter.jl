@@ -456,8 +456,17 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
     fill!(last_reference, 0)
     if isa(framecode.scope, Method)
         meth = framecode.scope::Method
-        nargs, meth_nargs = length(argvals), Int(meth.nargs)
-        islastva = meth.isva && nargs >= meth_nargs
+        nargs = length(argvals)
+        @static if hasfield(Core.CodeInfo, :nargs)
+            # The CodeInfo's own signature takes precedence: a generated function may
+            # return another method's CodeInfo, whose nargs/isva differ from the
+            # generated method's (issue JuliaLang/julia#54341).
+            meth_nargs = Int(framecode.src.nargs)
+            islastva = framecode.src.isva && nargs >= meth_nargs
+        else
+            meth_nargs = Int(meth.nargs)
+            islastva = meth.isva && nargs >= meth_nargs
+        end
         for i = 1:meth_nargs-islastva
             # for OCs #self# actually refers to the captures instead
             if i == 1 && (oc = argvals[1]) isa Core.OpaqueClosure
