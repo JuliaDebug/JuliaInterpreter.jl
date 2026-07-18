@@ -429,10 +429,11 @@ maybe_reset_frame!(frame::Frame, @nospecialize(pc), rootistoplevel::Bool) =
 function unwind_exception(frame::Frame, @nospecialize(exc))
     while frame !== nothing
         if !isempty(frame.framedata.exception_frames)
-            # Exception caught
+            # Exception caught: land in the handler with the same state updates as
+            # `handle_err` (scope restore, handler pop, exception-stack push), so the
+            # handler cannot be reused for a later exception outside its `try`.
             @assert is_leaf(frame)
-            frame.pc = frame.framedata.exception_frames[end]
-            frame.framedata.last_exception[] = exc
+            frame.pc = enter_exception_handler!(frame.framedata, exc)
             return frame
         end
         frame = return_from(frame)

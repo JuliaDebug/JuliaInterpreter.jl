@@ -314,8 +314,20 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
     if fargs[1] === Core.eval
         return Core.eval(fargs[2], fargs[3])  # not a builtin, but worth treating specially
     elseif fargs[1] === Base.rethrow
-        err = length(fargs) > 1 ? fargs[2] : frame.framedata.last_exception[]
-        throw(err)
+        length(fargs) > 1 && throw(fargs[2])
+        # `rethrow()` rethrows the task's innermost exception being handled, which may live
+        # in a caller's frame when it is reached from a function called inside a `catch`
+        # block. Each frame tracks its own active-exception stack, so walk the caller chain
+        # for the innermost frame with a nonempty stack.
+        fr = frame
+        while fr !== nothing
+            exs = fr.framedata.exceptions
+            isempty(exs) || throw(exs[end])
+            fr = fr.caller
+        end
+        # No interpreted frame is handling an exception; fall back to the native rethrow
+        # (interpreted code may be running inside a native `catch` block).
+        rethrow()
     end
     if fargs[1] === Core.invoke # invoke needs special handling
         argtypes = fargs[3]
@@ -331,10 +343,13 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
             # run it natively.
             return invoke(fargs[2:end]...)
         else
-            f_invoked = which(fargs[2], argtypes)::Method
+            # Select the method in the frame's world; plain `which` would use the task's
+            # (possibly newer) world.
+            f_invoked = whichtt(Base.signature_type(fargs[2], argtypes); world=frame.world)
+            f_invoked === nothing && throw(MethodError(fargs[2], argtypes, frame.world))
         end
         ret = prepare_framecode(f_invoked, sig; enter_generated, world=frame.world)
-        isa(ret, Compiled) && return invoke(fargs[2:end]...)
+        isa(ret, Compiled) && return invoke_in_world(frame.world, invoke, fargs[2:end]...)
         @assert ret !== nothing
         framecode, lenv = ret
         lenv === nothing && return framecode  # this was a Builtin
@@ -674,13 +689,17 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
                 isa(rhs, BreakpointRef) && return rhs
                 do_assignment!(frame, lhs, rhs)
             elseif node.head === :enter
-                rhs = node.args[1]::Int
-                push!(data.exception_frames, rhs)
+                push!(data.exception_frames, node.args[1]::Int)
+                push!(data.exception_scopes, length(data.current_scopes))
+                # The enter's SSA value is the token consumed by `:pop_exception`: the
+                # active-exception stack depth to restore.
+                rhs = length(data.exceptions)
             elseif node.head === :leave
                 if length(node.args) == 1 && isa(node.args[1], Int)
                     arg = node.args[1]::Int
                     for _ = 1:arg
                         pop!(data.exception_frames)
+                        pop!(data.exception_scopes)
                     end
                 else
                     for i = 1:length(node.args)
@@ -689,14 +708,22 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
                         enterstmt = frame.framecode.src.code[(targ::SSAValue).id]
                         enterstmt === nothing && continue
                         pop!(data.exception_frames)
+                        pop!(data.exception_scopes)
                         if isdefined(enterstmt, :scope)
                             pop!(data.current_scopes)
                         end
                     end
                 end
             elseif node.head === :pop_exception
-                # TODO: This needs to handle the exception stack properly
-                # (https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/591)
+                # Restore the active-exception stack to its depth at the corresponding
+                # `:enter` (recorded as that statement's SSA value); this runs at the
+                # normal exit of a `catch` block (issue #591).
+                depth = lookup(interp, frame, node.args[1])::Int
+                if depth < length(data.exceptions)
+                    resize!(data.exceptions, depth)
+                    data.last_exception[] = isempty(data.exceptions) ?
+                        _INACTIVE_EXCEPTION.instance : data.exceptions[end]
+                end
             elseif istoplevel
                 # This branch handles `:module`/`:toplevel` reached from a *lowered* `:thunk`.
                 # `step_toplevel!` handles the same heads reached from *unlowered* surface
@@ -772,8 +799,13 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
         elseif istoplevel && isa(node, Symbol)
             rhs = invoke_in_world(frame.world, getfield, moduleof(frame), node)
         elseif @static (isdefinedglobal(Core.IR, :EnterNode) && true) && isa(node, Core.IR.EnterNode)
-            rhs = node.catch_dest
-            push!(data.exception_frames, rhs)
+            push!(data.exception_frames, node.catch_dest)
+            # Record the scope depth at handler entry (before any scope introduced by this
+            # `EnterNode`), so exception unwinding can restore `current_scopes`.
+            push!(data.exception_scopes, length(data.current_scopes))
+            # The enter's SSA value is the token consumed by `:pop_exception`: the
+            # active-exception stack depth to restore.
+            rhs = length(data.exceptions)
             if isdefined(node, :scope)
                 push!(data.current_scopes, lookup(interp, frame, node.scope))
             end
@@ -846,10 +878,25 @@ function handle_err(::Interpreter, frame::Frame, @nospecialize(err))
         end
         rethrow(err)
     end
-    data.last_exception[] = err
-    pc = @static VERSION >= v"1.11-" ? pop!(data.exception_frames) : data.exception_frames[end] # implicit :leave after https://github.com/JuliaLang/julia/pull/52245
+    pc = enter_exception_handler!(data, err)
     @assert is_leaf(frame)
     frame.pc = pc
+    return pc
+end
+
+# Land a frame in its innermost active exception handler for `err`: restore the
+# dynamic-scope stack to its depth at handler entry (native `jl_eh_restore_state`),
+# pop the handler (on Julia 1.11+, where lowering no longer emits an explicit `:leave`
+# at the catch entry), record `err` on the frame's active-exception stack, and return
+# the catch-destination pc. Shared by `handle_err` and the debugger's
+# `unwind_exception` so both unwind paths have identical semantics.
+function enter_exception_handler!(data::FrameData, @nospecialize(err))
+    scope_depth = data.exception_scopes[end]
+    scope_depth < length(data.current_scopes) && resize!(data.current_scopes, scope_depth)
+    data.last_exception[] = err
+    push!(data.exceptions, err)
+    pc = @static VERSION >= v"1.11-" ? pop!(data.exception_frames) : data.exception_frames[end] # implicit :leave after https://github.com/JuliaLang/julia/pull/52245
+    @static VERSION >= v"1.11-" && pop!(data.exception_scopes)
     return pc
 end
 

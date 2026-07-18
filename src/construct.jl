@@ -426,6 +426,7 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         olddata = pop!(junk_framedata)
         locals, ssavalues, sparams = olddata.locals, olddata.ssavalues, olddata.sparams
         exception_frames, current_scopes, last_reference = olddata.exception_frames, olddata.current_scopes, olddata.last_reference
+        exception_scopes, exceptions = olddata.exception_scopes, olddata.exceptions
         last_exception = olddata.last_exception
         callargs = olddata.callargs
         resize!(locals, ns)
@@ -435,6 +436,8 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         # for check_isdefined to work properly, we need sparams to start out unassigned
         resize!(sparams, 0)
         empty!(exception_frames)
+        empty!(exception_scopes)
+        empty!(exceptions)
         empty!(current_scopes)
         resize!(last_reference, ns)
         last_exception[] = _INACTIVE_EXCEPTION.instance
@@ -443,6 +446,8 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         ssavalues = Vector{Any}(undef, ng)
         sparams = Vector{Any}(undef, 0)
         exception_frames = Int[]
+        exception_scopes = Int[]
+        exceptions = Any[]
         current_scopes = Scope[]
         last_reference = Vector{Int}(undef, ns)
         callargs = Any[]
@@ -485,8 +490,9 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
         end
         sparams[i] = T
     end
-    return FrameData(locals, ssavalues, sparams, exception_frames, current_scopes,
-                     last_exception, caller_will_catch_err, last_reference, callargs)
+    return FrameData(locals, ssavalues, sparams, exception_frames, exception_scopes,
+                     exceptions, current_scopes, last_exception, caller_will_catch_err,
+                     last_reference, callargs)
 end
 
 """
@@ -904,7 +910,14 @@ function interpret(mod::Module, @nospecialize(ex0); interp=RecursiveInterpreter(
         local theargs = $theargs
         local frame = $entercall
         if frame === nothing
-            eval(Expr(:call, map(QuoteNode, theargs)...))
+            # Call the (already-resolved) function directly rather than through `Core.eval`:
+            # `eval` would run the call in the latest world, changing the semantics of an
+            # invocation issued from an older task world or an explicitly requested world.
+            if w === nothing
+                theargs[1](theargs[2:end]...)
+            else
+                Base.invoke_in_world(w, theargs[1], theargs[2:end]...)
+            end
         elseif shouldbreak(frame, 1)
             frame, BreakpointRef(frame.framecode, 1)
         else

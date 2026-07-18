@@ -1413,3 +1413,78 @@ end
     @test length(unique(last.(ccs))) >= 2
 end
 end
+
+@testset "rethrow() from a callee of a catch block" begin
+    rethrow_callee() = rethrow()
+    rethrow_caller() = try; error("boom"); catch; rethrow_callee(); end
+    @test_throws ErrorException("boom") finish_and_return!(JuliaInterpreter.enter_call(rethrow_caller))
+end
+
+@testset "applicable respects the frame world" begin
+    @eval module ApplicableWorld
+    function target end
+    probe() = applicable(target, 1)
+    end
+    w = Base.get_world_counter()
+    @eval ApplicableWorld target(::Int) = 1
+    @test Base.invoke_in_world(w, ApplicableWorld.probe) == false
+    @test finish_and_return!(JuliaInterpreter.enter_call(ApplicableWorld.probe; world=w)) == false
+end
+
+@testset "@interpret compiled fallback stays in the caller's world" begin
+    @eval world_fallback(::Any) = 1
+    m_fb = which(world_fallback, Tuple{Any})
+    push!(JuliaInterpreter.compiled_methods, m_fb)
+    try
+        function world_fallback_root()
+            @eval world_fallback(::Int) = 2
+            (@interpret(world_fallback(1)), world_fallback(1))
+        end
+        a, b = world_fallback_root()
+        @test a == b
+    finally
+        delete!(JuliaInterpreter.compiled_methods, m_fb)
+    end
+end
+
+@testset "invoke selects its method in the frame world" begin
+    @eval module InvokeWorld
+    function target end
+    probe(x) = invoke(target, Tuple{Real}, x)
+    end
+    w = Base.get_world_counter()
+    @eval InvokeWorld target(::Real) = :too_new
+    @test_throws MethodError Base.invoke_in_world(w, InvokeWorld.probe, 1)
+    @test_throws MethodError finish_and_return!(JuliaInterpreter.enter_call(InvokeWorld.probe, 1; world=w))
+    # the resolved form still works at the current world
+    @test finish_and_return!(JuliaInterpreter.enter_call(InvokeWorld.probe, 1)) === :too_new
+end
+
+@testset "pop_exception restores the active-exception stack" begin
+    function nested_rethrow()
+        try
+            error("outer")
+        catch
+            try
+                error("inner")
+            catch
+            end
+            rethrow()
+        end
+    end
+    native = try nested_rethrow() catch err; err.msg end
+    interp = try finish_and_return!(JuliaInterpreter.enter_call(nested_rethrow)) catch err; (err::ErrorException).msg end
+    @test native == interp == "outer"
+
+    # rethrow() from a callee, after an inner catch completed first
+    popexc_callee() = rethrow()
+    function popexc_caller()
+        try
+            error("outer")
+        catch
+            try error("inner") catch end
+            popexc_callee()
+        end
+    end
+    @test_throws ErrorException("outer") finish_and_return!(JuliaInterpreter.enter_call(popexc_caller))
+end
