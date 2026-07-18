@@ -32,9 +32,13 @@ end
         end
     end
     modexs = collect(ExprSplitter(JIVisible, ex))
-    m, ex = first(modexs)        # FIXME don't use index in tests
+    # the doc application is yielded inside the module, after its body
+    m, ex = last(modexs)
+    @test m === JIVisible.DocStringTest
     @test JuliaInterpreter.is_doc_expr(ex.args[2])
-    Core.eval(m, ex)
+    for (m, ex) in modexs
+        Core.eval(m, ex)
+    end
     io = IOBuffer()
     show(io, @doc(JIVisible.DocStringTest))
     @test occursin("Special", String(take!(io)))
@@ -915,4 +919,19 @@ end
     fr = Frame(BareDeclTest, Expr(:public, :bare_public))
     @test JuliaInterpreter.finish_and_return!(fr, true) === nothing
     @test Base.ispublic(BareDeclTest, :bare_public)
+end
+
+@testset "module docstrings evaluate within the module" begin
+    ex = Base.parse_input_line("""
+        "ModDoc, evaluating \$(KDOC)"
+        module ModDocEvalTest
+        const KDOC = :kdoc_value
+        end
+        """)
+    for (mod, e) in ExprSplitter(@__MODULE__, ex)
+        JuliaInterpreter.finish_and_return!(Frame(mod, e), true)
+    end
+    b = Base.Docs.Binding(ModDocEvalTest, :ModDocEvalTest)
+    @test haskey(Base.Docs.meta(ModDocEvalTest), b)
+    @test occursin("kdoc_value", string(Base.Docs.doc(b)))
 end
