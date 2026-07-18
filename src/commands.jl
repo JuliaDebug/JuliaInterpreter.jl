@@ -289,9 +289,70 @@ function maybe_step_through_wrapper!(interp::Interpreter, frame::Frame)
         return maybe_step_through_wrapper!(interp, callee(frame))
     end
     maybe_step_through_nkw_meta!(frame)
+    maybe_step_through_arg_destructuring!(interp, frame)
     return frame
 end
 maybe_step_through_wrapper!(frame::Frame) = maybe_step_through_wrapper!(RecursiveInterpreter(), frame)
+
+function is_indexed_iterate_call(@nospecialize(stmt))
+    isexpr(stmt, :call) || return false
+    f = stmt.args[1]
+    isa(f, QuoteNode) && (f = f.value)
+    isa(f, GlobalRef) && return f.name === :indexed_iterate
+    return f === Base.indexed_iterate
+end
+
+"""
+    frame = maybe_step_through_arg_destructuring!(interp::Interpreter, frame::Frame)
+
+If `frame` is at the start of a method with destructured arguments (e.g.
+`f((a, b), c)`), execute the preamble of `indexed_iterate` statements that binds the
+destructured names, so that the user starts with all arguments assigned (issue #660).
+"""
+function maybe_step_through_arg_destructuring!(interp::Interpreter, frame::Frame)
+    frame.pc == 1 || return frame
+    code = frame.framecode
+    scope = code.scope
+    isa(scope, Method) || return frame
+    src = code.src
+    slotnames = src.slotnames
+    nargs = Int(scope.nargs)
+    nargs <= length(slotnames) || return frame
+    # A destructured argument occupies an unnamed argument slot
+    any(i -> slotnames[i] === Symbol(""), 2:nargs) || return frame
+    stmts = src.code
+    prepssas = BitSet()
+    prepend = 0
+    for (i, stmt) in enumerate(stmts)
+        if is_indexed_iterate_call(stmt)
+            arg1 = (stmt::Expr).args[2]
+            isa(arg1, SlotNumber) && 2 <= arg1.id <= nargs && slotnames[arg1.id] === Symbol("") || break
+        elseif isexpr(stmt, :(=)) && isexpr((stmt::Expr).args[2], :call)
+            # a `slot = getfield(%prep, k)` statement consuming a preamble value
+            rhs = (stmt::Expr).args[2]::Expr
+            g = rhs.args[1]
+            isa(g, QuoteNode) && (g = g.value)
+            (isa(g, GlobalRef) ? g.name === :getfield : g === getfield) || break
+            arg1 = rhs.args[2]
+            isa(arg1, SSAValue) && arg1.id in prepssas || break
+        elseif isa(stmt, SlotNumber) || isa(stmt, SSAValue)
+            # a bare read is preamble only if it feeds the next `indexed_iterate`
+            # (otherwise it is the method body, e.g. `f((a, b)) = a`)
+            i < length(stmts) && is_indexed_iterate_call(stmts[i+1]) || break
+        else
+            break
+        end
+        push!(prepssas, i)
+        prepend = i
+    end
+    prepend == 0 && return frame
+    while frame.pc <= prepend
+        pc = step_expr!(interp, frame, false)
+        isa(pc, Int) || break
+    end
+    return frame
+end
+maybe_step_through_arg_destructuring!(frame::Frame) = maybe_step_through_arg_destructuring!(RecursiveInterpreter(), frame)
 
 const kwhandler = Core.kwcall
 const kwextrastep = 0

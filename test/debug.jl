@@ -38,6 +38,12 @@ mutable struct MutFunLike299
 end
 (f::MutFunLike299)(x) = (f.value = x)
 
+function destruct660((a, b), c)
+    a + c
+end
+destruct660b((a, b)) = a
+calldestruct660() = destruct660((1, 2), 3)
+
 @generated function generatedfoo(T)
     :(return $T)
 end
@@ -191,6 +197,42 @@ end
         mf = MutFunLike299(0)
         frame = JuliaInterpreter.enter_call(mf, 42)
         @test JuliaInterpreter.maybe_step_through_wrapper!(frame) === frame
+    end
+
+    @testset "Destructured arguments (issue #660)" begin
+        frame = JuliaInterpreter.enter_call(destruct660, (1, 2), 3)
+        frame = JuliaInterpreter.maybe_step_through_wrapper!(frame)
+        vars = JuliaInterpreter.locals(frame)
+        @test filter(v -> v.name === :a, vars)[1].value == 1
+        @test filter(v -> v.name === :b, vars)[1].value == 2
+        @test filter(v -> v.name === :c, vars)[1].value == 3
+        JuliaInterpreter.finish!(frame)
+        @test JuliaInterpreter.get_return(frame) == 4
+
+        # a body consisting of a bare slot read must not be pre-executed
+        frame = JuliaInterpreter.enter_call(destruct660b, (5, 6))
+        frame = JuliaInterpreter.maybe_step_through_wrapper!(frame)
+        vars = JuliaInterpreter.locals(frame)
+        @test filter(v -> v.name === :a, vars)[1].value == 5
+        @static if VERSION >= v"1.11"
+            # on 1.10 the bare-slot body is folded into `return a` itself, so there
+            # is no body statement left to stop at
+            @test !JuliaInterpreter.is_return(JuliaInterpreter.pc_expr(frame))
+        end
+        JuliaInterpreter.finish!(frame)
+        @test JuliaInterpreter.get_return(frame) == 5
+
+        # stepping in from a caller lands with the arguments bound
+        frame = JuliaInterpreter.enter_call(calldestruct660)
+        frame, pc = debug_command(frame, :s)   # executes the Core.tuple builtin
+        cframe, pc = debug_command(frame, :s)
+        @test JuliaInterpreter.scopeof(cframe).name === :destruct660
+        vars = JuliaInterpreter.locals(cframe)
+        @test filter(v -> v.name === :a, vars)[1].value == 1
+        @test filter(v -> v.name === :b, vars)[1].value == 2
+        cframe, pc = debug_command(cframe, :finish)
+        @test debug_command(cframe, :c) === nothing
+        @test JuliaInterpreter.get_return(JuliaInterpreter.root(cframe)) == 4
     end
 
     @testset "Optional arguments" begin
