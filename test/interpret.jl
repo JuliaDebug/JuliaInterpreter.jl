@@ -1586,7 +1586,9 @@ end
 end
 
 @testset "ccall with a library referenced through a global" begin
-    @eval const resolvefc_lib = "libjulia-internal"
+    # `libjulia` (not `libjulia-internal`): Windows' GetProcAddress does not search a
+    # module's dependencies, so the symbol must be exported by the named library itself
+    @eval const resolvefc_lib = "libjulia"
     @eval resolvefc_f() = ccall((:jl_ver_major, resolvefc_lib), Cint, ())
     # the (name, lib) tuple lowers with the tuple constructor as a GlobalRef
     @test (@interpret Main.resolvefc_f()) == Main.resolvefc_f()
@@ -1640,8 +1642,13 @@ end
     @eval GREgalTest using Base: llvmcall
     g = GlobalRef(GREgalTest, :llvmcall)
     @test JuliaInterpreter.is_global_ref_egal(g, :llvmcall, Base.llvmcall, Base.get_world_counter())
-    # probing in a world predating the import must return false, not throw
-    @test !JuliaInterpreter.is_global_ref_egal(g, :llvmcall, Base.llvmcall, w_before)
+    # probing in a world predating the import must not throw; only world-partitioned
+    # bindings (1.12+) can also see that the binding did not exist back then
+    @static if VERSION >= v"1.12-"
+        @test !JuliaInterpreter.is_global_ref_egal(g, :llvmcall, Base.llvmcall, w_before)
+    else
+        @test JuliaInterpreter.is_global_ref_egal(g, :llvmcall, Base.llvmcall, w_before)
+    end
 end
 
 @testset "opaque closure creation in interpreted code" begin
@@ -1652,10 +1659,12 @@ end
     @test (@interpret (f -> f(3))(oc)) == 5
     oc2 = @interpret (() -> Base.Experimental.@opaque (a, b) -> a * b)()
     @test oc2(6, 7) == 42
-    # the raw Expr form with an unevaluated :opaque_closure_method (opaque_closure.jl style)
+    # the raw Expr form with an unevaluated :opaque_closure_method (opaque_closure.jl style);
+    # the `allow_partial` boolean operand only exists on 1.12+
     ci = code_lowered(() -> 1)[1]
-    @eval oc_from_raw_expr() =
-        $(Expr(:new_opaque_closure, Tuple{}, Union{}, Any, true,
-               Expr(:opaque_closure_method, nothing, 0, false, LineNumberNode(1, :none), ci)))
+    ocm = Expr(:opaque_closure_method, nothing, 0, false, LineNumberNode(1, :none), ci)
+    ocex = VERSION >= v"1.12-" ? Expr(:new_opaque_closure, Tuple{}, Union{}, Any, true, ocm) :
+                                 Expr(:new_opaque_closure, Tuple{}, Union{}, Any, ocm)
+    @eval oc_from_raw_expr() = $ocex
     @test (@interpret Main.oc_from_raw_expr())() == 1
 end

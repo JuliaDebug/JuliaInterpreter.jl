@@ -901,11 +901,13 @@ end
     @test hits[] == 1
 end
 
+@static if VERSION >= v"1.11"  # `public` and `Base.ispublic` are 1.11+
 @testset "public declarations" begin
     @eval module PublicDeclTest end
     fr = Frame(PublicDeclTest, Expr(:block, Expr(:public, :pubmarked), :(41 + 1)))
     @test JuliaInterpreter.finish_and_return!(fr, true) == 42
     @test Base.ispublic(PublicDeclTest, :pubmarked)
+end
 end
 
 @testset "Frame on declaration-only expressions" begin
@@ -916,9 +918,11 @@ end
     fr = Frame(BareDeclTest, :(global +))
     @test JuliaInterpreter.finish_and_return!(fr, true) === nothing
     @test !Base.isdefined(BareDeclTest, :+)
-    fr = Frame(BareDeclTest, Expr(:public, :bare_public))
-    @test JuliaInterpreter.finish_and_return!(fr, true) === nothing
-    @test Base.ispublic(BareDeclTest, :bare_public)
+    @static if VERSION >= v"1.11"  # `public` and `Base.ispublic` are 1.11+
+        fr = Frame(BareDeclTest, Expr(:public, :bare_public))
+        @test JuliaInterpreter.finish_and_return!(fr, true) === nothing
+        @test Base.ispublic(BareDeclTest, :bare_public)
+    end
 end
 
 @testset "module docstrings evaluate within the module" begin
