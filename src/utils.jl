@@ -877,7 +877,14 @@ function Base.StackTraces.StackFrame(frame::Frame)
         argt = Tuple{mapany(_Typeof, method_args)...}
         sig = method.sig
         atype, sparams = ccall(:jl_type_intersection_with_env, Any, (Any, Any), argt, sig)::SimpleVector
-        mi = Core.Compiler.specialize_method(method, atype, sparams::SimpleVector)
+        if atype === Union{}
+            # The recorded argument values may not match the method signature
+            # (e.g. while displaying a MethodError); `specialize_method` would
+            # throw on an empty intersection (issue #573).
+            mi = method
+        else
+            mi = Core.Compiler.specialize_method(method, atype, sparams::SimpleVector)
+        end
         fname = method.name
     else
         mi = frame.framecode.src
