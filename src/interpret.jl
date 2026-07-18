@@ -170,7 +170,11 @@ function resolvefc(frame::Frame, @nospecialize(expr))
     isexpr(expr, :tuple) && return expr
     if isexpr(expr, :call)
         a = (expr::Expr).args[1]
-        (isa(a, QuoteNode) && a.value === Core.tuple) || error("unexpected ccall to ", expr)
+        # the tuple constructor may appear as a QuoteNode, a GlobalRef, or the function itself
+        istuple = a === Core.tuple ||
+                  (isa(a, QuoteNode) && a.value === Core.tuple) ||
+                  (isa(a, GlobalRef) && a.mod === Core && a.name === :tuple)
+        istuple || @invokelatest error("unexpected ccall to ", expr)
         return Expr(:call, GlobalRef(Core, :tuple), (expr::Expr).args[2:end]...)
     end
     @invokelatest error("unexpected ccall to ", expr)

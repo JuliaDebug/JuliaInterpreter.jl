@@ -1584,3 +1584,10 @@ end
     res = Base.invoke_in_world(w_before, JuliaInterpreter.finish_and_return!, NonRecursiveInterpreter(), fr)
     @test res == (2 => 7)
 end
+
+@testset "ccall with a library referenced through a global" begin
+    @eval const resolvefc_lib = "libjulia-internal"
+    @eval resolvefc_f() = ccall((:jl_ver_major, resolvefc_lib), Cint, ())
+    # the (name, lib) tuple lowers with the tuple constructor as a GlobalRef
+    @test (@interpret Main.resolvefc_f()) == Main.resolvefc_f()
+end
