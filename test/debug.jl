@@ -476,6 +476,25 @@ end
         @test get_return(fr) == 2
     end
 
+    @testset ":c presents the breakpoint line's first call (#569)" begin
+        function f_bp569(x)
+            out = []
+            for i in x
+                push!(out, 2i)
+            end
+            return out
+        end
+        bp_line = @__LINE__() - 4  # the push! line
+        breakpoint(f_bp569, bp_line)
+        fr = enter_call(f_bp569, [1.0, 2.0])
+        fr, pc = JuliaInterpreter.debug_command(fr, :c)
+        @test pc isa BreakpointRef
+        @test JuliaInterpreter.linenumber(fr) == bp_line
+        # the pc must sit on the line's first call, not on a bare slot/global read
+        @test JuliaInterpreter.is_call(JuliaInterpreter.pc_expr(fr))
+        remove()
+    end
+
     f_inv(x::Real) = x^2;
     f_inv(x::Integer) = 1 + invoke(f_inv, Tuple{Real}, x)
     @testset "invoke" begin

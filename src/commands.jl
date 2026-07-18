@@ -211,8 +211,8 @@ next_line!(frame::Frame, istoplevel::Bool=false) = next_line!(RecursiveInterpret
 # a call, a return, or an assignment to a variable the user can see. Without the
 # assignment case, lines consisting only of assignments (e.g. `x = y`) were run
 # through entirely and `n` skipped to a later line (issue Debugger.jl#291, PR #484).
-function is_next_line_stop(frame::Frame)
-    stmt = pc_expr(frame)
+function is_next_line_stop(frame::Frame, pc::Int=frame.pc)
+    stmt = pc_expr(frame, pc)
     is_call_or_return(stmt) && return true
     if isexpr(stmt, :(=))
         lhs = (stmt::Expr).args[1]
@@ -223,6 +223,36 @@ function is_next_line_stop(frame::Frame)
         return true # assignment to a global or similar
     end
     return false
+end
+
+# A bare slot read, global read, or SSA reference: executing it cannot transfer
+# control, raise, or mutate anything the user can observe.
+is_trivial_read(@nospecialize stmt) =
+    stmt isa SlotNumber || stmt isa GlobalRef || stmt isa SSAValue || stmt isa QuoteNode || stmt === nothing
+
+# When a line breakpoint fires, the pc usually sits on the line's first lowered
+# statement, often a bare global or slot read that only feeds a later call on the
+# same line. If such a call (or visible assignment/return) is reachable from here
+# through trivial reads alone, execute those reads and present the interesting
+# statement to the user instead (issue #569).
+function maybe_step_to_line_stop!(interp::Interpreter, frame::Frame, bpref::BreakpointRef, istoplevel::Bool)
+    bpref.err === nothing || return frame.pc # break-on-error/throw: stay put
+    (bpref.framecode === frame.framecode && bpref.stmtidx == frame.pc) || return frame.pc
+    frame.pc == 1 && return frame.pc # method-entry breakpoint: show the entry
+    initialline, initialfile = linenumber(frame), getfile(frame)
+    (initialline === nothing || initialfile === nothing) && return frame.pc
+    target = 0
+    for pc in frame.pc:nstatements(frame.framecode)
+        (linenumber(frame, pc) == initialline && getfile(frame, pc) == initialfile) || break
+        if is_next_line_stop(frame, pc)
+            target = pc
+            break
+        end
+        is_trivial_read(pc_expr(frame, pc)) || break
+    end
+    (target == 0 || target == frame.pc) && return frame.pc
+    maybe_next_until!(fr::Frame -> fr.pc >= target, interp, frame, istoplevel)
+    return frame.pc
 end
 
 """
@@ -666,7 +696,10 @@ function debug_command(interp::Interpreter, frame::Frame, cmd::Symbol, rootistop
         if cmd === :c
             r = root(frame)
             ret = finish_stack!(interp, r, rootistoplevel)
-            return isa(ret, BreakpointRef) ? (leaf(r), ret) : nothing
+            isa(ret, BreakpointRef) || return nothing
+            lf = leaf(r)
+            maybe_step_to_line_stop!(interp, lf, ret, rootistoplevel && is_toplevel_frame(lf))
+            return lf, ret
         end
         cmd === :finish && return maybe_reset_frame!(interp, frame, finish!(interp, frame, istoplevel), rootistoplevel)
     catch err
