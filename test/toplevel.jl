@@ -935,3 +935,14 @@ end
     @test haskey(Base.Docs.meta(ModDocEvalTest), b)
     @test occursin("kdoc_value", string(Base.Docs.doc(b)))
 end
+
+@testset "macros expanding to declarations" begin
+    @eval module MacroDeclTest
+    macro decl(); esc(:(global from_macro)); end
+    end
+    # ExprSplitter wraps split statements in a (block lnn stmt); a macro expanding to
+    # `global` only lowers at true top level (issue JuliaLang/julia#28833's test)
+    ex = Expr(:block, LineNumberNode(1, :x), :(MacroDeclTest.@decl))
+    fr = Frame(MacroDeclTest, ex)
+    @test JuliaInterpreter.finish_and_return!(fr, true) === nothing
+end

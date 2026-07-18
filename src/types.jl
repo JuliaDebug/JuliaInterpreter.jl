@@ -448,6 +448,15 @@ function Frame(mod::Module, ex::Expr; world::UInt=default_world())
     lwr = Meta.lower(mod, ex)
     isexpr(lwr, :thunk, 1) && return Frame(mod, (lwr.args[1])::CodeInfo; world)
     if isexpr(lwr, :error) || isexpr(lwr, :incomplete)
+        if isexpr(ex, :block)
+            # `ExprSplitter` wraps each split statement in a block carrying its
+            # LineNumberNode. A macrocall that expands to a declaration (e.g. a macro
+            # returning `global x`, as issue #28833's test does) only lowers at true
+            # top level, so the wrapper block itself fails with 'misplaced
+            # declaration'. Retry the block's statements as toplevel-surface
+            # statements, which are lowered individually in toplevel context.
+            return toplevel_frame(mod, ex.args; world)
+        end
         throw(ArgumentError("lowering returned an error, $lwr"))
     end
     # `macroexpand` inside lowering can surface a `:toplevel`/`:module` (lowering leaves these intact)
