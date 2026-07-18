@@ -213,19 +213,31 @@ function run_test_by_eval(test, fullpath, nstmts)
             # `evaluate_limited!` pauses (returning `nothing`) after each nested
             # `:thunk`/method definition so that subsequent statements run in the new
             # world; resume the frame until it terminates or aborts.
-            local ret
+            local ret = nothing
             try
                 while true
                     ret, nstmtsleft = evaluate_limited!(frame, nstmtsleft, true)
                     ret === nothing || break
                 end
             catch err
-                err isa AbortException || rethrow()
-                ret = err.aborted
+                if err isa AbortException
+                    ret = err.aborted
+                else
+                    # An uncaught error from one top-level expression should not kill
+                    # the whole file; record it and continue with the next expression.
+                    Test.record(ts, Test.Error(:nontest_error, "(top-level expression $i)", err,
+                                               Base.current_exceptions(), LineNumberNode(0)))
+                    continue
+                end
             end
             if isa(ret, Aborted)
                 push!(aborts, ret)
-                JuliaInterpreter.finish_stack!(NonRecursiveInterpreter(), frame, true)
+                try
+                    JuliaInterpreter.finish_stack!(NonRecursiveInterpreter(), frame, true)
+                catch err
+                    Test.record(ts, Test.Error(:nontest_error, "(top-level expression $i, aborted continuation)",
+                                               err, Base.current_exceptions(), LineNumberNode(0)))
+                end
             end
         end
         println("Finished ", $test)
