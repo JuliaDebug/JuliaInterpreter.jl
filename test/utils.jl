@@ -104,7 +104,10 @@ function evaluate_limited!(interp::Interpreter, frame::Frame, nstmts::Int, istop
                     new_pc = pc + 1
                 else
                     limited_interp.nstmts = nstmts
-                    newframe = Frame(moduleof(frame), stmt)
+                    # Construct from the thunk's CodeInfo directly: `Meta.lower` is not
+                    # idempotent on `:thunk` (it wraps it in a fresh thunk that contains the
+                    # original as a statement, which would recurse here forever).
+                    newframe = Frame(moduleof(frame), stmt.args[1]::Core.CodeInfo)
                     ret = finish_and_return!(limited_interp, newframe, true)
                     isa(ret, Aborted) && return ret, limited_interp.nstmts
                     JuliaInterpreter.recycle(newframe)
