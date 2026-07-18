@@ -383,9 +383,16 @@ function prepare_call(@nospecialize(f), allargs;
     argtypes = Tuple{argtypesv...}
     if f isa Core.OpaqueClosure
         method = f.source
-        # don't try to interpret optimized ir
+        # Don't try to interpret closures whose source is unavailable (e.g. constructed
+        # from an `IRCode`) ...
+        if !(isa(method, Method) && (isdefined(method, :source) || isdefined(method, :generator)))
+            return nothing
+        end
+        # ... or optimized/inferred ir
         src = Base.uncompressed_ir(method)
-        if hasfield(CodeInfo, :inferred) && src.inferred   # xref https://github.com/JuliaLang/julia/pull/53219
+        isinferred = hasfield(CodeInfo, :inferred) ? src.inferred :   # xref https://github.com/JuliaLang/julia/pull/53219
+            !isa(src.ssavaluetypes, Int)  # inferred code has a type vector here
+        if isinferred
             @debug "not interpreting opaque closure $f since it contains inferred code"
             return nothing
         end
@@ -690,12 +697,11 @@ function Base.iterate(iter::ExprSplitter, state=nothing)
         end
     end
     if ex.head === :block || ex.head === :toplevel
-        # This was a block that we couldn't safely descend into (issue #427)
-        if !isempty(iter.index) && iter.index[end] > length(iter.stack[end][2].args)
-            pop!(iter.stack)
-            pop!(iter.index)
-            queuenext!(iter)
-        end
+        # This was a block that we couldn't safely descend into (issue #427).
+        # Queue the parent container's next statement (`queuenext!` pops exhausted
+        # containers itself); failing to do so would re-yield the parent wholesale,
+        # evaluating the already-returned statements a second time.
+        queuenext!(iter)
         return (mod, ex), nothing
     end
     queuenext!(iter)

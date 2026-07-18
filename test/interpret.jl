@@ -1366,3 +1366,50 @@ end
     JuliaInterpreter.determine_method_for_expr(ex)
     @test ex == before
 end
+
+@testset "Foreigncall values that look like ASTs are passed as data" begin
+    astval = :(1 + 2)
+    frame = Frame(Main, :(ccall(:jl_typeof, Any, (Any,), $(QuoteNode(astval)))))
+    @test finish_and_return!(frame, true) === Expr
+end
+
+@static if VERSION >= v"1.12-"
+@testset "invoke(f, ::Method, args...)" begin
+    invoke_by_method(x::Real) = x + 1
+    m = only(methods(invoke_by_method))
+    invoke_by_method_wrap(f, m, x) = invoke(f, m, x)
+    @test (@interpret invoke_by_method_wrap(invoke_by_method, m, 1)) == 2
+end
+end
+
+@testset "NewvarNode undefines a reused slot" begin
+    function newvar_reuse(flags)
+        out = Bool[]
+        for flag in flags
+            flag && (x = 1)
+            push!(out, @isdefined(x))
+        end
+        out
+    end
+    fr = JuliaInterpreter.enter_call(newvar_reuse, [true, false])
+    @test finish_and_return!(fr) == newvar_reuse([true, false]) == [true, false]
+end
+
+@testset "Nested OpaqueClosure calls" begin
+    oc = Base.Experimental.@opaque (x, y) -> x + y
+    oc_wrapper(f, x, y) = f(x, y)
+    @test (@interpret oc_wrapper(oc, 1, 2)) == 3
+    @test (@interpret interp=NonRecursiveInterpreter() oc_wrapper(oc, 1, 2)) == 3
+end
+
+@static if VERSION >= v"1.12-"
+@testset "Calling convention is part of the compiled-ccall wrapper key" begin
+    ccall_plain() = @ccall jl_gc_safepoint()::Cvoid
+    ccall_gcsafe() = @ccall gc_safe=true jl_gc_safepoint()::Cvoid
+    @interpret ccall_plain()
+    @interpret ccall_gcsafe()
+    ccs = [k for k in keys(JuliaInterpreter.compiled_calls) if occursin("jl_gc_safepoint", string(k[1]))]
+    # the two ccalls differ only in the calling-convention field and must not share a wrapper
+    @test length(unique(last.(ccs))) >= 2
+end
+end

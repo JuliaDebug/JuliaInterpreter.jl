@@ -518,12 +518,16 @@ function debug_command(interp::Interpreter, frame::Frame, cmd::Symbol, rootistop
         cmd === :until && return maybe_reset_frame!(interp, frame, until_line!(interp, frame, line, istoplevel), rootistoplevel)
         if cmd === :sl
             while more_calls_on_current_line(frame)
-                next_call!(interp, frame, istoplevel)
+                pc = next_call!(interp, frame, istoplevel)
+                (pc === nothing || isa(pc, BreakpointRef)) &&
+                    return maybe_reset_frame!(interp, frame, pc, rootistoplevel)
             end
             return debug_command(interp, frame, :s, rootistoplevel; line)
         end
         if cmd === :sr
-            maybe_next_until!(frame::Frame -> is_return(pc_expr(frame)), interp, frame, istoplevel)
+            pc = maybe_next_until!(frame::Frame -> is_return(pc_expr(frame)), interp, frame, istoplevel)
+            (pc === nothing || isa(pc, BreakpointRef)) &&
+                return maybe_reset_frame!(interp, frame, pc, rootistoplevel)
             return frame, frame.pc
         end
         enter_generated = false

@@ -61,7 +61,12 @@ function firehooks(hooked_fun, bp::AbstractBreakpoint)
 end
 
 function add_to_existing_framecodes(bp::AbstractBreakpoint)
-    for framecode in values(framedict)
+    # Cover both caches: `genframedict` holds the framecodes for expanded @generated
+    # bodies, which would otherwise never receive breakpoints added after they were cached.
+    seen = Base.IdSet{FrameCode}()
+    for framecode in Iterators.flatten((values(framedict), values(genframedict)))
+        framecode in seen && continue
+        push!(seen, framecode)
         add_breakpoint_if_match!(framecode, bp)
     end
 end
@@ -88,7 +93,8 @@ function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointSignat
         sig = Base.unwrap_unionall(m.sig)
         ft0 = sig.parameters[1]
         ft = Base.unwrap_unionall(ft0)
-        if ft <: Function && isa(ft, DataType) && isdefined(ft, :instance)
+        # Check `isa` first: `ft` can be a non-Type (e.g. `Vararg`), on which `<:` throws.
+        if isa(ft, DataType) && ft <: Function && isdefined(ft, :instance)
             return ft.instance
         elseif _isType(ft)
             return _Type_parameter(ft)
@@ -102,7 +108,7 @@ function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointSignat
     bp.f isa Method && return meth === bp.f
     f = extract_function_from_method(meth)
     if !(bp.f === f || (f === Core.kwcall && let ftype = Base.unwrap_unionall(meth.sig).parameters[3]
-                !Base.has_free_typevars(ftype) && bp.f isa ftype
+                isa(ftype, Type) && !Base.has_free_typevars(ftype) && bp.f isa ftype
             end))
         return false
     end
@@ -146,6 +152,10 @@ function breakpoint(f::Union{Method, Callable}, sig=nothing, line::Integer=0, co
         push!(_breakpoints, bp)
     else  #Replace existing breakpoint
         old_bp = _breakpoints[idx]
+        # Detach the replaced handle: its instances point at the same statement slots the
+        # new breakpoint just (re)installed, so e.g. `disable(old_bp)` must not keep
+        # controlling the replacement.
+        empty!(old_bp.instances)
         _breakpoints[idx] = bp
         firehooks(remove, old_bp)
     end
@@ -175,9 +185,25 @@ function breakpoint(file::AbstractString, line::Integer, condition::Condition=no
     bp = BreakpointFileLocation(file, apath, line, condition, Ref(true), BreakpointRef[])
     add_to_existing_framecodes(bp)
     idx = findfirst(bp2 -> same_location(bp, bp2), _breakpoints)
-    idx === nothing ? push!(_breakpoints, bp) : (_breakpoints[idx] = bp)
+    if idx === nothing  # creating new
+        push!(_breakpoints, bp)
+    else  # replace existing breakpoint
+        old_bp = _breakpoints[idx]
+        empty!(old_bp.instances)  # see the note in the method-breakpoint path above
+        _breakpoints[idx] = bp
+        firehooks(remove, old_bp)
+    end
     firehooks(breakpoint, bp)
     return bp
+end
+
+# Like `endswith`, but the match must begin at a path-component boundary, so that
+# a breakpoint on "foo.jl" does not match "notfoo.jl".
+function endswith_at_pathsep(filepath::AbstractString, path::AbstractString)
+    endswith(filepath, path) || return false
+    nprefix = ncodeunits(filepath) - ncodeunits(path)
+    nprefix == 0 && return true
+    return codeunit(filepath, nprefix) in (UInt8('/'), UInt8('\\'))
 end
 
 function add_breakpoint_if_match!(framecode::FrameCode, bp::BreakpointFileLocation)
@@ -185,7 +211,7 @@ function add_breakpoint_if_match!(framecode::FrameCode, bp::BreakpointFileLocati
     matching_file = nothing
     for file in framecode.unique_files
         filepath = CodeTracking.maybe_fix_path(String(file))
-        if Base.samefile(bp.abspath, filepath) || endswith(filepath, bp.path)
+        if Base.samefile(bp.abspath, filepath) || endswith_at_pathsep(filepath, bp.path)
             framecode_contains_file = true
             matching_file = file
             break
@@ -239,7 +265,10 @@ function prepare_slotfunction(framecode::FrameCode, body::Union{Symbol,Expr})
     if isa(scope, Method)
         syms = sparam_syms(scope)
         for i = 1:length(syms)
-            push!(assignments, Expr(:(=), syms[i], :($dataname.sparams[$i])))
+            # A static parameter can be unbound (e.g. declared but unused); guard the read
+            # so conditions that don't reference it still work.
+            push!(assignments, Expr(:(=), syms[i],
+                :(isassigned($dataname.sparams, $i) ? $dataname.sparams[$i] : $default)))
         end
     end
     funcname = isa(scope, Method) ? gensym("slotfunction") : gensym(Symbol(scope, "_slotfunction"))
@@ -334,10 +363,11 @@ disable() = foreach(disable, _breakpoints)
 Remove all breakpoints.
 """
 function remove()
-    for bp in _breakpoints
-        foreach(remove, bp.instances)
+    # Iterate over a copy: `remove(bp)` deletes from `_breakpoints` (and fires the
+    # `remove` hooks, which the previous `empty!`-based implementation skipped).
+    for bp in copy(_breakpoints)
+        remove(bp)
     end
-    empty!(_breakpoints)
 end
 
 """
@@ -424,7 +454,10 @@ macro breakpoint(call_expr, args...)
         end
         args = Base.tail(args)
     end
-    condexpr = condition === nothing ? nothing : esc(Expr(:quote, condition))
+    # Pair the condition with the macro caller's module so it is evaluated with
+    # that module's bindings (see `_unpack`), not in `Main`.
+    condexpr = condition === nothing ? nothing :
+        Expr(:tuple, __module__, esc(Expr(:quote, condition)))
     if haveline
         return quote
             local method = $whichexpr

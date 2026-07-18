@@ -210,13 +210,21 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
 
     if f isa Core.OpaqueClosure
         if expand
-            if !Base.uncompressed_ir(f.source).inferred
-                return Expr(:call, f, args[2:end]...)
-            else
-                @debug "not interpreting opaque closure \$f since it contains inferred code"
+            meth = f.source
+            # Don't try to interpret optimized/inferred ir, or closures whose source is
+            # unavailable (e.g. constructed from an `IRCode`); call those natively below.
+            if isa(meth, Method) && (isdefined(meth, :source) || isdefined(meth, :generator))
+                src = Base.uncompressed_ir(meth)
+                isinferred = hasfield(Core.CodeInfo, :inferred) ? src.inferred :
+                    !isa(src.ssavaluetypes, Int)  # inferred code has a type vector here
+                if !isinferred
+                    return Expr(:call, f, args[2:end]...)
+                else
+                    @debug "not interpreting opaque closure \$f since it contains inferred code"
+                end
             end
         end
-        return Some{Any}(f(args...))
+        return Some{Any}(f(getargs(interp, args, frame)...))
     end
     if !(supertype(typeof(f)) === Core.Builtin || isa(f, Core.IntrinsicFunction))
         return call_expr

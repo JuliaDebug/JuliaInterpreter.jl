@@ -200,7 +200,15 @@ function evaluate_foreigncall(interp::Interpreter, frame::Frame, call_expr::Expr
     args = collect_args(interp, frame, call_expr; isfc = head === :foreigncall)
     for i = 2:length(args)
         arg = args[i]
-        args[i] = isa(arg, Symbol) ? QuoteNode(arg) : arg
+        if head === :foreigncall && i >= 6
+            # args[2:5] are metadata (return type, argument types, nreq, calling convention);
+            # args[6:end] are the evaluated argument values (plus GC roots). The rebuilt
+            # expression is passed to `Core.eval`, which re-evaluates raw `Expr`/`Symbol`/
+            # `QuoteNode`/`GlobalRef` values as code, so quote every value unconditionally.
+            args[i] = QuoteNode(arg)
+        else
+            args[i] = isa(arg, Symbol) ? QuoteNode(arg) : arg
+        end
     end
     head === :cfunction && (args[2] = QuoteNode(args[2]))
     if head === :foreigncall && !isa(args[5], QuoteNode)
@@ -310,9 +318,21 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
         throw(err)
     end
     if fargs[1] === Core.invoke # invoke needs special handling
-        f_invoked = which(fargs[2], fargs[3])::Method
+        argtypes = fargs[3]
         fargs_pruned = [fargs[2]; fargs[4:end]]
         sig = Tuple{mapany(_Typeof, fargs_pruned)...}
+        if isa(argtypes, Method)
+            # `invoke(f, method::Method, args...)` (Julia 1.12+)
+            f_invoked = argtypes
+            # An inapplicable method is an error; defer to the native `invoke` to raise it.
+            sig <: f_invoked.sig || return invoke(fargs[2:end]...)
+        elseif isa(argtypes, Core.CodeInstance)
+            # `invoke(f, ci::CodeInstance, args...)` requests that specific compiled code:
+            # run it natively.
+            return invoke(fargs[2:end]...)
+        else
+            f_invoked = which(fargs[2], argtypes)::Method
+        end
         ret = prepare_framecode(f_invoked, sig; enter_generated, world=frame.world)
         isa(ret, Compiled) && return invoke(fargs[2:end]...)
         @assert ret !== nothing
@@ -742,7 +762,12 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
         elseif isa(node, ReturnNode)
             return nothing
         elseif isa(node, NewvarNode)
-            # FIXME: undefine the slot?
+            # A `NewvarNode` marks the (re-)entry of a variable's scope: the slot must be
+            # reset to undefined, e.g. so a value from a previous loop iteration does not
+            # remain visible (native code would throw `UndefVarError`).
+            id = node.slot.id
+            data.locals[id] = nothing
+            data.last_reference[id] = 0
         elseif istoplevel && isa(node, LineNumberNode)
         elseif istoplevel && isa(node, Symbol)
             rhs = invoke_in_world(frame.world, getfield, moduleof(frame), node)

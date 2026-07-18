@@ -757,6 +757,17 @@ function extract_usage!(s::Set{Symbol}, @nospecialize expr)
     return s
 end
 
+function flatten_toplevel!(args::Vector{Any}, @nospecialize(ex))
+    if isexpr(ex, :toplevel)
+        for a in (ex::Expr).args
+            flatten_toplevel!(args, a)
+        end
+    else
+        push!(args, ex)
+    end
+    return args
+end
+
 function eval_code(frame::Frame, command::AbstractString)
     expr = Base.parse_input_line(command)
     expr === nothing && return nothing
@@ -765,10 +776,11 @@ end
 function eval_code(frame::Frame, expr::Expr)
     code = frame.framecode
     data = frame.framedata
-    isexpr(expr, :toplevel) && (expr = expr.args[end])
-
     if isexpr(expr, :toplevel)
-        expr = Expr(:block, expr.args...)
+        # Flatten (possibly nested) `:toplevel` wrappers into a single block:
+        # `parse_input_line` wraps multi-statement input in a nested `:toplevel`, and an
+        # embedded `:toplevel` cannot be lowered inside the `let` built below.
+        expr = Expr(:block, flatten_toplevel!(Any[], expr)...)
     end
 
     used_symbols = Set{Symbol}((Symbol("#self#"),))
@@ -788,11 +800,13 @@ function eval_code(frame::Frame, expr::Expr)
             Expr(:tuple, res, Expr(:tuple, [v.name for v in vars]...))
         ))
     eval_res, res = Core.eval(moduleof(frame), eval_expr)
-    j = 1
     for (i, v) in enumerate(vars)
         if v.isparam
-            data.sparams[j] = res[i]
-            j += 1
+            # `vars` only holds the variables used by `expr`, so look the static parameter
+            # up by name; a running counter would write into the wrong slot whenever an
+            # earlier sparam is not referenced.
+            j = findfirst(==(v.name), sparam_syms(code.scope::Method))
+            j === nothing || (data.sparams[j] = res[i])
         elseif v.is_captured_closure
             selfidx = findfirst(v -> v.name === Symbol("#self#"), vars)
             @assert selfidx !== nothing
@@ -807,7 +821,14 @@ function eval_code(frame::Frame, expr::Expr)
             idx = argmax(data.last_reference[slot_indices])
             slot_idx = slot_indices[idx]
             data.last_reference[slot_idx] = (frame.assignment_counter += 1)
-            data.locals[slot_idx] = Some{Any}(v.value isa Core.Box ? Core.Box(res[i]) : res[i])
+            if v.value isa Core.Box
+                # Mutate the existing Box in place: closures that captured the variable
+                # hold a reference to this same Box and must observe the new value.
+                v.value.contents = res[i]
+                data.locals[slot_idx] = Some{Any}(v.value)
+            else
+                data.locals[slot_idx] = Some{Any}(res[i])
+            end
         end
     end
     eval_res
