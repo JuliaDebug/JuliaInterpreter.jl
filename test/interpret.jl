@@ -1499,3 +1499,15 @@ end
     res = Base.invoke_in_world(w_before, JuliaInterpreter.finish_and_return!, NonRecursiveInterpreter(), fr)
     @test res === :ok
 end
+
+@testset "UndefVarError carries the scope for unbound sparams and locals" begin
+    unbound_sp_g(x::T, y::T) where {S,T>:S} = T
+    expected_sp = VERSION >= v"1.11" ? UndefVarError(:T, :static_parameter) : UndefVarError(:T)
+    @test_throws expected_sp @interpret unbound_sp_g(1, 1)
+    function undef_local_f(c)
+        c && (x = 1)
+        return x
+    end
+    expected_local = VERSION >= v"1.11" ? UndefVarError(:x, :local) : UndefVarError(:x)
+    @test_throws expected_local @interpret undef_local_f(false)
+end

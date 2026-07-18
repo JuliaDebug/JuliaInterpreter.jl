@@ -60,6 +60,16 @@ end
 instantiate_type_in_env(arg, spsig::UnionAll, spvals::Vector{Any}) =
     ccall(:jl_instantiate_type_in_env, Any, (Any, Any, Ptr{Any}), arg, spsig, spvals)
 
+# Native `UndefVarError`s carry the scope of the missing binding (`:local`,
+# `:static_parameter`, ...) since Julia 1.11; match that so `@test_throws` and other
+# field-wise comparisons against natively-thrown errors succeed.
+@static if VERSION >= v"1.11"
+    undef_var_error(sym::Symbol, scope::Symbol) = UndefVarError(sym, scope)
+else
+    undef_var_error(sym::Symbol, scope::Symbol) = UndefVarError(sym)
+end
+undef_sparam_error(sym::Symbol) = undef_var_error(sym, :static_parameter)
+
 function sparam_syms(meth::Method)
     s = Symbol[]
     sig = meth.sig

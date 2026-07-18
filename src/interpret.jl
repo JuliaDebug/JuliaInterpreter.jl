@@ -6,12 +6,12 @@ lookup_var(frame::Frame, ref::GlobalRef) = invoke_in_world(frame.world, getgloba
 function lookup_var(frame::Frame, slot::SlotNumber)
     val = frame.framedata.locals[slot.id]
     val !== nothing && return val.value
-    throw(UndefVarError(frame.framecode.src.slotnames[slot.id]))
+    throw(undef_var_error(frame.framecode.src.slotnames[slot.id], :local))
 end
 function lookup_var(frame::Frame, arg::Core.Argument)
     val = frame.framedata.locals[arg.n]
     val !== nothing && return val.value
-    throw(UndefVarError(frame.framecode.src.slotnames[arg.n]))
+    throw(undef_var_error(frame.framecode.src.slotnames[arg.n], :local))
 end
 
 """
@@ -65,7 +65,7 @@ function lookup_expr(interp::Interpreter, frame::Frame, e::Expr)
             return frame.framedata.sparams[arg]
         else
             syms = sparam_syms(frame.framecode.scope::Method)
-            throw(UndefVarError(syms[arg]))
+            throw(undef_sparam_error(syms[arg]))
         end
     end
     head === :boundscheck && length(e.args) == 0 && return true
