@@ -289,7 +289,7 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
         # (the "mini interpreter" runs in module scope, not method scope)
         if (!isempty(lenv) && (hasarg(isidentical(:llvmcall), code.code) ||
                                hasarg(isidentical(Core.Intrinsics.llvmcall), code.code) ||
-                               hasarg(a->is_global_ref_egal(a, :llvmcall, Core.Intrinsics.llvmcall), code.code))) ||
+                               hasarg(a->is_global_ref_egal(a, :llvmcall, Core.Intrinsics.llvmcall, world), code.code))) ||
                                hasarg(isidentical(:iolock_begin), code.code)
             return Compiled()
         end

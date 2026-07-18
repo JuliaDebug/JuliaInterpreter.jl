@@ -167,11 +167,14 @@ Tests whether `g` is equal to `GlobalRef(mod, name)`.
 """
 is_global_ref(@nospecialize(g), mod::Module, name::Symbol) = isa(g, GlobalRef) && g.mod === mod && g.name == name
 
-function is_global_ref_egal(@nospecialize(g), name::Symbol, @nospecialize(ref))
+function is_global_ref_egal(@nospecialize(g), name::Symbol, @nospecialize(ref), world::UInt=default_world())
     # Identifying GlobalRefs regardless of how the caller scopes them
     isa(g, GlobalRef) || return false
     g.name === name || return false
-    gref = getglobal(g.mod, g.name)
+    # Resolve in `world`, not the ambient task world (which may predate the binding),
+    # and treat an unresolvable binding as not-equal rather than throwing.
+    invoke_in_world(world, isdefinedglobal, g.mod, g.name) || return false
+    gref = invoke_in_world(world, getglobal, g.mod, g.name)
     return gref === ref
 end
 

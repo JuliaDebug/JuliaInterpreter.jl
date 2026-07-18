@@ -1633,3 +1633,13 @@ end
     @test (@interpret rethrow_other()) == rethrow_other() ==
           (ErrorException("B"), ErrorException("B"))
 end
+
+@testset "is_global_ref_egal tolerates bindings newer than the world" begin
+    w_before = Base.get_world_counter()
+    @eval module GREgalTest end
+    @eval GREgalTest using Base: llvmcall
+    g = GlobalRef(GREgalTest, :llvmcall)
+    @test JuliaInterpreter.is_global_ref_egal(g, :llvmcall, Base.llvmcall, Base.get_world_counter())
+    # probing in a world predating the import must return false, not throw
+    @test !JuliaInterpreter.is_global_ref_egal(g, :llvmcall, Base.llvmcall, w_before)
+end
