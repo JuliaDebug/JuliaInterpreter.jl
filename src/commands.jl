@@ -62,7 +62,16 @@ function finish_stack!(interp::Interpreter, frame::Frame, rootistoplevel::Bool=f
     frame = leaf(frame)
     while true
         istoplevel = rootistoplevel && is_toplevel_frame(frame)
-        ret = finish_and_return!(interp, frame, istoplevel)
+        ret = try
+            finish_and_return!(interp, frame, istoplevel)
+        catch err
+            # An exception a frame does not itself catch may be handled by a caller
+            # frame. The native recursion of `finish_and_return!` unwinds to the
+            # caller's `step_expr!` automatically, but this iterative driver must
+            # unwind explicitly; resume in the frame that catches (or rethrow).
+            frame = unwind_exception(frame, err)
+            continue
+        end
         isa(ret, BreakpointRef) && return ret
         frame === frame0 && return ret
         frame = return_from(frame)
