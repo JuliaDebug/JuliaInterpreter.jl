@@ -495,7 +495,7 @@ getfile(frame::Frame, pc=frame.pc) = getfile(frame.framecode, pc)
 function codelocation(code::CodeInfo, idx::Int)
     idx′ = idx
     # look ahead if we are on a meta line
-    while idx′ < length(code.code)
+    while idx′ <= length(code.code)
         codeloc = codelocs(code, idx′)
         codeloc == 0 || return codeloc
         ex = code.code[idx′]

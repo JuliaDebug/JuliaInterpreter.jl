@@ -203,9 +203,27 @@ function _next_line!(interp::Interpreter, frame::Frame, istoplevel, initialline:
     end
     (pc === nothing || isa(pc, BreakpointRef)) && return pc
     maybe_step_through_kwprep!(interp, frame, istoplevel)
-    maybe_next_call!(interp, frame, istoplevel)
+    maybe_next_until!(is_next_line_stop, interp, frame, istoplevel)
 end
 next_line!(frame::Frame, istoplevel::Bool=false) = next_line!(RecursiveInterpreter(), frame, istoplevel)
+
+# `next_line!` should present the line's first interesting statement to the user:
+# a call, a return, or an assignment to a variable the user can see. Without the
+# assignment case, lines consisting only of assignments (e.g. `x = y`) were run
+# through entirely and `n` skipped to a later line (issue Debugger.jl#291, PR #484).
+function is_next_line_stop(frame::Frame)
+    stmt = pc_expr(frame)
+    is_call_or_return(stmt) && return true
+    if isexpr(stmt, :(=))
+        lhs = (stmt::Expr).args[1]
+        if isa(lhs, SlotNumber)
+            # only named slots are user-visible
+            return frame.framecode.src.slotnames[lhs.id] !== Symbol("")
+        end
+        return true # assignment to a global or similar
+    end
+    return false
+end
 
 """
     pc = until_line!(interp::Interpreter, frame, line=nothing istoplevel=false)

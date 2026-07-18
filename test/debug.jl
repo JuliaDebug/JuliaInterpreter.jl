@@ -44,6 +44,13 @@ end
 destruct660b((a, b)) = a
 calldestruct660() = destruct660((1, 2), 3)
 
+function assignments484(x)
+    y = x
+    z = y
+    w = sin(z)
+    return w
+end
+
 @generated function generatedfoo(T)
     :(return $T)
 end
@@ -124,6 +131,20 @@ end
         @test step_through(:($(+)(1,2.5))) == 3.5
         @test step_through(:($(sin)(1))) == sin(1)
         @test step_through(:($(gcd)(10,20))) == gcd(10, 20)
+    end
+
+    @testset "next stops on assignment-only lines (#484)" begin
+        frame = enter_call(assignments484, 0.5)
+        lines = Int[whereis(frame)[2]]
+        while true
+            ret = debug_command(frame, :n)
+            ret === nothing && break
+            frame = ret[1]
+            push!(lines, whereis(frame)[2])
+        end
+        # every line of the body is visited, including the call-free `z = y`
+        @test [l - lines[1] for l in lines] == [0, 1, 2, 3]
+        @test get_return(frame) == sin(0.5)
     end
 
     @testset "until" begin
