@@ -29,6 +29,15 @@ end
 step_through(f, args...; kwargs...) = step_through_frame(() -> enter_call(f, args...; kwargs...))
 step_through(expr::Expr) = step_through_frame(() -> enter_call_expr(expr))
 
+struct FunLike299
+    value::Int
+end
+(f::FunLike299)(x) = (y = sin(3.0); f.value)
+mutable struct MutFunLike299
+    value::Int
+end
+(f::MutFunLike299)(x) = (f.value = x)
+
 @generated function generatedfoo(T)
     :(return $T)
 end
@@ -173,6 +182,15 @@ end
             @test debug_command(fr, :finish) === nothing
             @test JuliaInterpreter.get_return(fr) == (Int, 2)
         end
+    end
+
+    @testset "Function-like objects are not wrappers (issue #299)" begin
+        fl = FunLike299(3)
+        frame = JuliaInterpreter.enter_call(fl, 3)
+        @test JuliaInterpreter.maybe_step_through_wrapper!(frame) === frame
+        mf = MutFunLike299(0)
+        frame = JuliaInterpreter.enter_call(mf, 42)
+        @test JuliaInterpreter.maybe_step_through_wrapper!(frame) === frame
     end
 
     @testset "Optional arguments" begin

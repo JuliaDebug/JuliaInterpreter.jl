@@ -260,7 +260,17 @@ function maybe_step_through_wrapper!(interp::Interpreter, frame::Frame)
         end
     end
 
-    has_selfarg = isexpr(last, :call) && any(@nospecialize(x) -> isa(x, SlotNumber) && x.id == 1, last.args) # isequal(SlotNumber(1)) vulnerable to invalidation
+    # Field access on `#self#` (e.g. `f.value` in a function-like object's method) is not
+    # wrapper forwarding; without this exclusion we'd step into `getproperty` (issue #299).
+    is_field_access = isexpr(last, :call) && let g = last.args[1]
+        g isa QuoteNode && (g = g.value)
+        if g isa GlobalRef
+            g = isdefined(g.mod, g.name) ? getfield(g.mod, g.name) : nothing
+        end
+        g === Base.getproperty || g === getfield || g === Base.setproperty! || g === setfield!
+    end
+    has_selfarg = isexpr(last, :call) && !is_field_access &&
+        any(@nospecialize(x) -> isa(x, SlotNumber) && x.id == 1, last.args) # isequal(SlotNumber(1)) vulnerable to invalidation
     issplatcall, _callee = unpack_splatcall(last, src)
     if is_kw || has_selfarg || (issplatcall && is_bodyfunc(_callee))
         # If the last expr calls #self# or passes it to an implementation method,
