@@ -29,6 +29,28 @@ end
 step_through(f, args...; kwargs...) = step_through_frame(() -> enter_call(f, args...; kwargs...))
 step_through(expr::Expr) = step_through_frame(() -> enter_call_expr(expr))
 
+struct FunLike299
+    value::Int
+end
+(f::FunLike299)(x) = (y = sin(3.0); f.value)
+mutable struct MutFunLike299
+    value::Int
+end
+(f::MutFunLike299)(x) = (f.value = x)
+
+function destruct660((a, b), c)
+    a + c
+end
+destruct660b((a, b)) = a
+calldestruct660() = destruct660((1, 2), 3)
+
+function assignments484(x)
+    y = x
+    z = y
+    w = sin(z)
+    return w
+end
+
 @generated function generatedfoo(T)
     :(return $T)
 end
@@ -111,6 +133,20 @@ end
         @test step_through(:($(gcd)(10,20))) == gcd(10, 20)
     end
 
+    @testset "next stops on assignment-only lines (#484)" begin
+        frame = enter_call(assignments484, 0.5)
+        lines = Int[whereis(frame)[2]]
+        while true
+            ret = debug_command(frame, :n)
+            ret === nothing && break
+            frame = ret[1]
+            push!(lines, whereis(frame)[2])
+        end
+        # every line of the body is visited, including the call-free `z = y`
+        @test [l - lines[1] for l in lines] == [0, 1, 2, 3]
+        @test get_return(frame) == sin(0.5)
+    end
+
     @testset "until" begin
         function f_with_lines(s)
             sin(2.0)
@@ -149,12 +185,17 @@ end
             @test isexpr(lt, :line) || isa(lt, Core.LineInfoNode) || isa(lt, Base.IRShow.LineInfoNode)
             @test isa(pc, BreakpointRef)
             @test JuliaInterpreter.scopeof(cframe).name === :generatedfoo
+            # issue #161: the generator must see the argument *types*, not their values
+            cvars = JuliaInterpreter.locals(cframe)
+            @test filter(v -> v.name === :T, cvars)[1].value === Int
             cframe, pc = debug_command(cframe, :finish)
             @test JuliaInterpreter.scopeof(cframe).name === :callgenerated
             # Now finish the regular function
             @test debug_command(cframe, :finish) === nothing
             @test cframe.callee === nothing
-            @test get_return(cframe) === 1
+            # This matches the native result: with the generator seeing `T = Int`
+            # (issue #161), the generated body is `return Int`.
+            @test get_return(cframe) === Int
         end
 
         # Parametric generated function (see #157)
@@ -168,6 +209,51 @@ end
             @test debug_command(fr, :finish) === nothing
             @test JuliaInterpreter.get_return(fr) == (Int, 2)
         end
+    end
+
+    @testset "Function-like objects are not wrappers (issue #299)" begin
+        fl = FunLike299(3)
+        frame = JuliaInterpreter.enter_call(fl, 3)
+        @test JuliaInterpreter.maybe_step_through_wrapper!(frame) === frame
+        mf = MutFunLike299(0)
+        frame = JuliaInterpreter.enter_call(mf, 42)
+        @test JuliaInterpreter.maybe_step_through_wrapper!(frame) === frame
+    end
+
+    @testset "Destructured arguments (issue #660)" begin
+        frame = JuliaInterpreter.enter_call(destruct660, (1, 2), 3)
+        frame = JuliaInterpreter.maybe_step_through_wrapper!(frame)
+        vars = JuliaInterpreter.locals(frame)
+        @test filter(v -> v.name === :a, vars)[1].value == 1
+        @test filter(v -> v.name === :b, vars)[1].value == 2
+        @test filter(v -> v.name === :c, vars)[1].value == 3
+        JuliaInterpreter.finish!(frame)
+        @test JuliaInterpreter.get_return(frame) == 4
+
+        # a body consisting of a bare slot read must not be pre-executed
+        frame = JuliaInterpreter.enter_call(destruct660b, (5, 6))
+        frame = JuliaInterpreter.maybe_step_through_wrapper!(frame)
+        vars = JuliaInterpreter.locals(frame)
+        @test filter(v -> v.name === :a, vars)[1].value == 5
+        @static if VERSION >= v"1.11"
+            # on 1.10 the bare-slot body is folded into `return a` itself, so there
+            # is no body statement left to stop at
+            @test !JuliaInterpreter.is_return(JuliaInterpreter.pc_expr(frame))
+        end
+        JuliaInterpreter.finish!(frame)
+        @test JuliaInterpreter.get_return(frame) == 5
+
+        # stepping in from a caller lands with the arguments bound
+        frame = JuliaInterpreter.enter_call(calldestruct660)
+        frame, pc = debug_command(frame, :s)   # executes the Core.tuple builtin
+        cframe, pc = debug_command(frame, :s)
+        @test JuliaInterpreter.scopeof(cframe).name === :destruct660
+        vars = JuliaInterpreter.locals(cframe)
+        @test filter(v -> v.name === :a, vars)[1].value == 1
+        @test filter(v -> v.name === :b, vars)[1].value == 2
+        cframe, pc = debug_command(cframe, :finish)
+        @test debug_command(cframe, :c) === nothing
+        @test JuliaInterpreter.get_return(JuliaInterpreter.root(cframe)) == 4
     end
 
     @testset "Optional arguments" begin

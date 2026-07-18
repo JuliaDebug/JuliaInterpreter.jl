@@ -107,10 +107,14 @@ struct Squarer end
     # Breakpoints by file/line
     remove()
     method = which(JuliaInterpreter.locals, Tuple{Frame})
+    # JuliaInterpreter's own module is in `compiled_modules` (issue #228), so opt this
+    # method back into interpretation to let the file/line breakpoint fire.
+    push!(JuliaInterpreter.interpreted_methods, method)
     breakpoint(String(method.file), method.line+1)
     frame = JuliaInterpreter.enter_call(loop_radius2, 2)
     ret = @interpret JuliaInterpreter.locals(frame)
     @test isa(ret, Tuple{Frame,JuliaInterpreter.BreakpointRef})
+    delete!(JuliaInterpreter.interpreted_methods, method)
     # Test kwarg method
     remove()
     bp = breakpoint(tmppath, 3)
@@ -477,6 +481,9 @@ struct Constructor
     x::Int
 end
 Constructor(x::AbstractString, y::Int) = Constructor(x)
+struct ParametricConstructor{T}
+    x::T
+end
 
 @testset "constructors" begin
     breakpoint(Constructor, Tuple{String, Int})
@@ -487,6 +494,19 @@ Constructor(x::AbstractString, y::Int) = Constructor(x)
     breakpoint(Constructor)
     frame, bp = @interpret Constructor(2)
     @test bp isa BreakpointRef
+
+    # issue #525: a breakpoint on the type must also fire for parameterized calls
+    remove()
+    breakpoint(ParametricConstructor)
+    frame, bp = @interpret ParametricConstructor{Int}(2)
+    @test bp isa BreakpointRef
+    frame, bp = @interpret ParametricConstructor(2)
+    @test bp isa BreakpointRef
+    remove()
+    # ... and a breakpoint on an unrelated type must not fire
+    breakpoint(Constructor)
+    @test @interpret(ParametricConstructor(2)) isa ParametricConstructor
+    remove()
 end
 
 @testset "test breaking on a line with no statement" begin

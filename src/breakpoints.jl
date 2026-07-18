@@ -104,10 +104,19 @@ function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointSignat
     end
 
     meth = framecode.scope
+    # A breakpoint set on a type should also cover constructor methods that dispatch on a
+    # parameterization of it, e.g. `breakpoint(Constructor)` must fire for
+    # `Constructor{Int}(x)`, whose extracted `f` is `Constructor{T}` (issue #525).
+    function same_typename(@nospecialize(a), @nospecialize(b))
+        a isa Type && b isa Type || return false
+        au, bu = Base.unwrap_unionall(a), Base.unwrap_unionall(b)
+        return au isa DataType && bu isa DataType && au.name === bu.name
+    end
     meth isa Method || return false
     bp.f isa Method && return meth === bp.f
     f = extract_function_from_method(meth)
-    if !(bp.f === f || (f === Core.kwcall && let ftype = Base.unwrap_unionall(meth.sig).parameters[3]
+    if !(bp.f === f || same_typename(bp.f, f) ||
+            (f === Core.kwcall && let ftype = Base.unwrap_unionall(meth.sig).parameters[3]
                 isa(ftype, Type) && !Base.has_free_typevars(ftype) && bp.f isa ftype
             end))
         return false

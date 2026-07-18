@@ -203,9 +203,27 @@ function _next_line!(interp::Interpreter, frame::Frame, istoplevel, initialline:
     end
     (pc === nothing || isa(pc, BreakpointRef)) && return pc
     maybe_step_through_kwprep!(interp, frame, istoplevel)
-    maybe_next_call!(interp, frame, istoplevel)
+    maybe_next_until!(is_next_line_stop, interp, frame, istoplevel)
 end
 next_line!(frame::Frame, istoplevel::Bool=false) = next_line!(RecursiveInterpreter(), frame, istoplevel)
+
+# `next_line!` should present the line's first interesting statement to the user:
+# a call, a return, or an assignment to a variable the user can see. Without the
+# assignment case, lines consisting only of assignments (e.g. `x = y`) were run
+# through entirely and `n` skipped to a later line (issue Debugger.jl#291, PR #484).
+function is_next_line_stop(frame::Frame)
+    stmt = pc_expr(frame)
+    is_call_or_return(stmt) && return true
+    if isexpr(stmt, :(=))
+        lhs = (stmt::Expr).args[1]
+        if isa(lhs, SlotNumber)
+            # only named slots are user-visible
+            return frame.framecode.src.slotnames[lhs.id] !== Symbol("")
+        end
+        return true # assignment to a global or similar
+    end
+    return false
+end
 
 """
     pc = until_line!(interp::Interpreter, frame, line=nothing istoplevel=false)
@@ -260,7 +278,17 @@ function maybe_step_through_wrapper!(interp::Interpreter, frame::Frame)
         end
     end
 
-    has_selfarg = isexpr(last, :call) && any(@nospecialize(x) -> isa(x, SlotNumber) && x.id == 1, last.args) # isequal(SlotNumber(1)) vulnerable to invalidation
+    # Field access on `#self#` (e.g. `f.value` in a function-like object's method) is not
+    # wrapper forwarding; without this exclusion we'd step into `getproperty` (issue #299).
+    is_field_access = isexpr(last, :call) && let g = last.args[1]
+        g isa QuoteNode && (g = g.value)
+        if g isa GlobalRef
+            g = isdefined(g.mod, g.name) ? getfield(g.mod, g.name) : nothing
+        end
+        g === Base.getproperty || g === getfield || g === Base.setproperty! || g === setfield!
+    end
+    has_selfarg = isexpr(last, :call) && !is_field_access &&
+        any(@nospecialize(x) -> isa(x, SlotNumber) && x.id == 1, last.args) # isequal(SlotNumber(1)) vulnerable to invalidation
     issplatcall, _callee = unpack_splatcall(last, src)
     if is_kw || has_selfarg || (issplatcall && is_bodyfunc(_callee))
         # If the last expr calls #self# or passes it to an implementation method,
@@ -279,9 +307,70 @@ function maybe_step_through_wrapper!(interp::Interpreter, frame::Frame)
         return maybe_step_through_wrapper!(interp, callee(frame))
     end
     maybe_step_through_nkw_meta!(frame)
+    maybe_step_through_arg_destructuring!(interp, frame)
     return frame
 end
 maybe_step_through_wrapper!(frame::Frame) = maybe_step_through_wrapper!(RecursiveInterpreter(), frame)
+
+function is_indexed_iterate_call(@nospecialize(stmt))
+    isexpr(stmt, :call) || return false
+    f = stmt.args[1]
+    isa(f, QuoteNode) && (f = f.value)
+    isa(f, GlobalRef) && return f.name === :indexed_iterate
+    return f === Base.indexed_iterate
+end
+
+"""
+    frame = maybe_step_through_arg_destructuring!(interp::Interpreter, frame::Frame)
+
+If `frame` is at the start of a method with destructured arguments (e.g.
+`f((a, b), c)`), execute the preamble of `indexed_iterate` statements that binds the
+destructured names, so that the user starts with all arguments assigned (issue #660).
+"""
+function maybe_step_through_arg_destructuring!(interp::Interpreter, frame::Frame)
+    frame.pc == 1 || return frame
+    code = frame.framecode
+    scope = code.scope
+    isa(scope, Method) || return frame
+    src = code.src
+    slotnames = src.slotnames
+    nargs = Int(scope.nargs)
+    nargs <= length(slotnames) || return frame
+    # A destructured argument occupies an unnamed argument slot
+    any(i -> slotnames[i] === Symbol(""), 2:nargs) || return frame
+    stmts = src.code
+    prepssas = BitSet()
+    prepend = 0
+    for (i, stmt) in enumerate(stmts)
+        if is_indexed_iterate_call(stmt)
+            arg1 = (stmt::Expr).args[2]
+            isa(arg1, SlotNumber) && 2 <= arg1.id <= nargs && slotnames[arg1.id] === Symbol("") || break
+        elseif isexpr(stmt, :(=)) && isexpr((stmt::Expr).args[2], :call)
+            # a `slot = getfield(%prep, k)` statement consuming a preamble value
+            rhs = (stmt::Expr).args[2]::Expr
+            g = rhs.args[1]
+            isa(g, QuoteNode) && (g = g.value)
+            (isa(g, GlobalRef) ? g.name === :getfield : g === getfield) || break
+            arg1 = rhs.args[2]
+            isa(arg1, SSAValue) && arg1.id in prepssas || break
+        elseif isa(stmt, SlotNumber) || isa(stmt, SSAValue)
+            # a bare read is preamble only if it feeds the next `indexed_iterate`
+            # (otherwise it is the method body, e.g. `f((a, b)) = a`)
+            i < length(stmts) && is_indexed_iterate_call(stmts[i+1]) || break
+        else
+            break
+        end
+        push!(prepssas, i)
+        prepend = i
+    end
+    prepend == 0 && return frame
+    while frame.pc <= prepend
+        pc = step_expr!(interp, frame, false)
+        isa(pc, Int) || break
+    end
+    return frame
+end
+maybe_step_through_arg_destructuring!(frame::Frame) = maybe_step_through_arg_destructuring!(RecursiveInterpreter(), frame)
 
 const kwhandler = Core.kwcall
 const kwextrastep = 0

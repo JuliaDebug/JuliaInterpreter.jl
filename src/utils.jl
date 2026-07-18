@@ -495,7 +495,7 @@ getfile(frame::Frame, pc=frame.pc) = getfile(frame.framecode, pc)
 function codelocation(code::CodeInfo, idx::Int)
     idx′ = idx
     # look ahead if we are on a meta line
-    while idx′ < length(code.code)
+    while idx′ <= length(code.code)
         codeloc = codelocs(code, idx′)
         codeloc == 0 || return codeloc
         ex = code.code[idx′]
@@ -877,7 +877,14 @@ function Base.StackTraces.StackFrame(frame::Frame)
         argt = Tuple{mapany(_Typeof, method_args)...}
         sig = method.sig
         atype, sparams = ccall(:jl_type_intersection_with_env, Any, (Any, Any), argt, sig)::SimpleVector
-        mi = Core.Compiler.specialize_method(method, atype, sparams::SimpleVector)
+        if atype === Union{}
+            # The recorded argument values may not match the method signature
+            # (e.g. while displaying a MethodError); `specialize_method` would
+            # throw on an empty intersection (issue #573).
+            mi = method
+        else
+            mi = Core.Compiler.specialize_method(method, atype, sparams::SimpleVector)
+        end
         fname = method.name
     else
         mi = frame.framecode.src
