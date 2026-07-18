@@ -1591,3 +1591,45 @@ end
     # the (name, lib) tuple lowers with the tuple constructor as a GlobalRef
     @test (@interpret Main.resolvefc_f()) == Main.resolvefc_f()
 end
+
+@testset "rethrow does not duplicate active-exception entries" begin
+    function fin_count()
+        local a, b
+        try
+            try
+                error("A")
+            finally
+                a = length(Base.current_exceptions())
+            end
+        catch
+            b = length(Base.current_exceptions())
+        end
+        (a, b)
+    end
+    @test (@interpret fin_count()) == fin_count() == (1, 1)
+    function throw_same()  # a fresh `throw` of the same object does push
+        try
+            try
+                error("A")
+            catch err
+                throw(err)
+            end
+        catch
+            length(Base.current_exceptions())
+        end
+    end
+    @test (@interpret throw_same()) == throw_same() == 2
+    function rethrow_other()  # `rethrow(exc)` replaces the current exception
+        try
+            try
+                error("A")
+            catch
+                rethrow(ErrorException("B"))
+            end
+        catch exc
+            (exc, Base.current_exceptions()[end].exception)
+        end
+    end
+    @test (@interpret rethrow_other()) == rethrow_other() ==
+          (ErrorException("B"), ErrorException("B"))
+end

@@ -263,6 +263,11 @@ function bypass_builtins(interp::Interpreter, frame::Frame, call_expr::Expr, pc:
     return nothing
 end
 
+# Set by the `rethrow` interception just before re-raising, so handler entry can
+# distinguish a re-raise (which must not push a duplicate active-exception entry)
+# from a fresh `throw` of the same object.
+const _rethrow_inflight = Ref{Any}(nothing)
+
 function native_call(fargs::Vector{Any}, frame::Frame)
     f = popfirst!(fargs)
     @something maybe_eval_with_scope(f, fargs, frame) return invoke_in_world(frame.world, f, fargs...)
@@ -318,7 +323,23 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
     if fargs[1] === Core.eval
         return Core.eval(fargs[2], fargs[3])  # not a builtin, but worth treating specially
     elseif fargs[1] === Base.rethrow
-        length(fargs) > 1 && throw(fargs[2])
+        if length(fargs) > 1
+            exc = fargs[2]
+            # `rethrow(exc)` replaces the exception currently being handled; find it in
+            # the frame chain (native `jl_rethrow_other` replaces the stack top).
+            fr = frame
+            while fr !== nothing
+                exs = fr.framedata.exceptions
+                if !isempty(exs)
+                    exs[end] = exc
+                    fr.framedata.last_exception[] = exc
+                    _rethrow_inflight[] = exc
+                    throw(exc)
+                end
+                fr = fr.caller
+            end
+            throw(exc)
+        end
         # `rethrow()` rethrows the task's innermost exception being handled, which may live
         # in a caller's frame when it is reached from a function called inside a `catch`
         # block. Each frame tracks its own active-exception stack, so walk the caller chain
@@ -326,7 +347,10 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
         fr = frame
         while fr !== nothing
             exs = fr.framedata.exceptions
-            isempty(exs) || throw(exs[end])
+            if !isempty(exs)
+                _rethrow_inflight[] = exs[end]
+                throw(exs[end])
+            end
             fr = fr.caller
         end
         # No interpreted frame is handling an exception; fall back to the native rethrow
@@ -916,7 +940,14 @@ function enter_exception_handler!(data::FrameData, @nospecialize(err))
     scope_depth = data.exception_scopes[end]
     scope_depth < length(data.current_scopes) && resize!(data.current_scopes, scope_depth)
     data.last_exception[] = err
-    push!(data.exceptions, err)
+    if _rethrow_inflight[] === err && !isempty(data.exceptions) && data.exceptions[end] === err
+        # A `rethrow()` re-raise of this frame's in-flight exception (e.g. a `finally`
+        # block re-raising during unwinding): native `jl_rethrow` does not push a new
+        # entry onto the task's exception stack, so neither do we.
+        _rethrow_inflight[] = nothing
+    else
+        push!(data.exceptions, err)
+    end
     pc = @static VERSION >= v"1.11-" ? pop!(data.exception_frames) : data.exception_frames[end] # implicit :leave after https://github.com/JuliaLang/julia/pull/52245
     @static VERSION >= v"1.11-" && pop!(data.exception_scopes)
     return pc
