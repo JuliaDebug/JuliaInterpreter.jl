@@ -317,7 +317,9 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
     elseif f === invoke
         if !expand
             argswrapped = getargs(interp, args, frame)
-            return Some{Any}(invoke(argswrapped...))
+            # `invoke` dispatches on its target: pin it to the frame's world rather than
+            # whatever world the interpreter machinery happens to be running in.
+            return Some{Any}(Base.invoke_in_world(frame.world, invoke, argswrapped...))
         end
         # This uses the original arguments to avoid looking them up twice
         # See #442
@@ -612,7 +614,7 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         return Some{Any}(ccall(:jl_f_intrinsic_call, Any, (Any, Ptr{Any}, UInt32), f, cargs, length(cargs)))
     end
     if isa(f, typeof(kwinvoke))
-        return Some{Any}(kwinvoke(getargs(interp, args, frame)...))
+        return Some{Any}(Base.invoke_in_world(frame.world, kwinvoke, getargs(interp, args, frame)...))
     end
     return call_expr
 end

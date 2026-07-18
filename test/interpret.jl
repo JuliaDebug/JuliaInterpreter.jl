@@ -1488,3 +1488,14 @@ end
     end
     @test_throws ErrorException("outer") finish_and_return!(JuliaInterpreter.enter_call(popexc_caller))
 end
+
+@testset "invoke builtin dispatches in the frame's world" begin
+    w_before = Base.get_world_counter()
+    @eval invoke_wtarget(::Real) = :ok
+    @eval invoke_wprobe(x) = invoke(invoke_wtarget, Tuple{Real}, x)
+    fr = JuliaInterpreter.enter_call(invoke_wprobe, 1)
+    # The task runs in a world predating the target method; the builtin must
+    # nevertheless dispatch `invoke` in the frame's (newer) world.
+    res = Base.invoke_in_world(w_before, JuliaInterpreter.finish_and_return!, NonRecursiveInterpreter(), fr)
+    @test res === :ok
+end
