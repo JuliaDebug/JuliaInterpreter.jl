@@ -198,7 +198,14 @@ function run_test_by_eval(test, fullpath, nstmts)
             # @show mod ex
             frame = Frame(modex...)
             yield()  # allow communication between processes
-            ret, nstmtsleft = evaluate_limited!(frame, nstmtsleft, true)
+            # `evaluate_limited!` pauses (returning `nothing`) after each nested
+            # `:thunk`/method definition so that subsequent statements run in the new
+            # world; resume the frame until it terminates or aborts.
+            local ret
+            while true
+                ret, nstmtsleft = evaluate_limited!(frame, nstmtsleft, true)
+                ret === nothing || break
+            end
             if isa(ret, Aborted)
                 push!(aborts, ret)
                 JuliaInterpreter.finish_stack!(NonRecursiveInterpreter(), frame, true)
