@@ -37,6 +37,20 @@ function test_path(test)
     end
 end
 
+# On Julia 1.11+ `Test.get_test_counts` returns a `TestCounts` struct instead of a tuple.
+function total_test_counts(ts)
+    counts = Test.get_test_counts(ts)
+    if counts isa Tuple
+        passes, fails, errors, broken, c_passes, c_fails, c_errors, c_broken = counts
+        return passes + c_passes, fails + c_fails, errors + c_errors, broken + c_broken
+    else
+        return counts.passes + counts.cumulative_passes,
+               counts.fails + counts.cumulative_fails,
+               counts.errors + counts.cumulative_errors,
+               counts.broken + counts.cumulative_broken
+    end
+end
+
 nstmts = 10^4  # very quick, aborts a lot
 outputfile = "results.md"
 i = 1
@@ -161,9 +175,9 @@ move_to_node1("Distributed")
             result = get(results, test, "")
             if isa(result, Tuple{Test.AbstractTestSet, Vector})
                 ts, aborts = result
-                passes, fails, errors, broken, c_passes, c_fails, c_errors, c_broken = Test.get_test_counts(ts)
+                passes, fails, errors, broken = total_test_counts(ts)
                 naborts = length(aborts)
-                println(io, "| ", test, " | ", passes+c_passes, " | ", fails+c_fails, " | ", errors+c_errors, " | ", broken+c_broken, " | ", naborts, " |")
+                println(io, "| ", test, " | ", passes, " | ", fails, " | ", errors, " | ", broken, " | ", naborts, " |")
             elseif isa(result, ProcessExitedException)
                 println(io, "| ", test, " | ☠️ | ☠️ | ☠️ | ☠️ | ☠️ |")
             else

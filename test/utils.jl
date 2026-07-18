@@ -193,7 +193,7 @@ function run_test_by_eval(test, fullpath, nstmts)
             nstmtsleft = $nstmts
             # mod, ex = modex
             # @show mod ex
-            frame = Frame(modex)
+            frame = Frame(modex...)
             yield()  # allow communication between processes
             ret, nstmtsleft = evaluate_limited!(frame, nstmtsleft, true)
             if isa(ret, Aborted)
