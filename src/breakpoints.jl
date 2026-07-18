@@ -88,7 +88,8 @@ function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointSignat
         sig = Base.unwrap_unionall(m.sig)
         ft0 = sig.parameters[1]
         ft = Base.unwrap_unionall(ft0)
-        if ft <: Function && isa(ft, DataType) && isdefined(ft, :instance)
+        # Check `isa` first: `ft` can be a non-Type (e.g. `Vararg`), on which `<:` throws.
+        if isa(ft, DataType) && ft <: Function && isdefined(ft, :instance)
             return ft.instance
         elseif _isType(ft)
             return _Type_parameter(ft)
@@ -102,7 +103,7 @@ function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointSignat
     bp.f isa Method && return meth === bp.f
     f = extract_function_from_method(meth)
     if !(bp.f === f || (f === Core.kwcall && let ftype = Base.unwrap_unionall(meth.sig).parameters[3]
-                !Base.has_free_typevars(ftype) && bp.f isa ftype
+                isa(ftype, Type) && !Base.has_free_typevars(ftype) && bp.f isa ftype
             end))
         return false
     end

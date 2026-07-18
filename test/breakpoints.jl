@@ -679,3 +679,14 @@ end
     remove()
     @test !JuliaInterpreter.shouldbreak(fr, fr.pc)
 end
+
+@testset "Function breakpoints tolerate non-Type signature parameters" begin
+    remove()
+    oc_bp = Base.Experimental.@opaque x -> x + 1
+    oc_bp_wrap(f, x) = f(x)
+    @interpret oc_bp_wrap(oc_bp, 1)  # caches a framecode whose method signature holds a bare Vararg
+    nontype_sig_f(x) = x
+    bp = breakpoint(nontype_sig_f)   # must not throw while scanning cached framecodes
+    @test bp isa JuliaInterpreter.BreakpointSignature
+    remove()
+end
