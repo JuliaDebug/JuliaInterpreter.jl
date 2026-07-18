@@ -222,9 +222,9 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         end
     elseif @static isdefinedglobal(Core, :memoryrefmodify!) && f === Core.memoryrefmodify!
         if nargs == 5
-            return Some{Any}(Core.memoryrefmodify!(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5]), lookup(interp, frame, args[6])))
+            return Some{Any}(Base.invoke_in_world(frame.world, Core.memoryrefmodify!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5]), lookup(interp, frame, args[6])))
         else
-            return Some{Any}(Core.memoryrefmodify!(getargs(interp, args, frame)...))
+            return Some{Any}(Base.invoke_in_world(frame.world, Core.memoryrefmodify!, getargs(interp, args, frame)...))
         end
     elseif @static isdefinedglobal(Core, :memoryrefnew) && f === Core.memoryrefnew
         if nargs == 1
@@ -354,11 +354,11 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         return Some{Any}(Base.invoke_in_world(frame.world, isdefinedglobal, getargs(interp, args, frame)...))
     elseif f === modifyfield!
         if nargs == 4
-            return Some{Any}(modifyfield!(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))
+            return Some{Any}(Base.invoke_in_world(frame.world, modifyfield!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))
         elseif nargs == 5
-            return Some{Any}(modifyfield!(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5]), lookup(interp, frame, args[6])))
+            return Some{Any}(Base.invoke_in_world(frame.world, modifyfield!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5]), lookup(interp, frame, args[6])))
         else
-            return Some{Any}(modifyfield!(getargs(interp, args, frame)...))
+            return Some{Any}(Base.invoke_in_world(frame.world, modifyfield!, getargs(interp, args, frame)...))
         end
     elseif @static isdefinedglobal(Core, :modifyglobal!) && f === modifyglobal!
         if nargs == 4
@@ -615,6 +615,10 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
             elseif Ta == Float16 && FMA_FLOAT16[]
                 f = Core.Intrinsics.fma_float
             end
+        end
+        if f === Core.Intrinsics.atomic_pointermodify
+            # its `op` callback dispatches in the calling world; pin it to the frame's
+            return Some{Any}(Base.invoke_in_world(frame.world, f, cargs...))
         end
         return Some{Any}(ccall(:jl_f_intrinsic_call, Any, (Any, Ptr{Any}, UInt32), f, cargs, length(cargs)))
     end

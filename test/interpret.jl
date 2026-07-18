@@ -1563,3 +1563,24 @@ end
     buf = IOBuffer()
     @test sprint(io -> (@interpret Base.println(io, "x"))) == "x\n"
 end
+
+@testset "callback-taking builtins dispatch op in the frame's world" begin
+    w_before = Base.get_world_counter()
+    @eval cbworld_swap(a, b) = b
+    @eval function cbworld_ptrmodify()
+        r = Ref{Int}(1)
+        GC.@preserve r begin
+            p = Base.unsafe_convert(Ptr{Int}, r)
+            Core.Intrinsics.atomic_pointermodify(p, cbworld_swap, 42, :sequentially_consistent)
+        end
+    end
+    fr = JuliaInterpreter.enter_call(cbworld_ptrmodify)
+    res = Base.invoke_in_world(w_before, JuliaInterpreter.finish_and_return!, NonRecursiveInterpreter(), fr)
+    @test res == (1 => 42)
+    @eval cbworld_op(a, b) = a + b
+    @eval mutable struct CBWorldMF; @atomic x::Int; end
+    @eval cbworld_mf(m) = modifyfield!(m, :x, cbworld_op, 5, :sequentially_consistent)
+    fr = JuliaInterpreter.enter_call(Main.cbworld_mf, Main.CBWorldMF(2))
+    res = Base.invoke_in_world(w_before, JuliaInterpreter.finish_and_return!, NonRecursiveInterpreter(), fr)
+    @test res == (2 => 7)
+end

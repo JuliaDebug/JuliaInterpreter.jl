@@ -52,6 +52,9 @@ const REQUIRES_WORLD = Core.Builtin[
     replaceglobal!,
     setglobalonce!,
     applicable,
+    # their `op` callback dispatches in the calling world
+    modifyfield!,
+    Core.memoryrefmodify!,
 ]
 const CALL_LATEST = """args = getargs(interp, args, frame)
         if !expand
@@ -451,6 +454,10 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
             elseif Ta == Float16 && FMA_FLOAT16[]
                 f = Core.Intrinsics.fma_float
             end
+        end
+        if f === Core.Intrinsics.atomic_pointermodify
+            # its `op` callback dispatches in the calling world; pin it to the frame's
+            return Some{Any}(Base.invoke_in_world(frame.world, f, cargs...))
         end
         return Some{Any}(ccall(:jl_f_intrinsic_call, Any, (Any, Ptr{Any}, UInt32), f, cargs, length(cargs)))
 """)
