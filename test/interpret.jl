@@ -1643,3 +1643,19 @@ end
     # probing in a world predating the import must return false, not throw
     @test !JuliaInterpreter.is_global_ref_egal(g, :llvmcall, Base.llvmcall, w_before)
 end
+
+@testset "opaque closure creation in interpreted code" begin
+    oc_maker(x) = Base.Experimental.@opaque (y) -> x + y
+    oc = @interpret oc_maker(2)
+    @test oc isa Core.OpaqueClosure
+    @test oc(3) == 5
+    @test (@interpret (f -> f(3))(oc)) == 5
+    oc2 = @interpret (() -> Base.Experimental.@opaque (a, b) -> a * b)()
+    @test oc2(6, 7) == 42
+    # the raw Expr form with an unevaluated :opaque_closure_method (opaque_closure.jl style)
+    ci = code_lowered(() -> 1)[1]
+    @eval oc_from_raw_expr() =
+        $(Expr(:new_opaque_closure, Tuple{}, Union{}, Any, true,
+               Expr(:opaque_closure_method, nothing, 0, false, LineNumberNode(1, :none), ci)))
+    @test (@interpret Main.oc_from_raw_expr())() == 1
+end

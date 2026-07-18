@@ -59,6 +59,7 @@ end
 function lookup_expr(interp::Interpreter, frame::Frame, e::Expr)
     head = e.head
     head === :the_exception && return frame.framedata.last_exception[]
+    head === :new_opaque_closure && return eval_new_opaque_closure(interp, frame, e)
     if head === :static_parameter
         arg = e.args[1]::Int
         if isassigned(frame.framedata.sparams, arg)
@@ -565,8 +566,29 @@ function eval_rhs(interp::Interpreter, frame::Frame, node::Expr)
         return nothing
     elseif head === :method && length(node.args) == 1
         return @invokelatest evaluate_methoddef(interp, frame, node)
+    elseif head === :new_opaque_closure
+        return eval_new_opaque_closure(interp, frame, node)
     end
     return lookup_expr(interp, frame, node)
+end
+
+# `(argt, rt_lb, rt_ub, [allow_partial::Bool,] method, captures...)`; mirror the runtime
+# interpreter (src/interpreter.c) via the exported jlcall wrapper, which consumes the
+# argument list in the same layout.
+function eval_new_opaque_closure(interp::Interpreter, frame::Frame, node::Expr)
+    if any(a -> isexpr(a, :opaque_closure_method), node.args)
+        # The method is an unevaluated `:opaque_closure_method` (its constructor is not
+        # exported); rebuild the construction with every other operand as a literal and
+        # let lowering evaluate it, exactly like a hand-written `@eval` of this form.
+        resolved = Any[isexpr(a, :opaque_closure_method) ? a :
+                       QuoteNode(lookup(interp, frame, a)) for a in node.args]
+        fex = Expr(:->, Expr(:tuple), Expr(:block, Expr(:new_opaque_closure, resolved...)))
+        f = Core.eval(moduleof(frame), fex)
+        return Base.invokelatest(f)
+    end
+    args = Any[lookup(interp, frame, arg) for arg in node.args]
+    return GC.@preserve args ccall(:jl_new_opaque_closure_jlcall, Any,
+                                   (Any, Ptr{Any}, UInt32), nothing, args, length(args))
 end
 
 function check_isdefined(frame::Frame, @nospecialize(node))
