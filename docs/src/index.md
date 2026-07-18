@@ -29,8 +29,8 @@ sum(list)
 
 You can interrupt execution by setting breakpoints.
 You can set breakpoints via packages that explicitly target debugging,
-like [Juno](https://junolab.org/), [Debugger](https://github.com/JuliaDebug/Debugger.jl), and
-[Rebugger](https://github.com/timholy/Rebugger.jl).
+like [Debugger](https://github.com/JuliaDebug/Debugger.jl), and
+[julia-vscode](https://github.com/julia-vscode/julia-vscode).
 But all of these just leverage the core functionality defined in JuliaInterpreter,
 so here we'll illustrate it without using any of these other packages.
 
