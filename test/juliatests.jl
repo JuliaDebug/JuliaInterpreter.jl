@@ -8,9 +8,17 @@ if !isdefinedglobal(Main, :read_and_parse)
     include("utils.jl")
 end
 
-const juliadir = dirname(dirname(Sys.BINDIR))
-const testdir = joinpath(juliadir, "test")
-if isdir(testdir)
+# In a source build the tests sit at <julia>/test; binary distributions ship them
+# under <prefix>/share/julia/test instead.
+function find_julia_testdir()
+    for dir in (joinpath(dirname(dirname(Sys.BINDIR)), "test"),
+                joinpath(Sys.BINDIR, Base.DATAROOTDIR, "julia", "test"))
+        isdir(dir) && return abspath(dir)
+    end
+    return nothing
+end
+const testdir = find_julia_testdir()
+if testdir !== nothing
     include(joinpath(testdir, "choosetests.jl"))
 else
     @error "Julia's test/ directory not found, can't run Julia tests"
