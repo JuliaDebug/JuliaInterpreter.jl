@@ -712,3 +712,27 @@ end
     end
     @test native == interp == "second"
 end
+
+@testset "finish_stack! unwinds exceptions to caller-frame handlers" begin
+    fs_unwind_callee() = error("boom")
+    function fs_unwind_caller()
+        x = try
+            fs_unwind_callee()
+        catch
+            42
+        end
+        return x
+    end
+    fr = enter_call(fs_unwind_caller)
+    ret = JuliaInterpreter.debug_command(fr, :s)
+    count = 0
+    while ret isa Tuple && count < 50
+        sc = JuliaInterpreter.scopeof(ret[1])
+        sc isa Method && sc.name === :fs_unwind_callee && break
+        ret = JuliaInterpreter.debug_command(ret[1], :s)
+        count += 1
+    end
+    @test JuliaInterpreter.scopeof(ret[1]).name === :fs_unwind_callee
+    # the leaf's uncaught error must land in the caller's catch, not escape
+    @test JuliaInterpreter.finish_stack!(NonRecursiveInterpreter(), JuliaInterpreter.root(ret[1]), false) == 42
+end

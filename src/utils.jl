@@ -60,6 +60,16 @@ end
 instantiate_type_in_env(arg, spsig::UnionAll, spvals::Vector{Any}) =
     ccall(:jl_instantiate_type_in_env, Any, (Any, Any, Ptr{Any}), arg, spsig, spvals)
 
+# Native `UndefVarError`s carry the scope of the missing binding (`:local`,
+# `:static_parameter`, ...) since Julia 1.11; match that so `@test_throws` and other
+# field-wise comparisons against natively-thrown errors succeed.
+@static if VERSION >= v"1.11"
+    undef_var_error(sym::Symbol, scope::Symbol) = UndefVarError(sym, scope)
+else
+    undef_var_error(sym::Symbol, scope::Symbol) = UndefVarError(sym)
+end
+undef_sparam_error(sym::Symbol) = undef_var_error(sym, :static_parameter)
+
 function sparam_syms(meth::Method)
     s = Symbol[]
     sig = meth.sig
@@ -157,11 +167,14 @@ Tests whether `g` is equal to `GlobalRef(mod, name)`.
 """
 is_global_ref(@nospecialize(g), mod::Module, name::Symbol) = isa(g, GlobalRef) && g.mod === mod && g.name == name
 
-function is_global_ref_egal(@nospecialize(g), name::Symbol, @nospecialize(ref))
+function is_global_ref_egal(@nospecialize(g), name::Symbol, @nospecialize(ref), world::UInt=default_world())
     # Identifying GlobalRefs regardless of how the caller scopes them
     isa(g, GlobalRef) || return false
     g.name === name || return false
-    gref = getglobal(g.mod, g.name)
+    # Resolve in `world`, not the ambient task world (which may predate the binding),
+    # and treat an unresolvable binding as not-equal rather than throwing.
+    invoke_in_world(world, isdefinedglobal, g.mod, g.name) || return false
+    gref = invoke_in_world(world, getglobal, g.mod, g.name)
     return gref === ref
 end
 

@@ -289,7 +289,7 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
         # (the "mini interpreter" runs in module scope, not method scope)
         if (!isempty(lenv) && (hasarg(isidentical(:llvmcall), code.code) ||
                                hasarg(isidentical(Core.Intrinsics.llvmcall), code.code) ||
-                               hasarg(a->is_global_ref_egal(a, :llvmcall, Core.Intrinsics.llvmcall), code.code))) ||
+                               hasarg(a->is_global_ref_egal(a, :llvmcall, Core.Intrinsics.llvmcall, world), code.code))) ||
                                hasarg(isidentical(:iolock_begin), code.code)
             return Compiled()
         end
@@ -456,8 +456,17 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
     fill!(last_reference, 0)
     if isa(framecode.scope, Method)
         meth = framecode.scope::Method
-        nargs, meth_nargs = length(argvals), Int(meth.nargs)
-        islastva = meth.isva && nargs >= meth_nargs
+        nargs = length(argvals)
+        @static if hasfield(Core.CodeInfo, :nargs)
+            # The CodeInfo's own signature takes precedence: a generated function may
+            # return another method's CodeInfo, whose nargs/isva differ from the
+            # generated method's (issue JuliaLang/julia#54341).
+            meth_nargs = Int(framecode.src.nargs)
+            islastva = framecode.src.isva && nargs >= meth_nargs
+        else
+            meth_nargs = Int(meth.nargs)
+            islastva = meth.isva && nargs >= meth_nargs
+        end
         for i = 1:meth_nargs-islastva
             # for OCs #self# actually refers to the captures instead
             if i == 1 && (oc = argvals[1]) isa Core.OpaqueClosure
@@ -693,13 +702,18 @@ function Base.iterate(iter::ExprSplitter, state=nothing)
     if is_doc_expr(ex)
         body = ex.args[4]
         if isa(body, Expr) && body.head === :module
-            # Just document the module itself and push the module def onto the stack
+            # Rewrite to document the module by name, and queue that application to run
+            # *inside* the module, *after* its body: module docstrings are evaluated
+            # within the module, and interpolation may reference bindings the body defines.
             excopy = Expr(ex.head, ex.args[1], ex.args[2], ex.args[3])
             module_name = body.args[end - 1]
             push!(excopy.args, module_name)
             append!(excopy.args, ex.args[5:end])   # there should only be at most a 5th, but just for robustness
-            ex = excopy
-            push_modex!(iter, mod, body)
+            newmod, modbody = find_or_create_module(mod, body)
+            push_modex!(iter, newmod, excopy)   # popped only once the body is exhausted
+            push_modex!(iter, newmod, modbody)
+            queuenext!(iter)
+            return Base.iterate(iter, state)
         end
     end
     if ex.head === :block || ex.head === :toplevel

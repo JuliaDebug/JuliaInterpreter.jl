@@ -6,12 +6,12 @@ lookup_var(frame::Frame, ref::GlobalRef) = invoke_in_world(frame.world, getgloba
 function lookup_var(frame::Frame, slot::SlotNumber)
     val = frame.framedata.locals[slot.id]
     val !== nothing && return val.value
-    throw(UndefVarError(frame.framecode.src.slotnames[slot.id]))
+    throw(undef_var_error(frame.framecode.src.slotnames[slot.id], :local))
 end
 function lookup_var(frame::Frame, arg::Core.Argument)
     val = frame.framedata.locals[arg.n]
     val !== nothing && return val.value
-    throw(UndefVarError(frame.framecode.src.slotnames[arg.n]))
+    throw(undef_var_error(frame.framecode.src.slotnames[arg.n], :local))
 end
 
 """
@@ -59,13 +59,14 @@ end
 function lookup_expr(interp::Interpreter, frame::Frame, e::Expr)
     head = e.head
     head === :the_exception && return frame.framedata.last_exception[]
+    head === :new_opaque_closure && return eval_new_opaque_closure(interp, frame, e)
     if head === :static_parameter
         arg = e.args[1]::Int
         if isassigned(frame.framedata.sparams, arg)
             return frame.framedata.sparams[arg]
         else
             syms = sparam_syms(frame.framecode.scope::Method)
-            throw(UndefVarError(syms[arg]))
+            throw(undef_sparam_error(syms[arg]))
         end
     end
     head === :boundscheck && length(e.args) == 0 && return true
@@ -170,7 +171,11 @@ function resolvefc(frame::Frame, @nospecialize(expr))
     isexpr(expr, :tuple) && return expr
     if isexpr(expr, :call)
         a = (expr::Expr).args[1]
-        (isa(a, QuoteNode) && a.value === Core.tuple) || error("unexpected ccall to ", expr)
+        # the tuple constructor may appear as a QuoteNode, a GlobalRef, or the function itself
+        istuple = a === Core.tuple ||
+                  (isa(a, QuoteNode) && a.value === Core.tuple) ||
+                  (isa(a, GlobalRef) && a.mod === Core && a.name === :tuple)
+        istuple || @invokelatest error("unexpected ccall to ", expr)
         return Expr(:call, GlobalRef(Core, :tuple), (expr::Expr).args[2:end]...)
     end
     @invokelatest error("unexpected ccall to ", expr)
@@ -259,6 +264,11 @@ function bypass_builtins(interp::Interpreter, frame::Frame, call_expr::Expr, pc:
     return nothing
 end
 
+# Set by the `rethrow` interception just before re-raising, so handler entry can
+# distinguish a re-raise (which must not push a duplicate active-exception entry)
+# from a fresh `throw` of the same object.
+const _rethrow_inflight = Ref{Any}(nothing)
+
 function native_call(fargs::Vector{Any}, frame::Frame)
     f = popfirst!(fargs)
     @something maybe_eval_with_scope(f, fargs, frame) return invoke_in_world(frame.world, f, fargs...)
@@ -314,7 +324,23 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
     if fargs[1] === Core.eval
         return Core.eval(fargs[2], fargs[3])  # not a builtin, but worth treating specially
     elseif fargs[1] === Base.rethrow
-        length(fargs) > 1 && throw(fargs[2])
+        if length(fargs) > 1
+            exc = fargs[2]
+            # `rethrow(exc)` replaces the exception currently being handled; find it in
+            # the frame chain (native `jl_rethrow_other` replaces the stack top).
+            fr = frame
+            while fr !== nothing
+                exs = fr.framedata.exceptions
+                if !isempty(exs)
+                    exs[end] = exc
+                    fr.framedata.last_exception[] = exc
+                    _rethrow_inflight[] = exc
+                    throw(exc)
+                end
+                fr = fr.caller
+            end
+            throw(exc)
+        end
         # `rethrow()` rethrows the task's innermost exception being handled, which may live
         # in a caller's frame when it is reached from a function called inside a `catch`
         # block. Each frame tracks its own active-exception stack, so walk the caller chain
@@ -322,12 +348,33 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
         fr = frame
         while fr !== nothing
             exs = fr.framedata.exceptions
-            isempty(exs) || throw(exs[end])
+            if !isempty(exs)
+                _rethrow_inflight[] = exs[end]
+                throw(exs[end])
+            end
             fr = fr.caller
         end
         # No interpreted frame is handling an exception; fall back to the native rethrow
         # (interpreted code may be running inside a native `catch` block).
         rethrow()
+    elseif fargs[1] === Base.current_exceptions && length(fargs) == 1
+        # Exceptions caught by interpreted handlers never reach the task's native
+        # exception stack; they live in the frames' modeled stacks. Merge the native
+        # stack (outermost) with the caller chain's entries. The interpreter does not
+        # record per-exception backtraces, so those entries carry an empty backtrace.
+        stack = Any[entry for entry in invoke_in_world(frame.world, Base.current_exceptions)]
+        blocks = Vector{Any}[]
+        fr = frame
+        while fr !== nothing
+            exs = fr.framedata.exceptions
+            isempty(exs) || pushfirst!(blocks, exs)
+            fr = fr.caller
+        end
+        bt = Union{Ptr{Nothing},Base.InterpreterIP}[]
+        for exs in blocks, exc in exs
+            push!(stack, (exception = exc, backtrace = bt))
+        end
+        return Base.ExceptionStack(stack)
     end
     if fargs[1] === Core.invoke # invoke needs special handling
         argtypes = fargs[3]
@@ -519,8 +566,29 @@ function eval_rhs(interp::Interpreter, frame::Frame, node::Expr)
         return nothing
     elseif head === :method && length(node.args) == 1
         return @invokelatest evaluate_methoddef(interp, frame, node)
+    elseif head === :new_opaque_closure
+        return eval_new_opaque_closure(interp, frame, node)
     end
     return lookup_expr(interp, frame, node)
+end
+
+# `(argt, rt_lb, rt_ub, [allow_partial::Bool,] method, captures...)`; mirror the runtime
+# interpreter (src/interpreter.c) via the exported jlcall wrapper, which consumes the
+# argument list in the same layout.
+function eval_new_opaque_closure(interp::Interpreter, frame::Frame, node::Expr)
+    if any(a -> isexpr(a, :opaque_closure_method), node.args)
+        # The method is an unevaluated `:opaque_closure_method` (its constructor is not
+        # exported); rebuild the construction with every other operand as a literal and
+        # let lowering evaluate it, exactly like a hand-written `@eval` of this form.
+        resolved = Any[isexpr(a, :opaque_closure_method) ? a :
+                       QuoteNode(lookup(interp, frame, a)) for a in node.args]
+        fex = Expr(:->, Expr(:tuple), Expr(:block, Expr(:new_opaque_closure, resolved...)))
+        f = Core.eval(moduleof(frame), fex)
+        return Base.invokelatest(f)
+    end
+    args = Any[lookup(interp, frame, arg) for arg in node.args]
+    return GC.@preserve args ccall(:jl_new_opaque_closure_jlcall, Any,
+                                   (Any, Ptr{Any}, UInt32), nothing, args, length(args))
 end
 
 function check_isdefined(frame::Frame, @nospecialize(node))
@@ -738,7 +806,7 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
                     isa(ret, BreakpointRef) && return ret
                     return_from(newframe)
                     rhs = newmod
-                elseif node.head === :using || node.head === :import || node.head === :export
+                elseif node.head === :using || node.head === :import || node.head === :export || node.head === :public
                     Core.eval(moduleof(frame), node)
                 elseif node.head === :const || node.head === :globaldecl
                     g = node.args[1]
@@ -894,7 +962,14 @@ function enter_exception_handler!(data::FrameData, @nospecialize(err))
     scope_depth = data.exception_scopes[end]
     scope_depth < length(data.current_scopes) && resize!(data.current_scopes, scope_depth)
     data.last_exception[] = err
-    push!(data.exceptions, err)
+    if _rethrow_inflight[] === err && !isempty(data.exceptions) && data.exceptions[end] === err
+        # A `rethrow()` re-raise of this frame's in-flight exception (e.g. a `finally`
+        # block re-raising during unwinding): native `jl_rethrow` does not push a new
+        # entry onto the task's exception stack, so neither do we.
+        _rethrow_inflight[] = nothing
+    else
+        push!(data.exceptions, err)
+    end
     pc = @static VERSION >= v"1.11-" ? pop!(data.exception_frames) : data.exception_frames[end] # implicit :leave after https://github.com/JuliaLang/julia/pull/52245
     @static VERSION >= v"1.11-" && pop!(data.exception_scopes)
     return pc

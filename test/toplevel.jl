@@ -32,9 +32,13 @@ end
         end
     end
     modexs = collect(ExprSplitter(JIVisible, ex))
-    m, ex = first(modexs)        # FIXME don't use index in tests
+    # the doc application is yielded inside the module, after its body
+    m, ex = last(modexs)
+    @test m === JIVisible.DocStringTest
     @test JuliaInterpreter.is_doc_expr(ex.args[2])
-    Core.eval(m, ex)
+    for (m, ex) in modexs
+        Core.eval(m, ex)
+    end
     io = IOBuffer()
     show(io, @doc(JIVisible.DocStringTest))
     @test occursin("Special", String(take!(io)))
@@ -895,4 +899,54 @@ end
         JuliaInterpreter.finish_and_return!(Frame(mod, e), true)
     end
     @test hits[] == 1
+end
+
+@static if VERSION >= v"1.11"  # `public` and `Base.ispublic` are 1.11+
+@testset "public declarations" begin
+    @eval module PublicDeclTest end
+    fr = Frame(PublicDeclTest, Expr(:block, Expr(:public, :pubmarked), :(41 + 1)))
+    @test JuliaInterpreter.finish_and_return!(fr, true) == 42
+    @test Base.ispublic(PublicDeclTest, :pubmarked)
+end
+end
+
+@testset "Frame on declaration-only expressions" begin
+    @eval module BareDeclTest end
+    fr = Frame(BareDeclTest, :(global bare_declared))
+    @test JuliaInterpreter.finish_and_return!(fr, true) === nothing
+    # `global +` shadows the imported Base binding; lowering is the identity on it
+    fr = Frame(BareDeclTest, :(global +))
+    @test JuliaInterpreter.finish_and_return!(fr, true) === nothing
+    @test !Base.isdefined(BareDeclTest, :+)
+    @static if VERSION >= v"1.11"  # `public` and `Base.ispublic` are 1.11+
+        fr = Frame(BareDeclTest, Expr(:public, :bare_public))
+        @test JuliaInterpreter.finish_and_return!(fr, true) === nothing
+        @test Base.ispublic(BareDeclTest, :bare_public)
+    end
+end
+
+@testset "module docstrings evaluate within the module" begin
+    ex = Base.parse_input_line("""
+        "ModDoc, evaluating \$(KDOC)"
+        module ModDocEvalTest
+        const KDOC = :kdoc_value
+        end
+        """)
+    for (mod, e) in ExprSplitter(@__MODULE__, ex)
+        JuliaInterpreter.finish_and_return!(Frame(mod, e), true)
+    end
+    b = Base.Docs.Binding(ModDocEvalTest, :ModDocEvalTest)
+    @test haskey(Base.Docs.meta(ModDocEvalTest), b)
+    @test occursin("kdoc_value", string(Base.Docs.doc(b)))
+end
+
+@testset "macros expanding to declarations" begin
+    @eval module MacroDeclTest
+    macro decl(); esc(:(global from_macro)); end
+    end
+    # ExprSplitter wraps split statements in a (block lnn stmt); a macro expanding to
+    # `global` only lowers at true top level (issue JuliaLang/julia#28833's test)
+    ex = Expr(:block, LineNumberNode(1, :x), :(MacroDeclTest.@decl))
+    fr = Frame(MacroDeclTest, ex)
+    @test JuliaInterpreter.finish_and_return!(fr, true) === nothing
 end

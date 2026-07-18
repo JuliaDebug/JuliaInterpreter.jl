@@ -52,6 +52,9 @@ const REQUIRES_WORLD = Core.Builtin[
     replaceglobal!,
     setglobalonce!,
     applicable,
+    # their `op` callback dispatches in the calling world
+    modifyfield!,
+    Core.memoryrefmodify!,
 ]
 const CALL_LATEST = """args = getargs(interp, args, frame)
         if !expand
@@ -295,7 +298,9 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
     $head f === $fstr
         if !expand
             argswrapped = getargs(interp, args, frame)
-            return Some{Any}($fstr(argswrapped...))
+            # `invoke` dispatches on its target: pin it to the frame's world rather than
+            # whatever world the interpreter machinery happens to be running in.
+            return Some{Any}(Base.invoke_in_world(frame.world, $fstr, argswrapped...))
         end
         # This uses the original arguments to avoid looking them up twice
         # See #442
@@ -348,11 +353,16 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
     elseif f === Base.cglobal
         if nargs == 1
             call_expr = copy(call_expr)
+            # The function position may be an SSA reference (e.g. code that loads the
+            # intrinsic via getproperty, as Core.io_pointer does); it must be a literal
+            # for the `Core.eval` below, since lowering requires cglobal syntax.
+            call_expr.args[1] = GlobalRef(Base, :cglobal)
             args2 = args[2]
             call_expr.args[2] = isa(args2, QuoteNode) ? args2 : lookup(interp, frame, args2)
             return Some{Any}(Core.eval(moduleof(frame), call_expr))
         elseif nargs == 2
             call_expr = copy(call_expr)
+            call_expr.args[1] = GlobalRef(Base, :cglobal)
             args2 = args[2]
             call_expr.args[2] = isa(args2, QuoteNode) ? args2 : lookup(interp, frame, args2)
             call_expr.args[3] = lookup(interp, frame, args[3])
@@ -445,13 +455,17 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
                 f = Core.Intrinsics.fma_float
             end
         end
+        if f === Core.Intrinsics.atomic_pointermodify
+            # its `op` callback dispatches in the calling world; pin it to the frame's
+            return Some{Any}(Base.invoke_in_world(frame.world, f, cargs...))
+        end
         return Some{Any}(ccall(:jl_f_intrinsic_call, Any, (Any, Ptr{Any}, UInt32), f, cargs, length(cargs)))
 """)
     print(io,
 """
     end
     if isa(f, typeof(kwinvoke))
-        return Some{Any}(kwinvoke(getargs(interp, args, frame)...))
+        return Some{Any}(Base.invoke_in_world(frame.world, kwinvoke, getargs(interp, args, frame)...))
     end
     return call_expr
 end
