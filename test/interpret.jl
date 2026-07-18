@@ -848,6 +848,16 @@ frame = JuliaInterpreter.enter_call(f_345)
     @test JuliaInterpreter.getfirstline(frame) isa Integer
 end
 
+# issue #228: nested `@interpret` must not recursively interpret the interpreter itself
+# (the frame pools are global state shared between the meta and object levels; the inner
+# interpreter runs compiled via `compiled_modules`).
+@testset "nested @interpret" begin
+    f_228() = @interpret(1 + 1)
+    @test @interpret(f_228()) == 2
+    g_228() = f_228() + @interpret(2 + 2)
+    @test @interpret(g_228()) == 6
+end
+
 # issue #573: a frame's recorded argument values may not match the method signature
 # (e.g. while displaying a MethodError); building a `StackFrame` must not throw on
 # the resulting empty type intersection.

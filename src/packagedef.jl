@@ -123,6 +123,11 @@ function set_compiled_methods()
     # Modules #
     ###########
     push!(compiled_modules, Base.Threads)
+    # The interpreter must not recursively interpret its own internals: the frame pools
+    # (`junk_frames`/`junk_framedata`) and other globals are shared between the meta and
+    # object levels, so an interpreted interpreter corrupts the running one (issue #228).
+    # Running our own methods compiled makes nested `@interpret` work.
+    push!(compiled_modules, @__MODULE__)
 end
 
 _have_fma_compiled(::Type{T}) where {T} = Core.Intrinsics.have_fma(T)
