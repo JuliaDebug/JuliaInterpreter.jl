@@ -454,13 +454,11 @@ function Frame(mod::Module, ex::Expr; world::UInt=default_world())
     if isexpr(lwr, (:toplevel, :module))
         return Frame(mod, lwr::Expr; world)
     end
-    if isa(lwr, Expr)
-        # Lowering is the identity on bare declarations (`global x`, `public x`, `using`/
-        # `import`/`export`, ...). Wrap them in a single-statement toplevel-surface frame,
-        # whose driver evaluates such statements directly.
-        return toplevel_frame(mod, Any[ex]; world)
-    end
-    throw(ArgumentError("lowering did not return a `:thunk` expression, got $lwr"))
+    # Lowering is the identity on bare declarations (`global x`, `public x`, `using`/
+    # `import`/`export`, ...) and returns a literal (e.g. `nothing`) for expressions
+    # without effects. Wrap the original expression in a single-statement
+    # toplevel-surface frame, whose driver evaluates such statements directly.
+    return toplevel_frame(mod, Any[ex]; world)
 end
 
 caller(frame) = frame.caller
