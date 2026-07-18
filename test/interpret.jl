@@ -1511,3 +1511,32 @@ end
     expected_local = VERSION >= v"1.11" ? UndefVarError(:x, :local) : UndefVarError(:x)
     @test_throws expected_local @interpret undef_local_f(false)
 end
+
+@testset "current_exceptions sees interpreted handlers" begin
+    function curexc_f()
+        try
+            error("boom")
+        catch
+            Base.current_exceptions()
+        end
+    end
+    stack = @interpret curexc_f()
+    @test length(stack) == 1
+    @test stack[end].exception == ErrorException("boom")
+    function curexc_nested()
+        try
+            error("outer")
+        catch
+            try
+                error("inner")
+            catch
+                length(Base.current_exceptions())
+            end
+        end
+    end
+    @test (@interpret curexc_nested()) == curexc_nested() == 2
+    curexc_callee() = length(Base.current_exceptions())
+    curexc_caller() = try; error("x"); catch; curexc_callee(); end
+    @test (@interpret curexc_caller()) == curexc_caller() == 1
+    @test isempty(@interpret (() -> Base.current_exceptions())())
+end

@@ -328,6 +328,24 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
         # No interpreted frame is handling an exception; fall back to the native rethrow
         # (interpreted code may be running inside a native `catch` block).
         rethrow()
+    elseif fargs[1] === Base.current_exceptions && length(fargs) == 1
+        # Exceptions caught by interpreted handlers never reach the task's native
+        # exception stack; they live in the frames' modeled stacks. Merge the native
+        # stack (outermost) with the caller chain's entries. The interpreter does not
+        # record per-exception backtraces, so those entries carry an empty backtrace.
+        stack = Any[entry for entry in invoke_in_world(frame.world, Base.current_exceptions)]
+        blocks = Vector{Any}[]
+        fr = frame
+        while fr !== nothing
+            exs = fr.framedata.exceptions
+            isempty(exs) || pushfirst!(blocks, exs)
+            fr = fr.caller
+        end
+        bt = Union{Ptr{Nothing},Base.InterpreterIP}[]
+        for exs in blocks, exc in exs
+            push!(stack, (exception = exc, backtrace = bt))
+        end
+        return Base.ExceptionStack(stack)
     end
     if fargs[1] === Core.invoke # invoke needs special handling
         argtypes = fargs[3]
