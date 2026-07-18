@@ -208,10 +208,15 @@ execute until the current frame reaches any line greater than the current line.
 function until_line!(interp::Interpreter, frame::Frame, line::Union{Nothing, Integer}=nothing, istoplevel::Bool=false)
     pc = frame.pc
     initialline, initialfile = linenumber(frame, pc), getfile(frame, pc)
+    if initialline === nothing || initialfile === nothing
+        return step_expr!(interp, frame, istoplevel)
+    end
     line === nothing && (line = initialline + 1)
     line_final = line
     pc = next_until!(interp, frame, istoplevel) do frame::Frame
-        return is_return(pc_expr(frame)) || (linenumber(frame) >= line_final && getfile(frame) == initialfile)
+        is_return(pc_expr(frame)) && return true
+        ln = linenumber(frame)
+        return ln !== nothing && ln >= line_final && getfile(frame) == initialfile
     end
     (pc === nothing || isa(pc, BreakpointRef)) && return pc
     maybe_step_through_kwprep!(interp, frame, istoplevel)
@@ -541,7 +546,7 @@ function debug_command(interp::Interpreter, frame::Frame, cmd::Symbol, rootistop
                 ret = @invoke evaluate_call!(BreakOnCall()::Interpreter, frame::Frame, stmt::Expr, enter_generated::Bool)
             catch err
                 ret = handle_err(interp, frame, err)
-                return isa(ret, BreakpointRef) ? (leaf(frame), ret) : ret
+                return isa(ret, BreakpointRef) ? (leaf(frame), ret) : (frame, ret)
             end
             if isa(ret, BreakpointRef)
                 newframe = leaf(frame)
@@ -564,9 +569,9 @@ function debug_command(interp::Interpreter, frame::Frame, cmd::Symbol, rootistop
     catch err
         frame = unwind_exception(frame, err)
         if cmd === :c
-            return debug_command(interp, frame, :c, istoplevel)
+            return debug_command(interp, frame, :c, rootistoplevel)
         else
-            return debug_command(interp, frame, :nc, istoplevel)
+            return debug_command(interp, frame, :nc, rootistoplevel)
         end
     end
     throw(ArgumentError("command $cmd not recognized"))

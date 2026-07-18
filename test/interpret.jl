@@ -1345,3 +1345,24 @@ end
         @test (@interpret world=w3 WrapperDepTest.llvmadd(Int32(30), Int32(12))) == 18
     end
 end
+
+@testset "Empty varargs are visible to locals" begin
+    empty_vararg(x...) = x
+    fr = JuliaInterpreter.enter_call(empty_vararg)
+    @test only(filter(v -> v.name === :x, JuliaInterpreter.locals(fr))).value === ()
+end
+
+@testset "Variable equality is total" begin
+    v = JuliaInterpreter.Variable(missing, :x)
+    @test isequal(v, v) === true
+    @test hash(v) isa UInt
+    @test isequal(hash(v), hash(JuliaInterpreter.Variable(missing, :x)))
+end
+
+@testset "determine_method_for_expr does not mutate the caller's AST" begin
+    kwfunc_ast(x; y=2) = x + y
+    ex = Expr(:call, kwfunc_ast, Expr(:parameters, Expr(:kw, :y, 2)), 1)
+    before = deepcopy(ex)
+    JuliaInterpreter.determine_method_for_expr(ex)
+    @test ex == before
+end

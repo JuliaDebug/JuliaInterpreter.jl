@@ -377,11 +377,13 @@ function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing,
     end
 end
 """
-    frame = Frame(mod::Module, src::CodeInfo; world=get_world_counter(), kwargs...)
+    frame = Frame(mod::Module, src::CodeInfo; world=JuliaInterpreter.default_world(), kwargs...)
 
-Construct a `Frame` to evaluate `src` in module `mod`. `world` sets the world
-age used for dispatch (defaults to the latest committed world). Additional
-keyword arguments (`generator`, `optimize`) are forwarded to [`FrameCode`](@ref).
+Construct a `Frame` to evaluate `src` in module `mod`. `world` sets the world age used for
+dispatch; it defaults to the calling task's current world, matching the semantics of an
+ordinary (non-`invokelatest`) call. Pass `world=Base.get_world_counter()` to instead resolve
+methods and bindings in the latest committed world. Additional keyword arguments
+(`generator`, `optimize`) are forwarded to [`FrameCode`](@ref).
 """
 function Frame(mod::Module, src::CodeInfo; world::UInt=default_world(), kwargs...)
     framecode = FrameCode(mod, src; world, kwargs...)
@@ -510,9 +512,11 @@ Variable(value, name) = Variable(value, name, false, false)
 Variable(value, name, isparam) = Variable(value, name, isparam, false)
 Base.show(io::IO, var::Variable) = (print(io, var.name, " = "); show(io,var.value))
 Base.isequal(var1::Variable, var2::Variable) =
-    var1.value == var2.value && var1.name === var2.name && var1.isparam == var2.isparam &&
+    isequal(var1.value, var2.value) && var1.name === var2.name && var1.isparam == var2.isparam &&
     var1.is_captured_closure == var2.is_captured_closure
 Base.:(==)(var1::Variable, var2::Variable) = isequal(var1, var2)
+Base.hash(var::Variable, h::UInt) =
+    hash(var.value, hash(var.name, hash(var.isparam, hash(var.is_captured_closure, hash(:Variable, h)))))
 
 # A type that is unique to this package for which there are no valid operations
 struct Unassigned end
@@ -575,7 +579,7 @@ same_location(::AbstractBreakpoint, ::AbstractBreakpoint) = false
 
 function print_bp_condition(io::IO, cond::Condition)
     if cond !== nothing
-        if isa(cond, Tuple{Module, Expr}) && (expr = expr[2])
+        if isa(cond, Tuple{Module, Expr})
             cond = (cond[1], Base.remove_linenums!(copy(cond[2])))
         elseif isa(cond, Expr)
             cond = Base.remove_linenums!(copy(cond))

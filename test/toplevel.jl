@@ -876,3 +876,8 @@ module DirectSurface end
     fr = JuliaInterpreter.toplevel_frame(DirectSurface, Any[LineNumberNode(7, :somefile), :(x = 1)])
     @test JuliaInterpreter.whereis(fr, 2) == ("somefile", 7)
 end
+
+@testset "macrocall with nothing line info" begin
+    ex = Expr(:toplevel, Expr(:macrocall, GlobalRef(Core, Symbol("@doc")), nothing, "docstr", :(split_nolineinfo() = 1)))
+    @test length(collect(ExprSplitter(@__MODULE__, ex))) == 1
+end

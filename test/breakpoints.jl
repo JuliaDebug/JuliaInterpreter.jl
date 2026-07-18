@@ -660,3 +660,22 @@ end
         remove()
     end
 end
+
+@testset "Showing a module-qualified condition" begin
+    remove()
+    showcond_f(x) = x
+    bp = breakpoint(showcond_f, (Main, :(x > 0)))
+    @test occursin("x > 0", sprint(show, bp))
+    remove()
+end
+
+@testset "breakpoints() does not leak the registry" begin
+    remove()
+    registry_bp_f(x) = x
+    fr = JuliaInterpreter.enter_call(registry_bp_f, 1)
+    breakpoint(registry_bp_f)
+    empty!(JuliaInterpreter.breakpoints())
+    @test length(JuliaInterpreter.breakpoints()) == 1
+    remove()
+    @test !JuliaInterpreter.shouldbreak(fr, fr.pc)
+end

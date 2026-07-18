@@ -618,3 +618,50 @@ end
     frame, _ = JuliaInterpreter.debug_command(frame, :sr)
     @test JuliaInterpreter.get_return(frame) == g()
 end
+
+@testset ":s keeps the (frame, pc) contract on caught errors" begin
+    caught_error_s() = try; throw(ArgumentError("x")); catch; 42; end
+    fr = enter_call(caught_error_s)
+    local ret = nothing
+    for _ in 1:10
+        ret = JuliaInterpreter.debug_command(fr, :s)
+        ret isa Tuple || break
+        fr = ret[1]
+    end
+    @test ret === nothing || ret isa Tuple
+end
+
+@testset "Exception recovery keeps rootistoplevel" begin
+    ex = quote
+        function unwind_thrower() error("boom") end
+        try
+            unwind_thrower()
+        catch
+            function defined_in_catch() 42 end
+            defined_in_catch()
+        end
+    end
+    fr = Frame(Main, ex)
+    ret = JuliaInterpreter.debug_command(fr, :s, true)
+    count = 0
+    while ret isa Tuple && count < 100
+        cframe = ret[1]
+        sc = JuliaInterpreter.scopeof(cframe)
+        sc isa Method && sc.name === :unwind_thrower && break
+        ret = JuliaInterpreter.debug_command(cframe, :s, true)
+        count += 1
+    end
+    r = JuliaInterpreter.debug_command(ret[1], :n, true)
+    inner = 0
+    while r isa Tuple && !(r[2] isa BreakpointRef) && inner < 200
+        r = JuliaInterpreter.debug_command(r[1], :n, true)
+        inner += 1
+    end
+    @test r === nothing
+end
+
+@testset "until_line! without location metadata" begin
+    fr = Frame(Main, Base.remove_linenums!(quote nolineinfo_a = 1; nolineinfo_b = nolineinfo_a + 1; nolineinfo_b end))
+    ret = JuliaInterpreter.debug_command(fr, :until, true)
+    @test ret === nothing || ret isa Tuple
+end

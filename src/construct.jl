@@ -453,7 +453,9 @@ function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=e
             elseif i <= nargs
                 locals[i], last_reference[i] = Some{Any}(argvals[i]), 1
             else
-                locals[i] = Some{Any}(())
+                # An empty vararg is still a defined local (`x === ()`); mark it referenced
+                # so `locals(frame)`/`eval_code` can see it.
+                locals[i], last_reference[i] = Some{Any}(()), 1
             end
         end
         if islastva
@@ -641,7 +643,10 @@ function queuenext!(iter::ExprSplitter)
         push_modex!(iter, mod, ex)
         return queuenext!(iter)
     elseif head === :macrocall
-        iter.lnn = ex.args[2]::LineNumberNode
+        # The canonical second argument is a LineNumberNode, but `nothing` is also legal
+        # (common in programmatically constructed ASTs).
+        a2 = ex.args[2]
+        a2 isa LineNumberNode && (iter.lnn = a2)
     elseif head === :block || head === :toplevel
         # Container expression
         idx = iter.index[end]
@@ -712,7 +717,7 @@ function determine_method_for_expr(expr::Expr;
                                    world::UInt=default_world(),
                                    method_table::Union{Nothing,MethodTable}=nothing)
     f = to_function(expr.args[1], world)
-    allargs = expr.args
+    allargs = copy(expr.args)  # keyword extraction below must not mutate the caller's AST
     # Extract keyword args
     kwargs = Expr(:parameters)
     if length(allargs) > 1 && isexpr(allargs[2], :parameters)
@@ -855,7 +860,7 @@ function extract_args(__module__, ex0)
             a11 = a1.args[1]
             if a11 === :setindex!
                 return Expr(:tuple,
-                    mapany(x->isexpr(x, :parameters) ? QuoteNode(x) : x, arg.args)...)
+                    mapany(x->isexpr(x, :parameters) ? QuoteNode(x) : x, a1.args)...)
             end
         end
     end

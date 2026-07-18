@@ -5,6 +5,12 @@ Normally, Julia compiles your code when you first execute it; using JuliaInterpr
 avoid compilation and execute the expressions that define your code directly.
 Interpreters have a number of applications, including support for stepping debuggers.
 
+!!! warning
+    JuliaInterpreter is not thread-safe: its frame, cache, and breakpoint state is
+    process-global and unsynchronized, so running interpretations concurrently from
+    multiple tasks or threads can produce errors or silently wrong results. Perform all
+    interpretation from a single task.
+
 ## Use as an interpreter
 
 Using this package as an interpreter is straightforward:
