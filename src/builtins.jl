@@ -472,11 +472,16 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
     elseif f === Base.cglobal
         if nargs == 1
             call_expr = copy(call_expr)
+            # The function position may be an SSA reference (e.g. code that loads the
+            # intrinsic via getproperty, as Core.io_pointer does); it must be a literal
+            # for the `Core.eval` below, since lowering requires cglobal syntax.
+            call_expr.args[1] = GlobalRef(Base, :cglobal)
             args2 = args[2]
             call_expr.args[2] = isa(args2, QuoteNode) ? args2 : lookup(interp, frame, args2)
             return Some{Any}(Core.eval(moduleof(frame), call_expr))
         elseif nargs == 2
             call_expr = copy(call_expr)
+            call_expr.args[1] = GlobalRef(Base, :cglobal)
             args2 = args[2]
             call_expr.args[2] = isa(args2, QuoteNode) ? args2 : lookup(interp, frame, args2)
             call_expr.args[3] = lookup(interp, frame, args[3])

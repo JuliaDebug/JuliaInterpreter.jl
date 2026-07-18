@@ -1555,3 +1555,11 @@ end
     @test (@interpret overdub54341(1, 2)) == 3
 end
 end
+
+@testset "cglobal loaded through getproperty" begin
+    # Core.io_pointer fetches the cglobal intrinsic via getproperty, so the call's
+    # function position is an SSA reference rather than a literal
+    @test (@interpret Core.io_pointer(Core.stdout)) == Core.io_pointer(Core.stdout)
+    buf = IOBuffer()
+    @test sprint(io -> (@interpret Base.println(io, "x"))) == "x\n"
+end
