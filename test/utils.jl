@@ -32,7 +32,10 @@ runstack(frame) = Some{Any}(finish_and_return!(frame))
 
 function read_and_parse(filename)
     src = read(filename, String)
-    ex = Base.parse_input_line(src; filename=filename)
+    # `Meta.parseall` gives file (hard-scope) semantics, matching `include`;
+    # `Base.parse_input_line` would mark blocks for REPL soft scope, changing the
+    # outcome of scope-sensitive tests (e.g. issue #28789's soft-scope error test).
+    ex = Meta.parseall(src; filename=filename)
 end
 
 ## For running interpreter frames under resource limitations
