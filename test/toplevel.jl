@@ -903,3 +903,16 @@ end
     @test JuliaInterpreter.finish_and_return!(fr, true) == 42
     @test Base.ispublic(PublicDeclTest, :pubmarked)
 end
+
+@testset "Frame on declaration-only expressions" begin
+    @eval module BareDeclTest end
+    fr = Frame(BareDeclTest, :(global bare_declared))
+    @test JuliaInterpreter.finish_and_return!(fr, true) === nothing
+    # `global +` shadows the imported Base binding; lowering is the identity on it
+    fr = Frame(BareDeclTest, :(global +))
+    @test JuliaInterpreter.finish_and_return!(fr, true) === nothing
+    @test !Base.isdefined(BareDeclTest, :+)
+    fr = Frame(BareDeclTest, Expr(:public, :bare_public))
+    @test JuliaInterpreter.finish_and_return!(fr, true) === nothing
+    @test Base.ispublic(BareDeclTest, :bare_public)
+end
