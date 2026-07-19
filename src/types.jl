@@ -196,9 +196,9 @@ else
 end
 
 @static if VERSION ≥ v"1.12.0-DEV.173"
-function pushuniquefiles!(unique_files::Set{Symbol}, lt)
+function pushuniquefiles!(unique_files::Set{Symbol}, lt::Core.DebugInfo)
     for edge in lt.edges
-        pushuniquefiles!(unique_files, edge)
+        pushuniquefiles!(unique_files, edge::Core.DebugInfo)
     end
     linetable = lt.linetable
     if linetable === nothing
@@ -401,7 +401,7 @@ end
 # `:toplevel`/`:module` body. Such a frame is stepped statement-by-statement by `step_toplevel!`,
 # which lowers ordinary statements to child frames and handles `:module`/`:using`/... directly.
 function toplevel_codeinfo(mod::Module, stmts::Vector{Any})
-    ci = (Meta.lower(mod, :(1 + 1)).args[1])::CodeInfo   # a throwaway skeleton; we overwrite its body
+    ci = ((Meta.lower(mod, :(1 + 1))::Expr).args[1])::CodeInfo   # a throwaway skeleton; we overwrite its body
     code = copy(stmts)
     lastreal = findlast(s -> !isa(s, LineNumberNode), code)
     push!(code, Core.ReturnNode(lastreal === nothing ? nothing : Core.SSAValue(lastreal)))

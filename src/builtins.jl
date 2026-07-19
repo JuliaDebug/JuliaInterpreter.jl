@@ -107,11 +107,12 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
             return Some{Any}(invoke_in_world(frame.world, Core._apply_iterate, argswrapped...))
         end
         aw1 = argswrapped[1]::Function
-        @assert aw1 === Core.iterate || aw1 === Core.Compiler.iterate || aw1 === Base.iterate "cannot handle `_apply_iterate` with non iterate as first argument, got $(aw1), $(typeof(aw1))"
+        aw1 === Core.iterate || aw1 === Core.Compiler.iterate || aw1 === Base.iterate ||
+            @invokelatest error("cannot handle `_apply_iterate` with non iterate as first argument, got ", aw1, ", ", typeof(aw1))
         new_expr = Expr(:call, argswrapped[2])
         popfirst!(argswrapped) # pop the iterate
         popfirst!(argswrapped) # pop the function
-        argsflat = invoke_in_world(frame.world, append_any, argswrapped...)
+        argsflat = invoke_in_world(frame.world, append_any, argswrapped...)::Vector{Any}
         for x in argsflat
             push!(new_expr.args, QuoteNode(x))
         end
@@ -594,11 +595,11 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         cargs = getargs(interp, args, frame)
         if f === Core.Intrinsics.have_fma && length(cargs) == 1
             cargs1 = cargs[1]
-            if cargs1 == Float64
+            if cargs1 === Float64
                 return Some{Any}(FMA_FLOAT64[])
-            elseif cargs1 == Float32
+            elseif cargs1 === Float32
                 return Some{Any}(FMA_FLOAT32[])
-            elseif cargs1 == Float16
+            elseif cargs1 === Float16
                 return Some{Any}(FMA_FLOAT16[])
             end
         end

@@ -257,7 +257,7 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
                         argtypes, sig)::SimpleVector
     enter_generated &= is_generated(method)
     if is_generated(method) && !enter_generated
-        framecode = get(genframedict, (method, argtypes::Type), nothing)
+        framecode = get(genframedict, (method, argtypes::DataType), nothing)
     else
         framecode = get(framedict, method, nothing)
     end
@@ -295,7 +295,7 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
         end
         framecode = FrameCode(method, code; generator=generator, world)
         if is_generated(method) && !enter_generated
-            genframedict[(method, argtypes)] = framecode
+            genframedict[(method, argtypes::DataType)] = framecode
         else
             framedict[method] = framecode
         end

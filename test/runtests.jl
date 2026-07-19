@@ -10,6 +10,10 @@ Aqua.test_all(JuliaInterpreter; deps_compat=(
     check_extras=(ignore=[:Dates, :Distributed, :LinearAlgebra, :Logging, :Mmap, :SHA, :SparseArrays, :Test],),
 ))
 
+if isdefined(Test, :detect_closure_boxes)
+    @test isempty(Test.detect_closure_boxes(JuliaInterpreter))
+end
+
 @testset "ExplicitImports" begin
     # #Internal is dynamically included and cannot be statically analyzed.
     # The package uses non-public Core/Base/Compiler internals throughout, so the
