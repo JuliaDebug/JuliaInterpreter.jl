@@ -90,7 +90,7 @@ end
 
 function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointSignature)
     function extract_function_from_method(m::Method)
-        sig = Base.unwrap_unionall(m.sig)
+        sig = Base.unwrap_unionall(m.sig)::DataType
         ft0 = sig.parameters[1]
         ft = Base.unwrap_unionall(ft0)
         # Check `isa` first: `ft` can be a non-Type (e.g. `Vararg`), on which `<:` throws.
@@ -116,7 +116,7 @@ function framecode_matches_breakpoint(framecode::FrameCode, bp::BreakpointSignat
     bp.f isa Method && return meth === bp.f
     f = extract_function_from_method(meth)
     if !(bp.f === f || same_typename(bp.f, f) ||
-            (f === Core.kwcall && let ftype = Base.unwrap_unionall(meth.sig).parameters[3]
+            (f === Core.kwcall && let ftype = (Base.unwrap_unionall(meth.sig)::DataType).parameters[3]
                 isa(ftype, Type) && !Base.has_free_typevars(ftype) && bp.f isa ftype
             end))
         return false
@@ -287,17 +287,17 @@ end
 _unpack(condition) = isa(condition, Expr) ? (Main, condition) : condition
 
 ## The fundamental implementations of breakpoint-setting
-function breakpoint!(framecode::FrameCode, pc, condition::Condition=nothing, enabled=true)
+function breakpoint!(framecode::FrameCode, pc, condition::Condition=nothing, enabled::Bool=true)
     stmtidx = pc
     if condition === nothing
         framecode.breakpoints[stmtidx] = BreakpointState(enabled)
     else
         mod, cond = _unpack(condition)
         fex = prepare_slotfunction(framecode, cond)
-        framecode.breakpoints[stmtidx] = BreakpointState(enabled, Core.eval(mod, fex))
+        framecode.breakpoints[stmtidx] = BreakpointState(enabled, Core.eval(mod, fex)::Function)
     end
 end
-breakpoint!(framecode::FrameCode, pcs::AbstractArray, condition::Condition=nothing, enabled=true) =
+breakpoint!(framecode::FrameCode, pcs::AbstractArray, condition::Condition=nothing, enabled::Bool=true) =
     foreach(pc -> breakpoint!(framecode, pc, condition, enabled), pcs)
 breakpoint!(frame::Frame, pc=frame.pc, condition::Condition=nothing) =
     breakpoint!(frame.framecode, pc, condition)
