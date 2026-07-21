@@ -365,12 +365,15 @@ mutable struct Frame
     # frames refresh it per statement, and `:latestworld` markers advance it after a
     # world-incrementing statement.
     world::UInt
+    # True while the frame sits in the recycling pool (`junk_frames`). Lets `recycle` be
+    # idempotent (see there) with a field load instead of an `IdSet` membership test.
+    pooled::Bool
 end
 function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing,
                world::UInt=default_world())
     if length(junk_frames) > 0
         frame = pop!(junk_frames)
-        delete!(pooled_frames, frame)
+        frame.pooled = false
         frame.framecode = framecode
         frame.framedata = framedata
         frame.pc = pc
@@ -381,7 +384,7 @@ function Frame(framecode::FrameCode, framedata::FrameData, pc=1, caller=nothing,
         frame.world = world
         return frame
     else
-        return Frame(framecode, framedata, pc, 1, caller, nothing, 0, world)
+        return Frame(framecode, framedata, pc, 1, caller, nothing, 0, world, false)
     end
 end
 """
