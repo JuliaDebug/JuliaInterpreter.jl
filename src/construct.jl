@@ -35,8 +35,6 @@ const compiled_modules = Set{Module}()
 
 const junk_framedata = FrameData[] # to allow re-use of allocated memory (this is otherwise a bottleneck)
 const junk_frames = Frame[]
-# Tracks which frames are currently pooled, so `recycle` can be idempotent (see below).
-const pooled_frames = Base.IdSet{Frame}()
 debug_mode() = false
 @noinline function _check_frame_not_in_junk(frame)
     @assert frame.framedata ∉ junk_framedata
@@ -49,9 +47,9 @@ end
     # catch block. `return_from`'s link-clearing is idempotent, but pooling a frame twice
     # lets it be handed out twice, aliasing a live frame into its own caller chain (an
     # infinite loop on the next exception). Pool each frame at most once.
-    frame in pooled_frames && return
+    frame.pooled && return
     debug_mode() && _check_frame_not_in_junk(frame)
-    push!(pooled_frames, frame)
+    frame.pooled = true
     push!(junk_framedata, frame.framedata)
     push!(junk_frames, frame)
 end
@@ -178,7 +176,6 @@ function clear_caches()
     empty!(framedict)
     empty!(genframedict)
     empty!(junk_frames)
-    empty!(pooled_frames)
     for bp in breakpoints()
         empty!(bp.instances)
     end
