@@ -70,6 +70,16 @@ end
     collect(ExprSplitter(JIVisible, :(module JIInvisible f() = 1 end)))  # this looks up JIInvisible rather than create it
     @test !isdefinedglobal(Main, :JIInvisible)
     @test  isdefinedglobal(JIVisible, :JIInvisible)
+
+    # `Base` has a self-binding even though `parentmodule(Base) === Main`.
+    let mod = Module(:SelfBoundModule)
+        @test parentmodule(mod) === Main
+        @test getglobal(mod, :SelfBoundModule) === mod
+        modexs = collect(ExprSplitter(mod, :(baremodule SelfBoundModule; x = 1; end)))
+        @test first(only(modexs)) === mod
+        @test getglobal(mod, :SelfBoundModule) === mod
+    end
+
     mktempdir() do path
         push!(LOAD_PATH, path)
         open(joinpath(path, "TmpPkg1.jl"), "w") do io
