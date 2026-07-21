@@ -1344,14 +1344,16 @@ end
         @test !isempty(fcchain.world_deps)   # the `Base.Math.libm` getproperty-chain resolution
 
         # Rebinding the library const (e.g. after dlclosing one library and dlopening another)
-        # invalidates the framecode; the rebuild resolves the new value, so the call fails on the
-        # bogus path instead of silently calling into the stale library.
+        # invalidates the framecode; a rebuild in a world that sees the new value resolves it, so
+        # the call fails on the bogus path instead of silently calling into the stale library.
+        # (In worlds predating the rebinding — like this testset's task world — the old value is
+        # still the correct resolution, matching compiled-code semantics.)
         Core.eval(WrapperDepTest, :(const MYLIB = "/nonexistent_library_path"))
         w2 = Base.get_world_counter()
         @test !JuliaInterpreter.framecode_valid_world(fc, w2)
         fc2, _ = JuliaInterpreter.prepare_framecode(mlib, Tuple{typeof(WrapperDepTest.powf_constlib), Float32, Float32}; world=w2)
         @test fc2 !== fc
-        @test_throws "nonexistent_library_path" @interpret(WrapperDepTest.powf_constlib(2f0, 3f0))
+        @test_throws "nonexistent_library_path" @interpret world=w2 WrapperDepTest.powf_constlib(2f0, 3f0)
         # An unrelated rebinding must not invalidate the chain-library framecode.
         @test JuliaInterpreter.framecode_valid_world(fcchain, w2)
 
@@ -1370,6 +1372,53 @@ end
         @test (@interpret world=w3 WrapperDepTest.llvmadd(Int32(30), Int32(12))) == 18
     end
 end
+
+module ImportedConstSource
+    const XI = 1
+    const XU = 1
+    const LIB = Base.Math.libm
+end
+module ImportedConstConsumer
+    import ..ImportedConstSource: XI, LIB
+    using ..ImportedConstSource: XU
+    fi() = XI
+    fu() = XU
+    powf_importedlib(a, b) = ccall(("powf", LIB), Float32, (Float32, Float32), a, b)
+end
+
+@static if JuliaInterpreter.isbindingresolved_deprecated
+@testset "imported const invalidation" begin
+    # Explicitly imported consts (`import M: x` / `using M: x`) are never folded: the
+    # importing module's binding partition delegates to the source binding and is NOT split
+    # when the source const is rebound (only the source partition is), so a folded value
+    # could go stale without invalidating the framecode. The `GlobalRef` is left in place
+    # and resolved per execution in the frame's world, which is correct in every world.
+    for (f, src_name) in ((ImportedConstConsumer.fi, :XI), (ImportedConstConsumer.fu, :XU))
+        m = only(methods(f))
+        w = Base.get_world_counter()
+        fc, _ = JuliaInterpreter.prepare_framecode(m, Tuple{typeof(f)}; world=w)
+        @test any(x -> isa(x, GlobalRef), fc.src.code)   # not folded
+        Core.eval(ImportedConstSource, :(const $src_name = 2))
+        w2 = Base.get_world_counter()
+        @test JuliaInterpreter.framecode_valid_world(fc, w2)  # nothing baked, still valid
+        @test (@interpret world=w2 f()) == 2  # matches native execution in w2
+        @test (@interpret world=w f()) == 1   # pre-rebinding world sees the old value
+    end
+
+    # KNOWN HOLE: the compiled-ccall wrapper path *bakes* values at build time regardless of
+    # binding kind, and `record_world_dep!` records only the importing partition, which
+    # survives the source rebinding — so the framecode wrongly stays valid. Whether importer
+    # partitions should be split upstream, or the delegation chain recorded in
+    # `record_world_dep!`, is still under discussion.
+    mlib = only(methods(ImportedConstConsumer.powf_importedlib))
+    w = Base.get_world_counter()
+    @test (@interpret world=w ImportedConstConsumer.powf_importedlib(2f0, 3f0)) == 8f0
+    fc, _ = JuliaInterpreter.prepare_framecode(mlib, Tuple{typeof(ImportedConstConsumer.powf_importedlib), Float32, Float32}; world=w)
+    Core.eval(ImportedConstSource, :(const LIB = "/nonexistent_library_path"))
+    w2 = Base.get_world_counter()
+    @test_broken !JuliaInterpreter.framecode_valid_world(fc, w2)
+end
+end # @static if
 
 @testset "Empty varargs are visible to locals" begin
     empty_vararg(x...) = x

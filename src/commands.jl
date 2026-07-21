@@ -490,15 +490,13 @@ end
 maybe_step_through_kwprep!(frame::Frame, istoplevel::Bool=false) =
     maybe_step_through_kwprep!(RecursiveInterpreter(), frame, istoplevel)
 
-@static if isbindingresolved_deprecated
-    function is_empty_namedtuple(stmt)
-        isexpr(stmt, :call) && length(stmt.args) == 1 || return false
-        arg1 = stmt.args[1]
-        isa(arg1, GlobalRef) || return false
-        return arg1.name === :NamedTuple
-    end
-else
-    is_empty_namedtuple(stmt) = isexpr(stmt, :call) && is_quoted_type(stmt.args[1], :NamedTuple) && length(stmt.args) == 1
+# The `NamedTuple` callee is a `QuoteNode` when `optimize!` folded the const (method scope),
+# or a `GlobalRef` when it didn't (toplevel scope on 1.12+); accept both forms.
+function is_empty_namedtuple(stmt)
+    isexpr(stmt, :call) && length(stmt.args) == 1 || return false
+    arg1 = stmt.args[1]
+    is_quoted_type(arg1, :NamedTuple) && return true
+    return isa(arg1, GlobalRef) && arg1.name === :NamedTuple
 end
 
 """
@@ -699,11 +697,13 @@ function debug_command(interp::Interpreter, frame::Frame, cmd::Symbol, rootistop
                 # On Julia 1.12 a method body may start with bare global loads
                 # (e.g. the `+` of `f(x) = g(x) + 1`); pausing there shows the
                 # user an internal-looking statement that is not even the next
-                # call. Advance to the first call or return, like frame entry
-                # does. Keyword/closure bodies (gensym `#` names) keep their
-                # exact entry point.
+                # call. `optimize!` folds `const` globals to `QuoteNode`s, so the
+                # leading load is either a `GlobalRef` or a `QuoteNode`. Advance
+                # to the first call or return, like frame entry does.
+                # Keyword/closure bodies (gensym `#` names) keep their exact entry point.
                 scope = scopeof(newframe)
-                normalize_entry = pc_expr(newframe) isa GlobalRef &&
+                entrystmt = pc_expr(newframe)
+                normalize_entry = (entrystmt isa GlobalRef || entrystmt isa QuoteNode) &&
                     !(scope isa Method && startswith(string(scope.name), "#"))
                 if !is_si && normalize_entry
                     pc = maybe_next_until!(interp, newframe, istoplevel) do fr::Frame

@@ -189,11 +189,11 @@ function is_breakpoint_expr(ex::Expr)
     return isa(q, QuoteNode) && q.value === :__BREAKPOINT_MARKER__
 end
 
-@static if isbindingresolved_deprecated
-    is_breakpoint_marker(stmt) = is_global_ref(stmt, JuliaInterpreter, :__BREAK_POINT_MARKER__)
-else
-    is_breakpoint_marker(stmt) = stmt === __BREAK_POINT_MARKER__
-end
+# `@bp` lowers to a `GlobalRef` of the `__BREAK_POINT_MARKER__` const. `optimize!` folds it
+# to its value in method scope (unwrapped from the `QuoteNode` by `lookup_stmt`), while
+# toplevel or unoptimized code keeps the `GlobalRef`, so accept both forms.
+is_breakpoint_marker(@nospecialize(stmt)) =
+    stmt === __BREAK_POINT_MARKER__ || is_global_ref(stmt, JuliaInterpreter, :__BREAK_POINT_MARKER__)
 
 @static if VERSION ≥ v"1.12.0-DEV.173"
 function pushuniquefiles!(unique_files::Set{Symbol}, lt::Core.DebugInfo)

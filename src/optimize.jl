@@ -10,9 +10,27 @@ const compiled_calls = Dict{Any,Any}()
 function record_world_dep!(world_deps::Union{Nothing,Vector{BindingPartition}}, world::UInt, gr::GlobalRef)
     @static if isbindingresolved_deprecated
         world_deps === nothing && return nothing
-        push!(world_deps, Base.lookup_binding_partition(world, gr))
+        # KNOWN HOLE: only the named binding's partition is recorded. For an explicitly
+        # imported binding (`import M: x` / `using M: x`) that partition delegates to the
+        # source binding and survives a rebinding of the source const — only the source
+        # partition (where the value lives) gets split. `lookup_global_ref` therefore never
+        # folds such bindings, but the compiled `ccall`/`llvmcall` wrapper paths still bake
+        # values reached through them and would miss the rebinding (see the
+        # "imported const invalidation" `@test_broken`). Whether importer partitions should
+        # be split upstream, or the delegation chain recorded here, is under discussion.
+        record_world_dep!(world_deps, Base.lookup_binding_partition(world, gr))
     end
     return nothing
+end
+
+@static if isbindingresolved_deprecated
+function record_world_dep!(world_deps::Union{Nothing,Vector{BindingPartition}}, bpart::BindingPartition)
+    world_deps === nothing && return nothing
+    # The same binding is typically referenced many times within one method; store each
+    # partition once so `framecode_valid_world` stays cheap.
+    any(p -> p === bpart, world_deps) || push!(world_deps, bpart)
+    return nothing
+end
 end
 
 # Record every `GlobalRef` reachable in `arg` (recursing through `Expr`s, but not chasing
@@ -79,32 +97,55 @@ function smallest_ref(stmts, arg, idmin)
     return idmin
 end
 
-function lookup_global_ref(a::GlobalRef, world::UInt)
-    isbindingresolved_deprecated && return a   # TODO: reenable this optimization once we can invalidate Frames
-    if Base.isbindingresolved(a.mod, a.name) &&
-        (invoke_in_world(world, isdefinedglobal, a.mod, a.name)) &&
-        (invoke_in_world(world, isconst, a.mod, a.name))
-        return QuoteNode(invoke_in_world(world, getglobal, a.mod, a.name))
+function lookup_global_ref(a::GlobalRef, world::UInt,
+                           world_deps::Union{Nothing,Vector{BindingPartition}}=nothing)
+    @static if isbindingresolved_deprecated
+        # On 1.12+ a `const` can be rebound, making the folded value world-dependent. Folding
+        # is therefore allowed only when the caller supplies `world_deps`: the binding
+        # partition recorded there lets `framecode_valid_world` reject the cached framecode
+        # for worlds in which the binding was redefined.
+        world_deps === nothing && return a
+        bpart = Base.lookup_binding_partition(world, a)
+        # Fold only when the partition itself holds the constant value (a directly defined
+        # or implicit-`using` const): then this partition must be split for the value to
+        # change, so recording it makes the invalidation exact. Explicitly imported bindings
+        # (`import M: x` / `using M: x`) delegate to the source binding and their partition
+        # survives a rebinding of the source const, so a folded value could go stale
+        # undetected — leave those as `GlobalRef`s (resolved per execution in the frame's
+        # world, which is always correct).
+        if Base.is_defined_const_binding(Base.binding_kind(bpart))
+            record_world_dep!(world_deps, bpart)
+            return QuoteNode(invoke_in_world(world, getglobal, a.mod, a.name))
+        end
+        return a
+    else
+        if Base.isbindingresolved(a.mod, a.name) &&
+            (invoke_in_world(world, isdefinedglobal, a.mod, a.name)) &&
+            (invoke_in_world(world, isconst, a.mod, a.name))
+            return QuoteNode(invoke_in_world(world, getglobal, a.mod, a.name))
+        end
+        return a
     end
-    return a
 end
 
-function lookup_global_refs!(ex::Expr, world::UInt)
+function lookup_global_refs!(ex::Expr, world::UInt,
+                             world_deps::Union{Nothing,Vector{BindingPartition}}=nothing)
     if isexpr(ex, (:isdefined, :thunk, :toplevel, :method, :global, :const, :globaldecl))
         return nothing
     end
     for (i, a) in enumerate(ex.args)
         ex.head === :(=) && i == 1 && continue # Don't look up globalrefs on the LHS of an assignment (issue #98)
         if isa(a, GlobalRef)
-            ex.args[i] = lookup_global_ref(a, world)
+            ex.args[i] = lookup_global_ref(a, world, world_deps)
         elseif isa(a, Expr)
-            lookup_global_refs!(a, world)
+            lookup_global_refs!(a, world, world_deps)
         end
     end
     return nothing
 end
 
-function lookup_getproperties(code::Vector{Any}, @nospecialize(a), world::UInt)
+function lookup_getproperties(code::Vector{Any}, @nospecialize(a), world::UInt,
+                              world_deps::Union{Nothing,Vector{BindingPartition}}=nothing)
     isexpr(a, :call) || return a
     length(a.args) == 3 || return a
     arg1 = lookup_stmt(code, a.args[1], world)
@@ -113,17 +154,16 @@ function lookup_getproperties(code::Vector{Any}, @nospecialize(a), world::UInt)
     arg2 isa Module || return a
     arg3 = lookup_stmt(code, a.args[3], world)
     arg3 isa Symbol || return a
-    return lookup_global_ref(GlobalRef(arg2, arg3), world)
+    return lookup_global_ref(GlobalRef(arg2, arg3), world, world_deps)
 end
 
 # HACK This isn't optimization really, but necessary to bypass llvmcall and foreigncall
 # TODO This "optimization" should be refactored into a "minimum compilation" necessary to
 # execute `llvmcall` and `foreigncall` and pure optimizations on the lowered code representation.
-# On Julia 1.12+ the GlobalRef -> QuoteNode folding is disabled (`lookup_global_ref` returns the
-# ref unchanged) because a redefinable `const` makes the folded value world-dependent; values
-# that *must* be resolved at build time (library names and llvmcall ingredients baked into the
-# compiled wrappers below) record their bindings in `world_deps` so the framecode can be
-# invalidated when a binding is redefined.
+# On Julia 1.12+ a redefinable `const` makes a folded value world-dependent, so every value
+# resolved at build time — folded `const` globals as well as library names and llvmcall
+# ingredients baked into the compiled wrappers below — records its binding in `world_deps`,
+# and `framecode_valid_world` rejects the cached framecode once any of them is redefined.
 
 """
     optimize!(code::CodeInfo, scope, world::UInt) -> code, methodtables, world_deps
@@ -142,10 +182,15 @@ function optimize!(code::CodeInfo, scope, world::UInt)
     sparams = scope isa Method ? sparam_syms(scope) : Symbol[]
     replace_coretypes!(code)
 
-    # Binding partitions of globals whose values get baked into this framecode (compiled
-    # `ccall`/`llvmcall` wrappers); recorded so a cached `FrameCode` can be invalidated once any
-    # baked value goes stale (see `FrameCode.world_deps`).
+    # Binding partitions of globals whose values get baked into this framecode (folded `const`
+    # globals and compiled `ccall`/`llvmcall` wrappers); recorded so a cached `FrameCode` can be
+    # invalidated once any baked value goes stale (see `FrameCode.world_deps`).
     world_deps = BindingPartition[]
+    # On 1.12+, fold `const` globals only for method scope: the framecode cache is guarded by
+    # `framecode_valid_world`, and a method frame's world is fixed at construction. Toplevel
+    # frames advance `frame.world` mid-execution (see `step_toplevel!`), so a value folded in
+    # the build world could go stale within the frame; leave their `GlobalRef`s unresolved.
+    fold_deps = scope isa Method ? world_deps : nothing
     # TODO: because of builtins.jl, for CodeInfos like
     #   %1 = Core.apply_type
     #   %2 = (%1)(args...)
@@ -153,13 +198,13 @@ function optimize!(code::CodeInfo, scope, world::UInt)
     ## Replace GlobalRefs with QuoteNodes
     for (i, stmt) in enumerate(code.code)
         if isa(stmt, GlobalRef)
-            code.code[i] = lookup_global_ref(stmt, world)
+            code.code[i] = lookup_global_ref(stmt, world, fold_deps)
         elseif isa(stmt, Expr)
             if stmt.head === :call && stmt.args[1] === :cglobal  # cglobal requires literals
                 continue
             else
-                lookup_global_refs!(stmt, world)
-                code.code[i] = lookup_getproperties(code.code, stmt, world)
+                lookup_global_refs!(stmt, world, fold_deps)
+                code.code[i] = lookup_getproperties(code.code, stmt, world, fold_deps)
             end
         end
     end
