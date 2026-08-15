@@ -28,6 +28,11 @@ const RECENTLY_ADDED = Core.Builtin[
     Core._import,
     Core._svec_len,
     Core._using,
+    Core._new_cancel_source,
+    Core._task,
+    Core.bitsizeof,
+    Core.cancellation_point!,
+    Core.task_result_type,
     # Recently became builtins
     Base.invokelatest,
     Base.invoke_in_world,
