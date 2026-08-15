@@ -189,25 +189,41 @@ function is_breakpoint_expr(ex::Expr)
     return isa(q, QuoteNode) && q.value === :__BREAKPOINT_MARKER__
 end
 
+# JuliaLowering gives a shadowing local its own slot, named by appending `@N` to the
+# user-visible name (an inner `y` becomes slot `y@1`); flisp reuses a single slot per
+# name. Name-keyed variable lookups (`locals`, `eval_code`, breakpoint conditions)
+# group slots by this base name so that shadowed variables resolve through the same
+# most-recently-referenced-slot-wins rule that already disambiguates same-named slots.
+function slot_base_name(sym::Symbol)
+    str = String(sym)
+    i = findlast('@', str)
+    i === nothing && return sym
+    (i > firstindex(str) && i < lastindex(str)) || return sym
+    suffix = SubString(str, nextind(str, i))
+    all(isdigit, suffix) || return sym
+    return Symbol(SubString(str, firstindex(str), prevind(str, i)))
+end
+
 # `@bp` lowers to a `GlobalRef` of the `__BREAK_POINT_MARKER__` const. `optimize!` folds it
 # to its value in method scope (unwrapped from the `QuoteNode` by `lookup_stmt`), while
 # toplevel or unoptimized code keeps the `GlobalRef`, so accept both forms.
 is_breakpoint_marker(@nospecialize(stmt)) =
     stmt === __BREAK_POINT_MARKER__ || is_global_ref(stmt, JuliaInterpreter, :__BREAK_POINT_MARKER__)
 
-@static if VERSION ≥ v"1.12.0-DEV.173"
 function pushuniquefiles!(unique_files::Set{Symbol}, lt::Core.DebugInfo)
     for edge in lt.edges
         pushuniquefiles!(unique_files, edge::Core.DebugInfo)
     end
     linetable = lt.linetable
-    if linetable === nothing
+    if linetable === nothing || linetable isa String
+        # `nothing`: `def` itself names the file. A `String` is a compressed
+        # source-byte table (JuliaLowering's byte-precise debuginfo), which
+        # likewise describes only the file named by `def`.
         push!(unique_files, Base.IRShow.debuginfo_file1(lt))
     else
         pushuniquefiles!(unique_files, linetable)
     end
     return unique_files
-end
 end
 
 # The running task's current world age. Unlike `Base.get_world_counter()` (the latest
@@ -245,6 +261,7 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true, world::
     end
     slotnamelists = Dict{Symbol,Vector{Int}}()
     for (i, sym) in enumerate(src.slotnames)
+        sym = slot_base_name(sym)
         list = get(slotnamelists, sym, Int[])
         slotnamelists[sym] = push!(list, i)
     end
@@ -253,16 +270,7 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true, world::
 
     lt = linetable(src)
     unique_files = Set{Symbol}()
-    @static if VERSION ≥ v"1.12.0-DEV.173"
     pushuniquefiles!(unique_files, lt)
-    else # VERSION < v"1.12.0-DEV.173"
-    for entry in lt
-        # issue #701: macro-generated `LineNumberNode`s (e.g. MacroTools' `@q`/`@qq`) can
-        # carry a `nothing` file, which has no path to match a breakpoint against.
-        entry.file === nothing && continue
-        push!(unique_files, entry.file)
-    end
-    end # @static if
 
     framecode = FrameCode(scope, src, methodtables, breakpoints, slotnamelists, used, generator, report_coverage, unique_files, is_toplevel_surface, world_deps)
     if scope isa Method
@@ -415,12 +423,8 @@ function toplevel_codeinfo(mod::Module, stmts::Vector{Any})
     ci.slotnames = Symbol[Symbol("#self#")]
     ci.slotflags = UInt8[0x00]
     # `step_toplevel!` reads line info from the surface `LineNumberNode`s in `code` directly and
-    # never consults the `CodeInfo`'s line tables, so the skeleton's debuginfo is left untouched on
-    # 1.12+ (where `codelocs` was folded into `debuginfo`); on older versions `codelocs` must match
-    # the new code length.
-    @static if !(VERSION ≥ v"1.12.0-DEV.173")
-        ci.codelocs = fill(Int32(1), n)
-    end
+    # never consults the `CodeInfo`'s line tables, so the skeleton's debuginfo is left untouched
+    # (`codelocs` was folded into `debuginfo`).
     return ci
 end
 

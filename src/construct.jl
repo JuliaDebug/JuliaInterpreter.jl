@@ -207,12 +207,13 @@ end
 
 get_source(meth::Method) = Base.uncompressed_ast(meth)
 
-function get_source(g::GeneratedFunctionStub, source::Method, env, world::UInt)
-    b = @static if VERSION < v"1.12.0-DEV.1968"   # julia #57230
-        g(world, LineNumberNode(Int(source.line), source.file), env..., g.argnames...)
-    else
-        g(world, source, env..., g.argnames...)
-    end
+# `g` is `Core.GeneratedFunctionStub` or a stub with the same calling convention,
+# such as `JuliaLowering.GeneratedFunctionStub`. Both accept the static-parameter
+# values followed by the argument names; passing the names as symbolic stand-ins
+# for the argument types yields an expansion whose spliced arguments become slot
+# references, so the body can be interpreted unspecialized.
+function get_source(@nospecialize(g), source::Method, env, world::UInt)
+    b = g(world, source, env..., g.argnames...)
     b isa CodeInfo && return b
     return eval(b)
 end
