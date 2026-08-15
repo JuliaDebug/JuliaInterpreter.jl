@@ -78,7 +78,7 @@ function add_breakpoint_if_match!(framecode::FrameCode, bp::BreakpointSignature)
             scope.file
         else
             # TODO: make more precise?
-            first(framecode.src.linetable).file
+            Base.IRShow.debuginfo_file1(linetable(framecode))
         end
         stmtidxs = bp.line === 0 ? [1] : statementnumbers(framecode, bp.line, matching_file::Symbol)
         stmtidxs === nothing && return

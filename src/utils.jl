@@ -442,6 +442,38 @@ function codelocation(code::CodeInfo, idx::Int)
     return 1
 end
 
+"""
+    loc = statement_location(framecode::FrameCode, pc::Int)
+    loc = statement_location(frame::Frame, pc::Int=frame.pc)
+
+Return the source span of the statement at `pc` as a `NamedTuple`
+`(; file, line, line_end, col, col_end, byte, byte_end)`, or `nothing` if no
+location is recorded. `byte:byte_end` is a 1-based byte range into the source
+file (or the string passed to `include_string`) covering the expression as
+written; `byte == 0` means only line information is available, which is the
+case for code lowered without byte-precise provenance (the flisp lowerer, or
+JuliaLowering operating on an `Expr` that lacks source text).
+
+Locations are static (as of when the method was defined); they are not
+corrected for subsequent file edits. See [`CodeTracking.whereis`](@ref) for
+dynamic line information.
+"""
+function statement_location(framecode::FrameCode, pc::Int)
+    if framecode.is_toplevel_surface
+        lnn = toplevel_surface_lnn(framecode, pc)
+        (lnn === nothing || lnn.file === nothing) && return nothing
+        line = getline(lnn)
+        return (; file=getfile(lnn), line, line_end=line, col=0, col_end=0, byte=0, byte_end=0)
+    end
+    di = linetable(framecode)::Core.DebugInfo
+    sl = Base.Compiler.source_location(di, pc)
+    sl.line == 0 && return nothing
+    file = CodeTracking.maybe_fixup_stdlib_path(String(Base.IRShow.debuginfo_file1(di)))
+    return (; file, line=sl.line, line_end=max(sl.line, sl.line_end),
+            col=sl.col, col_end=sl.col_end, byte=sl.byte, byte_end=sl.byte_end)
+end
+statement_location(frame::Frame, pc::Int=frame.pc) = statement_location(frame.framecode, pc)
+
 function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
     # Check to see if this framecode really contains that line. Methods that fill in a default positional argument,
     # keyword arguments, and @generated sections may not contain the line.
@@ -455,6 +487,39 @@ function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
     end
 
     linetarget = line - offset
+
+    di = linetable(framecode)
+    if di isa Core.DebugInfo && di.linetable isa String
+        # Byte-precise debuginfo (JuliaLowering's compressed source-byte table):
+        # a single file per table, with each statement's span recoverable via
+        # `source_location`. Scan the statements directly.
+        Base.IRShow.debuginfo_file1(di) === file || return Int[]
+        nstmts = length(framecode.src.code)
+        stmtidxs = Int[]
+        prevmatch = false
+        for i in 1:nstmts
+            sl = Base.Compiler.source_location(di, i)
+            ismatch = sl.line == linetarget
+            # only record the first statement of each contiguous matching run
+            ismatch && !prevmatch && push!(stmtidxs, i)
+            prevmatch = ismatch
+        end
+        isempty(stmtidxs) || return stmtidxs
+        # No statement starts on the requested line (e.g. a breakpoint on `end` or on a
+        # blank line): if the code starts before the requested line, take the first
+        # statement that starts after it.
+        beststmt, bestline, firstline = 0, typemax(Int), typemax(Int)
+        for i in 1:nstmts
+            sl = Base.Compiler.source_location(di, i)
+            sl.line == 0 && continue
+            firstline = min(firstline, sl.line)
+            if sl.line > linetarget && sl.line < bestline
+                beststmt, bestline = i, sl.line
+            end
+        end
+        beststmt != 0 && firstline < linetarget && push!(stmtidxs, beststmt)
+        return stmtidxs
+    end
 
     lts = CodeTracking.linetable_scopes(framecode.src, scope)
     for lt in lts
