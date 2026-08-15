@@ -189,6 +189,21 @@ function is_breakpoint_expr(ex::Expr)
     return isa(q, QuoteNode) && q.value === :__BREAKPOINT_MARKER__
 end
 
+# JuliaLowering gives a shadowing local its own slot, named by appending `@N` to the
+# user-visible name (an inner `y` becomes slot `y@1`); flisp reuses a single slot per
+# name. Name-keyed variable lookups (`locals`, `eval_code`, breakpoint conditions)
+# group slots by this base name so that shadowed variables resolve through the same
+# most-recently-referenced-slot-wins rule that already disambiguates same-named slots.
+function slot_base_name(sym::Symbol)
+    str = String(sym)
+    i = findlast('@', str)
+    i === nothing && return sym
+    (i > firstindex(str) && i < lastindex(str)) || return sym
+    suffix = SubString(str, nextind(str, i))
+    all(isdigit, suffix) || return sym
+    return Symbol(SubString(str, firstindex(str), prevind(str, i)))
+end
+
 # `@bp` lowers to a `GlobalRef` of the `__BREAK_POINT_MARKER__` const. `optimize!` folds it
 # to its value in method scope (unwrapped from the `QuoteNode` by `lookup_stmt`), while
 # toplevel or unoptimized code keeps the `GlobalRef`, so accept both forms.
@@ -246,6 +261,7 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true, world::
     end
     slotnamelists = Dict{Symbol,Vector{Int}}()
     for (i, sym) in enumerate(src.slotnames)
+        sym = slot_base_name(sym)
         list = get(slotnamelists, sym, Int[])
         slotnamelists[sym] = push!(list, i)
     end

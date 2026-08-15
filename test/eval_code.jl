@@ -49,9 +49,10 @@ function f()
     x
 end
 frame = JuliaInterpreter.enter_call(f)
-JuliaInterpreter.step_expr!(frame)
-JuliaInterpreter.step_expr!(frame)
-@static if VERSION >= v"1.11-"
+# Step through the `Core.Box` initialization of `x`; the preamble's statement count
+# differs between lowering implementations, so step until `x` is defined.
+for _ in 1:10
+    any(v -> v.name === :x, JuliaInterpreter.locals(frame)) && break
     JuliaInterpreter.step_expr!(frame)
 end
 @test eval_code(frame, "x") == 1

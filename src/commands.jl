@@ -320,6 +320,9 @@ function is_indexed_iterate_call(@nospecialize(stmt))
     return f === Base.indexed_iterate
 end
 
+is_destructured_arg_slotname(name::Symbol) =
+    name === Symbol("") || startswith(String(name), "destructured#")
+
 """
     frame = maybe_step_through_arg_destructuring!(interp::Interpreter, frame::Frame)
 
@@ -336,15 +339,16 @@ function maybe_step_through_arg_destructuring!(interp::Interpreter, frame::Frame
     slotnames = src.slotnames
     nargs = Int(scope.nargs)
     nargs <= length(slotnames) || return frame
-    # A destructured argument occupies an unnamed argument slot
-    any(i -> slotnames[i] === Symbol(""), 2:nargs) || return frame
+    # A destructured argument occupies an unnamed argument slot (flisp) or one named
+    # `destructured#N` (JuliaLowering)
+    any(i -> is_destructured_arg_slotname(slotnames[i]), 2:nargs) || return frame
     stmts = src.code
     prepssas = BitSet()
     prepend = 0
     for (i, stmt) in enumerate(stmts)
         if is_indexed_iterate_call(stmt)
             arg1 = (stmt::Expr).args[2]
-            isa(arg1, SlotNumber) && 2 <= arg1.id <= nargs && slotnames[arg1.id] === Symbol("") || break
+            isa(arg1, SlotNumber) && 2 <= arg1.id <= nargs && is_destructured_arg_slotname(slotnames[arg1.id]) || break
         elseif isexpr(stmt, :(=)) && isexpr((stmt::Expr).args[2], :call)
             # a `slot = getfield(%prep, k)` statement consuming a preamble value
             rhs = (stmt::Expr).args[2]::Expr
@@ -418,11 +422,20 @@ function maybe_step_through_kwprep!(interp::Interpreter, frame::Frame, istopleve
     pc, src = frame.pc, frame.framecode.src
     n = length(src.code)
     stmt = pc_expr(frame, pc)
-    if isbindingresolved_deprecated && !isa(stmt, Tuple{Symbol,Vararg{Symbol}}) && !is_empty_namedtuple(stmt) && n >= pc+1
-        nextstmt = pc_expr(frame, pc + 1)
-        if isa(nextstmt, Tuple{Symbol,Vararg{Symbol}}) || is_empty_namedtuple(nextstmt)
-            pc += 1
-            stmt = nextstmt
+    if !isa(stmt, Tuple{Symbol,Vararg{Symbol}}) && !is_empty_namedtuple(stmt) && !is_merge_call(stmt)
+        # The NamedTuple-keys tuple may be preceded by side-effect-free loads (binding
+        # resolution, or the `QuoteNode`s of a qualified callee such as `Base.sort`);
+        # scan past them, but stop at anything that executes user code.
+        pcnext = pc
+        while pcnext < min(pc + 4, n)
+            s = pc_expr(frame, pcnext)
+            (isa(s, QuoteNode) || isa(s, GlobalRef) || isa(s, SlotNumber) || isa(s, SSAValue)) || break
+            pcnext += 1
+            snext = pc_expr(frame, pcnext)
+            if isa(snext, Tuple{Symbol,Vararg{Symbol}}) || is_empty_namedtuple(snext)
+                pc, stmt = pcnext, snext
+                break
+            end
         end
     end
     if isa(stmt, Tuple{Symbol,Vararg{Symbol}})

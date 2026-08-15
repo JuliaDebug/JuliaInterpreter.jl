@@ -631,6 +631,7 @@ function locals(frame::Frame)
         if val isa Core.Box && !isdefined(val, :contents)
             continue
         end
+        sym = slot_base_name(sym)
         var = Variable(val, sym)
         idx = get(varlookup, sym, 0)
         if idx > 0
