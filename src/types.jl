@@ -200,7 +200,10 @@ function pushuniquefiles!(unique_files::Set{Symbol}, lt::Core.DebugInfo)
         pushuniquefiles!(unique_files, edge::Core.DebugInfo)
     end
     linetable = lt.linetable
-    if linetable === nothing
+    if linetable === nothing || linetable isa String
+        # `nothing`: `def` itself names the file. A `String` is a compressed
+        # source-byte table (JuliaLowering's byte-precise debuginfo), which
+        # likewise describes only the file named by `def`.
         push!(unique_files, Base.IRShow.debuginfo_file1(lt))
     else
         pushuniquefiles!(unique_files, linetable)

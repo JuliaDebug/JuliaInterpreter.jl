@@ -272,8 +272,21 @@ end
 # from a fresh `throw` of the same object.
 const _rethrow_inflight = Ref{Any}(nothing)
 
+# JuliaLowering lowers the `catch` body's reference to the active exception as a call
+# to its runtime function `current_exception` (flisp emits `Expr(:the_exception)`).
+# That function reads the task's native exception stack, but exceptions raised in
+# interpreted code are caught by the interpreter itself, so the task state does not
+# reflect the frame's handler. Recognized by name to avoid a JuliaLowering dependency.
+function is_lowered_current_exception(@nospecialize f)
+    return f isa Function && nameof(f) === :current_exception &&
+        nameof(parentmodule(f)) === :JuliaLowering
+end
+
 function native_call(fargs::Vector{Any}, frame::Frame)
     f = popfirst!(fargs)
+    if isempty(fargs) && is_lowered_current_exception(f)
+        return frame.framedata.last_exception[]
+    end
     @something maybe_eval_with_scope(f, fargs, frame) return invoke_in_world(frame.world, f, fargs...)
 end
 
@@ -360,6 +373,8 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
         # No interpreted frame is handling an exception; fall back to the native rethrow
         # (interpreted code may be running inside a native `catch` block).
         rethrow()
+    elseif is_lowered_current_exception(fargs[1]) && length(fargs) == 1
+        return frame.framedata.last_exception[]
     elseif fargs[1] === Base.current_exceptions && length(fargs) == 1
         # Exceptions caught by interpreted handlers never reach the task's native
         # exception stack; they live in the frames' modeled stacks. Merge the native
