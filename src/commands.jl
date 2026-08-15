@@ -373,7 +373,6 @@ end
 maybe_step_through_arg_destructuring!(frame::Frame) = maybe_step_through_arg_destructuring!(RecursiveInterpreter(), frame)
 
 const kwhandler = Core.kwcall
-const kw_has_f_first = VERSION.major == 1 && VERSION.minor == 11
 
 function is_kwcall_stmt(@nospecialize(stmt))
     isexpr(stmt, :(=)) && (stmt = stmt.args[2])
@@ -425,9 +424,6 @@ function maybe_step_through_kwprep!(interp::Interpreter, frame::Frame, istopleve
             pc += 1
             stmt = nextstmt
         end
-    elseif kw_has_f_first && pc < n && is_empty_namedtuple(pc_expr(frame, pc+1)) && isa(stmt, QuoteNode)
-        pc = step_expr!(interp, frame, istoplevel)
-        stmt = pc_expr(frame, pc)
     end
     if isa(stmt, Tuple{Symbol,Vararg{Symbol}})
         # Check to see if we're creating a NamedTuple followed by kwfunc call

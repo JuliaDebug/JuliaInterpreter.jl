@@ -97,10 +97,7 @@ function lookup_expr(interp::Interpreter, frame::Frame, e::Expr)
     end
     if head === :call
         f = lookup(interp, frame, e.args[1])
-        if (@static VERSION < v"1.11.0-DEV.1180" && true) && f === Core.svec
-            # work around for a linearization bug in Julia (https://github.com/JuliaLang/julia/pull/52497)
-            return Core.svec(Any[lookup(interp, frame, e.args[i]) for i in 2:length(e.args)]...)
-        elseif f === Core.tuple
+        if f === Core.tuple
             # Handling for `ccall`/`cglobal` literal syntax, e.g. the `(:sin, lib)`
             # first argument of `cglobal((:sin, lib), Ptr{Cvoid})`. The library may be
             # spelled as a `getproperty` chain (e.g. `Base.Math.libm` on Julia ≥ 1.11),
@@ -624,27 +621,15 @@ function coverage_visit_line!(frame::Frame)
     pc, code = frame.pc, frame.framecode
     code.report_coverage || return
     src = code.src
-    @static if VERSION ≥ v"1.12.0-DEV.173"
-        lineinfo = linetable(src, pc)
-        if lineinfo !== nothing
-            file, line = lineinfo.file, lineinfo.line
-            if line != frame.last_codeloc
-                file isa Symbol || (file = Symbol(file)::Symbol)
-                @ccall jl_coverage_visit_line(file::Cstring, sizeof(file)::Csize_t, line::Cint)::Cvoid
-                frame.last_codeloc = line
-            end
-        end
-    else # VERSION < v"1.12.0-DEV.173"
-        codeloc = src.codelocs[pc]
-        if codeloc != frame.last_codeloc && codeloc != 0
-            linetable = src.linetable::Vector{Any}
-            lineinfo = linetable[codeloc]::Core.LineInfoNode
-            file, line = lineinfo.file, lineinfo.line
+    lineinfo = linetable(src, pc)
+    if lineinfo !== nothing
+        file, line = lineinfo.file, lineinfo.line
+        if line != frame.last_codeloc
             file isa Symbol || (file = Symbol(file)::Symbol)
             @ccall jl_coverage_visit_line(file::Cstring, sizeof(file)::Csize_t, line::Cint)::Cvoid
-            frame.last_codeloc = codeloc
+            frame.last_codeloc = line
         end
-    end # @static if
+    end
 end
 
 # For "profiling" where JuliaInterpreter spends its time. See the commented-out block
@@ -982,8 +967,9 @@ function enter_exception_handler!(data::FrameData, @nospecialize(err))
     else
         push!(data.exceptions, err)
     end
-    pc = @static VERSION >= v"1.11-" ? pop!(data.exception_frames) : data.exception_frames[end] # implicit :leave after https://github.com/JuliaLang/julia/pull/52245
-    @static VERSION >= v"1.11-" && pop!(data.exception_scopes)
+    # implicit :leave after https://github.com/JuliaLang/julia/pull/52245
+    pc = pop!(data.exception_frames)
+    pop!(data.exception_scopes)
     return pc
 end
 

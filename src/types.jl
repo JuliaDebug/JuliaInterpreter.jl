@@ -195,7 +195,6 @@ end
 is_breakpoint_marker(@nospecialize(stmt)) =
     stmt === __BREAK_POINT_MARKER__ || is_global_ref(stmt, JuliaInterpreter, :__BREAK_POINT_MARKER__)
 
-@static if VERSION ≥ v"1.12.0-DEV.173"
 function pushuniquefiles!(unique_files::Set{Symbol}, lt::Core.DebugInfo)
     for edge in lt.edges
         pushuniquefiles!(unique_files, edge::Core.DebugInfo)
@@ -207,7 +206,6 @@ function pushuniquefiles!(unique_files::Set{Symbol}, lt::Core.DebugInfo)
         pushuniquefiles!(unique_files, linetable)
     end
     return unique_files
-end
 end
 
 # The running task's current world age. Unlike `Base.get_world_counter()` (the latest
@@ -253,16 +251,7 @@ function FrameCode(scope, src::CodeInfo; generator=false, optimize=true, world::
 
     lt = linetable(src)
     unique_files = Set{Symbol}()
-    @static if VERSION ≥ v"1.12.0-DEV.173"
     pushuniquefiles!(unique_files, lt)
-    else # VERSION < v"1.12.0-DEV.173"
-    for entry in lt
-        # issue #701: macro-generated `LineNumberNode`s (e.g. MacroTools' `@q`/`@qq`) can
-        # carry a `nothing` file, which has no path to match a breakpoint against.
-        entry.file === nothing && continue
-        push!(unique_files, entry.file)
-    end
-    end # @static if
 
     framecode = FrameCode(scope, src, methodtables, breakpoints, slotnamelists, used, generator, report_coverage, unique_files, is_toplevel_surface, world_deps)
     if scope isa Method
@@ -415,12 +404,8 @@ function toplevel_codeinfo(mod::Module, stmts::Vector{Any})
     ci.slotnames = Symbol[Symbol("#self#")]
     ci.slotflags = UInt8[0x00]
     # `step_toplevel!` reads line info from the surface `LineNumberNode`s in `code` directly and
-    # never consults the `CodeInfo`'s line tables, so the skeleton's debuginfo is left untouched on
-    # 1.12+ (where `codelocs` was folded into `debuginfo`); on older versions `codelocs` must match
-    # the new code length.
-    @static if !(VERSION ≥ v"1.12.0-DEV.173")
-        ci.codelocs = fill(Int32(1), n)
-    end
+    # never consults the `CodeInfo`'s line tables, so the skeleton's debuginfo is left untouched
+    # (`codelocs` was folded into `debuginfo`).
     return ci
 end
 
