@@ -59,7 +59,7 @@ reference to the breakpoint.
 """
 function finish_stack!(interp::Interpreter, frame::Frame, rootistoplevel::Bool=false)
     frame0 = frame
-    frame = leaf(frame)
+    frame = leaf(frame)::Frame
     while true
         istoplevel = rootistoplevel && is_toplevel_frame(frame)
         ret = try
@@ -304,7 +304,7 @@ function maybe_step_through_wrapper!(interp::Interpreter, frame::Frame)
             return frame
         end
         frame.framedata.ssavalues[frame.pc] = Wrapper()
-        return maybe_step_through_wrapper!(interp, callee(frame))
+        return maybe_step_through_wrapper!(interp, callee(frame)::Frame)
     end
     maybe_step_through_nkw_meta!(frame)
     maybe_step_through_arg_destructuring!(interp, frame)
@@ -548,7 +548,7 @@ function unwind_exception(frame::Frame, @nospecialize(exc))
     end
     handler === nothing && rethrow(exc)
     while frame !== handler
-        frame = return_from(frame)
+        frame = return_from(frame)::Frame
     end
     # Exception caught: land in the handler with the same state updates as
     # `handle_err` (scope restore, handler pop, exception-stack push), so the
