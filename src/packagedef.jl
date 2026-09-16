@@ -3,8 +3,6 @@ using Base: mapany, ntupleany, invokelatest, invoke_in_world
 using Core: CodeInfo, SimpleVector, GotoNode, GotoIfNot, ReturnNode,
             GeneratedFunctionStub, MethodInstance, MethodTable, NewvarNode, TypeName
 
-using UUIDs: UUIDs
-using Random: Random
 # The following are for circumventing #28, memcpy invalid instruction error,
 # in Base and stdlib
 using Random.DSFMT: DSFMT
