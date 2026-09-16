@@ -58,12 +58,6 @@ end
 Base.show(io::IO, ssa::SSAValue)    = print(io, "%J", ssa.id)
 Base.show(io::IO, slot::SlotNumber) = print(io, "_J", slot.id)
 
-# Breakpoint support
-truecondition(frame) = true
-falsecondition(frame) = false
-const break_on_error = Ref(false)
-const break_on_throw = Ref(false)
-
 """
     BreakpointState(isactive=true, condition=JuliaInterpreter.truecondition)
 
@@ -473,12 +467,14 @@ function Frame(mod::Module, ex::Expr; world::UInt=default_world())
     return toplevel_frame(mod, Any[ex]; world)
 end
 
-caller(frame) = frame.caller
-callee(frame) = frame.callee
+caller(frame::Frame) = frame.caller
+callee(frame::Frame) = frame.callee
 
-function traverse(f, frame)
-    while f(frame) !== nothing
-        frame = f(frame)
+function traverse(f, frame::Frame)
+    nextframe = f(frame)
+    while nextframe !== nothing
+        frame = nextframe
+        nextframe = f(frame)
     end
     return frame
 end
@@ -679,3 +675,9 @@ function Base.show(io::IO, bp::BreakpointFileLocation)
         print(io, " [disabled]")
     end
 end
+
+# Breakpoint support
+truecondition(::Frame) = true
+falsecondition(::Frame) = false
+const break_on_error = Ref(false)
+const break_on_throw = Ref(false)

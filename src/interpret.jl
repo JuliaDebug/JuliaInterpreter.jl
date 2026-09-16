@@ -896,12 +896,15 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
     catch err
         return handle_err(interp, frame, err)
     end
-    @isdefined(rhs) && isa(rhs, BreakpointRef) && return rhs
+    if @isdefined(rhs)
+        isa(rhs, BreakpointRef) && return rhs
+    end
     if isassign(frame, pc)
         # if !@isdefined(rhs)
         #     @show frame node
         # end
         lhs = SSAValue(pc)
+        @assert @isdefined rhs
         do_assignment!(frame, lhs, rhs)
     end
     @assert is_leaf(frame)

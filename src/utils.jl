@@ -82,9 +82,9 @@ end
 
 separate_kwargs(args...; kwargs...) = (args, values(kwargs))
 
-pc_expr(src::CodeInfo, pc) = src.code[pc]
-pc_expr(framecode::FrameCode, pc) = pc_expr(framecode.src, pc)
-pc_expr(frame::Frame, pc) = pc_expr(frame.framecode, pc)
+pc_expr(src::CodeInfo, pc::Int) = src.code[pc]
+pc_expr(framecode::FrameCode, pc::Int) = pc_expr(framecode.src, pc)
+pc_expr(frame::Frame, pc::Int) = pc_expr(frame.framecode, pc)
 pc_expr(frame::Frame) = pc_expr(frame, frame.pc)
 
 function find_used(code::CodeInfo)
