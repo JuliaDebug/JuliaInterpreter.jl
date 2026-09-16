@@ -35,8 +35,7 @@ function get_call_frameinstance(
     if isassigned(parentframe.methodtables, idx)  # if this is the first call, this may not yet be set
         # The case where `methodtables[idx]` is a `Compiled` has already been handled in `bypass_builtins`
         d_meth = d_meth1 = parentframe.methodtables[idx]::DispatchableMethod
-        local d_methprev
-        depth = 1
+        d_methprev = nothing
         while true
             # Reuse a cached dispatch only if it was resolved in the current world and with the same
             # method table. A world advance can change which method applies (e.g. a newly defined,
@@ -66,7 +65,7 @@ function get_call_frameinstance(
                 if matches
                     # Rearrange the list to place this method first
                     # (if we're in a loop, we'll likely match this one again on the next iteration)
-                    if depth > 1
+                    if d_methprev !== nothing
                         parentframe.methodtables[idx] = d_meth
                         d_methprev.next = d_meth.next
                         d_meth.next = d_meth1
@@ -74,7 +73,6 @@ function get_call_frameinstance(
                     return fi
                 end
             end
-            depth += 1
             d_methprev = d_meth
             d_meth = d_meth.next
             d_meth === nothing && break
