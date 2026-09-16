@@ -517,7 +517,7 @@ function extract_method_table(frame::Frame, node::Expr; eval = true)
 end
 
 function do_assignment!(frame::Frame, @nospecialize(lhs), @nospecialize(rhs))
-    code, data = frame.framecode, frame.framedata
+    data = frame.framedata
     if isa(lhs, SSAValue)
         data.ssavalues[lhs.id] = rhs
     elseif isa(lhs, SlotNumber)
@@ -737,7 +737,7 @@ function interpret_toplevel_stmt!(interp::Interpreter, frame::Frame, @nospeciali
 end
 
 function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), istoplevel::Bool)
-    pc, code, data = frame.pc, frame.framecode, frame.framedata
+    pc, data = frame.pc, frame.framedata
     # if !is_leaf(frame)
     #     show_stackloc(frame)
     #     @show node

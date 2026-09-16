@@ -351,7 +351,7 @@ function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector
             # the cache key (below) so that rebinding the library const builds a fresh wrapper
             # that rebakes the current value rather than reusing the stale one.
             record_globalref_deps!(world_deps, world, cfunc)
-            cfunc_resolved = try Core.eval(evalmod, cfunc) catch nothing end
+            cfunc_resolved = try Core.eval(evalmod, cfunc) catch _; nothing; end
         end
     else
         while isa(cfunc, SSAValue)
@@ -361,7 +361,7 @@ function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector
         # n.b. Base.memhash is deprecated (continued use would cause serious faults) in the same version as the syntax is deprecated
         # so this is only needed as a legacy hack
         if isa(cfunc, Expr) || (cfunc isa GlobalRef && cfunc == GlobalRef(Base, :memhash))
-            evaluated = try QuoteNode(Core.eval(evalmod, cfunc)) catch nothing end
+            evaluated = try QuoteNode(Core.eval(evalmod, cfunc)) catch _; nothing; end
             if evaluated !== nothing
                 # The expression's value (e.g. a `(name, lib)` tuple) is baked into the compiled
                 # wrapper; record the bindings it resolved.
@@ -496,7 +496,7 @@ end
 
 function reverse_lookup_globalref!(list)
     # This only handles the function in calls
-    for (i, stmt) in enumerate(list)
+    for stmt in list
         if isexpr(stmt, :(=))
             stmt = (stmt::Expr).args[2]
         end

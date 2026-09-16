@@ -256,8 +256,7 @@ function prepare_framecode(method::Method, @nospecialize(argtypes); enter_genera
         return Compiled()
     end
     # Get static parameters
-    (ti, lenv::SimpleVector) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
-                        argtypes, sig)::SimpleVector
+    (_ti, lenv::SimpleVector) = @ccall jl_type_intersection_with_env(argtypes::Any, sig::Any)::SimpleVector
     enter_generated &= is_generated(method)
     if is_generated(method) && !enter_generated
         framecode = get(genframedict, (method, argtypes::DataType), nothing)
@@ -422,7 +421,6 @@ end
 
 function prepare_framedata(framecode, argvals::Vector{Any}, lenv::SimpleVector=empty_svec, caller_will_catch_err::Bool=false)
     src = framecode.src
-    slotnames = src.slotnames
     ssavt = src.ssavaluetypes
     ng, ns = isa(ssavt, Int) ? ssavt : length(ssavt::Vector{Any}), length(src.slotflags)
     if length(junk_framedata) > 0
