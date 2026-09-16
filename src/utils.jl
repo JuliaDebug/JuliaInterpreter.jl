@@ -42,32 +42,15 @@ function whichtt(@nospecialize(tt), mt::Union{Nothing,MethodTable}=nothing; worl
     return match.method
 end
 
-@static if VERSION ≥ v"1.12-"
 using Base.Compiler: findsup_mt
-else
-function findsup_mt(@nospecialize(tt), world, method_table)
-    if method_table === nothing
-        table = Core.Compiler.InternalMethodTable(world)
-    elseif method_table isa Core.MethodTable
-        table = Core.Compiler.OverlayMethodTable(world, method_table)
-    else
-        table = method_table
-    end
-    return Core.Compiler.findsup(tt, table)
-end
-end
 
 instantiate_type_in_env(arg, spsig::UnionAll, spvals::Vector{Any}) =
     ccall(:jl_instantiate_type_in_env, Any, (Any, Any, Ptr{Any}), arg, spsig, spvals)
 
 # Native `UndefVarError`s carry the scope of the missing binding (`:local`,
-# `:static_parameter`, ...) since Julia 1.11; match that so `@test_throws` and other
-# field-wise comparisons against natively-thrown errors succeed.
-@static if VERSION >= v"1.11"
-    undef_var_error(sym::Symbol, scope::Symbol) = UndefVarError(sym, scope)
-else
-    undef_var_error(sym::Symbol, scope::Symbol) = UndefVarError(sym)
-end
+# `:static_parameter`, ...); match that so `@test_throws` and other field-wise
+# comparisons against natively-thrown errors succeed.
+undef_var_error(sym::Symbol, scope::Symbol) = UndefVarError(sym, scope)
 undef_sparam_error(sym::Symbol) = undef_var_error(sym, :static_parameter)
 
 function sparam_syms(meth::Method)
@@ -105,10 +88,6 @@ function scan_ssa_use!(used::BitSet, @nospecialize(stmt))
     while iterval !== nothing
         useref, state = iterval
         val = Core.Compiler.getindex(useref)
-        if (@static VERSION < v"1.11.0-DEV.1180" && true) && isexpr(val, :call)
-            # work around for a linearization bug in Julia (https://github.com/JuliaLang/julia/pull/52497)
-            scan_ssa_use!(used, val)
-        end
         if isa(val, SSAValue)
             push!(used, val.id)
         end
@@ -158,8 +137,6 @@ isidentical(x) = Base.Fix2(===, x)   # recommended over isequal(::Symbol) since 
 
 is_return(@nospecialize(node)) = node isa ReturnNode
 
-is_loc_meta(@nospecialize(expr), @nospecialize(kind)) = isexpr(expr, :meta) && length(expr.args) >= 1 && expr.args[1] === kind
-
 """
     is_global_ref(g, mod, name)
 
@@ -189,8 +166,6 @@ function is_define_method_call(@nospecialize(stmt))
            is_quotenode_egal(f, Core.define_method)
 end
 
-is_methoddef1(@nospecialize(stmt)) = isexpr(stmt, :method, 1) ||
-                                      (is_define_method_call(stmt) && length(stmt.args) == 3)
 is_methoddef3(@nospecialize(stmt)) = isexpr(stmt, :method, 3) ||
                                       (is_define_method_call(stmt) && length(stmt.args) == 5)
 
@@ -241,15 +216,6 @@ function is_bodyfunc(@nospecialize(arg))
     return false
 end
 
-"""
-Determine whether we are calling a function for which the current function
-is a wrapper (either because of optional arguments or because of keyword arguments).
-"""
-function is_wrapper_call(@nospecialize(expr))
-    isexpr(expr, :(=)) && (expr = expr.args[2])
-    isexpr(expr, :call) && any(x->x==SlotNumber(1), expr.args)
-end
-
 is_generated(meth::Method) = isdefined(meth, :generator)
 
 get_staged(mi::MethodInstance, world::UInt) = Core.Compiler.get_staged(mi, world)
@@ -284,11 +250,7 @@ is_vararg_type(@nospecialize x) = x isa Core.TypeofVararg
 
 # These getters improve inference since fieldtype(CodeInfo, :linetable)
 # and fieldtype(CodeInfo, :codelocs) are both Any
-@static if VERSION ≥ v"1.12.0-DEV.173"
-    const LineTypes = Union{LineNumberNode,Base.IRShow.LineInfoNode}
-else
-    const LineTypes = Union{LineNumberNode,Core.LineInfoNode}
-end
+const LineTypes = Union{LineNumberNode,Base.IRShow.LineInfoNode}
 function linetable(arg)
     if isa(arg, Frame)
         arg = arg.framecode
@@ -297,31 +259,15 @@ function linetable(arg)
         arg = arg.src
     end
     ci = arg::CodeInfo
-    @static if VERSION ≥ v"1.12.0-DEV.173"
     return ci.debuginfo
-    else # VERSION < v"1.12.0-DEV.173"
-    return ci.linetable::Union{Vector{Core.LineInfoNode},Vector{Any}} # issue #264
-    end # @static if
 end
 function linetable(arg, i::Integer; macro_caller::Bool=false, def=:var"n/a")::Union{Expr,Nothing,LineTypes}
     lt = linetable(arg)
-    @static if VERSION ≥ v"1.12.0-DEV.173"
     # TODO: decode the linetable at this frame efficiently by reimplementing this here
     nodes = Base.IRShow.buildLineInfoNode(lt, def, i)
     isempty(nodes) && return nothing
     return nodes[macro_caller ? 1 : end]
-    else # VERSION < v"1.12.0-DEV.173"
-    lin = lt[i]::Union{Expr,LineTypes}
-    if macro_caller
-        while lin isa Core.LineInfoNode && lin.method === Symbol("macro expansion") && lin.inlined_at != 0
-            lin = lt[lin.inlined_at]::Union{Expr,LineTypes}
-        end
-    end
-    return lin
-    end # @static if
 end
-
-@static if VERSION ≥ v"1.12.0-DEV.173"
 
 getfirstline(arg) = getfirstline(linetable(arg))
 function getfirstline(debuginfo::Core.DebugInfo)
@@ -365,24 +311,6 @@ function codelocs(arg, i::Integer)
     end
     return i
 end
-
-else # VERSION < v"1.12.0-DEV.173"
-
-getfirstline(arg) = getline(linetable(arg)[begin])
-getlastline(arg) = getline(linetable(arg)[end])
-function codelocs(arg)
-    if isa(arg, Frame)
-        arg = arg.framecode
-    end
-    if isa(arg, FrameCode)
-        arg = arg.src
-    end
-    ci = arg::CodeInfo
-    return ci.codelocs
-end
-codelocs(arg, i::Integer) = codelocs(arg)[i]
-
-end # @static if
 
 function lineoffset(framecode::FrameCode)
     offset = 0
@@ -514,16 +442,37 @@ function codelocation(code::CodeInfo, idx::Int)
     return 1
 end
 
-function compute_corrected_linerange(method::Method)
-    _, line1 = whereis(method)
-    offset = line1 - method.line
-    @assert !is_generated(method)
-    src = get_source(method)
-    lastline = getlastline(src)
-    return line1:lastline + offset
-end
+"""
+    loc = statement_location(framecode::FrameCode, pc::Int)
+    loc = statement_location(frame::Frame, pc::Int=frame.pc)
 
-compute_linerange(framecode) = getfirstline(framecode):getlastline(framecode)
+Return the source span of the statement at `pc` as a `NamedTuple`
+`(; file, line, line_end, col, col_end, byte, byte_end)`, or `nothing` if no
+location is recorded. `byte:byte_end` is a 1-based byte range into the source
+file (or the string passed to `include_string`) covering the expression as
+written; `byte == 0` means only line information is available, which is the
+case for code lowered without byte-precise provenance (the flisp lowerer, or
+JuliaLowering operating on an `Expr` that lacks source text).
+
+Locations are static (as of when the method was defined); they are not
+corrected for subsequent file edits. See [`CodeTracking.whereis`](@ref) for
+dynamic line information.
+"""
+function statement_location(framecode::FrameCode, pc::Int)
+    if framecode.is_toplevel_surface
+        lnn = toplevel_surface_lnn(framecode, pc)
+        (lnn === nothing || lnn.file === nothing) && return nothing
+        line = getline(lnn)
+        return (; file=getfile(lnn), line, line_end=line, col=0, col_end=0, byte=0, byte_end=0)
+    end
+    di = linetable(framecode)::Core.DebugInfo
+    sl = Base.Compiler.source_location(di, pc)
+    sl.line == 0 && return nothing
+    file = CodeTracking.maybe_fixup_stdlib_path(String(Base.IRShow.debuginfo_file1(di)))
+    return (; file, line=sl.line, line_end=max(sl.line, sl.line_end),
+            col=sl.col, col_end=sl.col_end, byte=sl.byte, byte_end=sl.byte_end)
+end
+statement_location(frame::Frame, pc::Int=frame.pc) = statement_location(frame.framecode, pc)
 
 function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
     # Check to see if this framecode really contains that line. Methods that fill in a default positional argument,
@@ -538,6 +487,39 @@ function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
     end
 
     linetarget = line - offset
+
+    di = linetable(framecode)
+    if di isa Core.DebugInfo && di.linetable isa String
+        # Byte-precise debuginfo (JuliaLowering's compressed source-byte table):
+        # a single file per table, with each statement's span recoverable via
+        # `source_location`. Scan the statements directly.
+        Base.IRShow.debuginfo_file1(di) === file || return Int[]
+        nstmts = length(framecode.src.code)
+        stmtidxs = Int[]
+        prevmatch = false
+        for i in 1:nstmts
+            sl = Base.Compiler.source_location(di, i)
+            ismatch = sl.line == linetarget
+            # only record the first statement of each contiguous matching run
+            ismatch && !prevmatch && push!(stmtidxs, i)
+            prevmatch = ismatch
+        end
+        isempty(stmtidxs) || return stmtidxs
+        # No statement starts on the requested line (e.g. a breakpoint on `end` or on a
+        # blank line): if the code starts before the requested line, take the first
+        # statement that starts after it.
+        beststmt, bestline, firstline = 0, typemax(Int), typemax(Int)
+        for i in 1:nstmts
+            sl = Base.Compiler.source_location(di, i)
+            sl.line == 0 && continue
+            firstline = min(firstline, sl.line)
+            if sl.line > linetarget && sl.line < bestline
+                beststmt, bestline = i, sl.line
+            end
+        end
+        beststmt != 0 && firstline < linetarget && push!(stmtidxs, beststmt)
+        return stmtidxs
+    end
 
     lts = CodeTracking.linetable_scopes(framecode.src, scope)
     for lt in lts
@@ -587,15 +569,11 @@ function framecode_lines(src::CodeInfo)
     line_info_postprinter = Base.IRShow.default_expr_type_printer
     bb_idx = 1
     for idx = 1:length(src.code)
-        @static if VERSION >= v"1.12.0-DEV.1359"
-            parent = src.parent
-            sptypes = if parent isa MethodInstance
-                Core.Compiler.sptypes_from_meth_instance(parent)
-            else Core.Compiler.EMPTY_SPTYPES end
-            bb_idx = Base.IRShow.show_ir_stmt(io, src, idx, line_info_preprinter, line_info_postprinter, sptypes, used, cfg, bb_idx)
-        else
-            bb_idx = Base.IRShow.show_ir_stmt(io, src, idx, line_info_preprinter, line_info_postprinter, used, cfg, bb_idx)
-        end
+        parent = src.parent
+        sptypes = if parent isa MethodInstance
+            Core.Compiler.sptypes_from_meth_instance(parent)
+        else Core.Compiler.EMPTY_SPTYPES end
+        bb_idx = Base.IRShow.show_ir_stmt(io, src, idx, line_info_preprinter, line_info_postprinter, sptypes, used, cfg, bb_idx)
         push!(lines, chomp(String(take!(buf))))
     end
     return lines
@@ -653,6 +631,7 @@ function locals(frame::Frame)
         if val isa Core.Box && !isdefined(val, :contents)
             continue
         end
+        sym = slot_base_name(sym)
         var = Variable(val, sym)
         idx = get(varlookup, sym, 0)
         if idx > 0
@@ -913,11 +892,7 @@ function Base.show_backtrace(io::IO, frame::Frame)
     for (i, (last_frame, n)) in enumerate(stackframes)
         frame_counter += 1
         println(io)
-        @static if VERSION >= v"1.13.0-DEV.927"
-            Base.print_stackframe(io, i, last_frame, nd, 0, 0, 0, Base.info_color())
-        else
-            Base.print_stackframe(io, i, last_frame, n, nd, Base.info_color())
-        end
+        Base.print_stackframe(io, i, last_frame, nd, 0, 0, 0, Base.info_color())
     end
 end
 

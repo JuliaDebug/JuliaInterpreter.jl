@@ -97,10 +97,7 @@ function lookup_expr(interp::Interpreter, frame::Frame, e::Expr)
     end
     if head === :call
         f = lookup(interp, frame, e.args[1])
-        if (@static VERSION < v"1.11.0-DEV.1180" && true) && f === Core.svec
-            # work around for a linearization bug in Julia (https://github.com/JuliaLang/julia/pull/52497)
-            return Core.svec(Any[lookup(interp, frame, e.args[i]) for i in 2:length(e.args)]...)
-        elseif f === Core.tuple
+        if f === Core.tuple
             # Handling for `ccall`/`cglobal` literal syntax, e.g. the `(:sin, lib)`
             # first argument of `cglobal((:sin, lib), Ptr{Cvoid})`. The library may be
             # spelled as a `getproperty` chain (e.g. `Base.Math.libm` on Julia ≥ 1.11),
@@ -275,8 +272,21 @@ end
 # from a fresh `throw` of the same object.
 const _rethrow_inflight = Ref{Any}(nothing)
 
+# JuliaLowering lowers the `catch` body's reference to the active exception as a call
+# to its runtime function `current_exception` (flisp emits `Expr(:the_exception)`).
+# That function reads the task's native exception stack, but exceptions raised in
+# interpreted code are caught by the interpreter itself, so the task state does not
+# reflect the frame's handler. Recognized by name to avoid a JuliaLowering dependency.
+function is_lowered_current_exception(@nospecialize f)
+    return f isa Function && nameof(f) === :current_exception &&
+        nameof(parentmodule(f)) === :JuliaLowering
+end
+
 function native_call(fargs::Vector{Any}, frame::Frame)
     f = popfirst!(fargs)
+    if isempty(fargs) && is_lowered_current_exception(f)
+        return frame.framedata.last_exception[]
+    end
     @something maybe_eval_with_scope(f, fargs, frame) return invoke_in_world(frame.world, f, fargs...)
 end
 
@@ -363,6 +373,8 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
         # No interpreted frame is handling an exception; fall back to the native rethrow
         # (interpreted code may be running inside a native `catch` block).
         rethrow()
+    elseif is_lowered_current_exception(fargs[1]) && length(fargs) == 1
+        return frame.framedata.last_exception[]
     elseif fargs[1] === Base.current_exceptions && length(fargs) == 1
         # Exceptions caught by interpreted handlers never reach the task's native
         # exception stack; they live in the frames' modeled stacks. Merge the native
@@ -624,27 +636,15 @@ function coverage_visit_line!(frame::Frame)
     pc, code = frame.pc, frame.framecode
     code.report_coverage || return
     src = code.src
-    @static if VERSION ≥ v"1.12.0-DEV.173"
-        lineinfo = linetable(src, pc)
-        if lineinfo !== nothing
-            file, line = lineinfo.file, lineinfo.line
-            if line != frame.last_codeloc
-                file isa Symbol || (file = Symbol(file)::Symbol)
-                @ccall jl_coverage_visit_line(file::Cstring, sizeof(file)::Csize_t, line::Cint)::Cvoid
-                frame.last_codeloc = line
-            end
-        end
-    else # VERSION < v"1.12.0-DEV.173"
-        codeloc = src.codelocs[pc]
-        if codeloc != frame.last_codeloc && codeloc != 0
-            linetable = src.linetable::Vector{Any}
-            lineinfo = linetable[codeloc]::Core.LineInfoNode
-            file, line = lineinfo.file, lineinfo.line
+    lineinfo = linetable(src, pc)
+    if lineinfo !== nothing
+        file, line = lineinfo.file, lineinfo.line
+        if line != frame.last_codeloc
             file isa Symbol || (file = Symbol(file)::Symbol)
             @ccall jl_coverage_visit_line(file::Cstring, sizeof(file)::Csize_t, line::Cint)::Cvoid
-            frame.last_codeloc = codeloc
+            frame.last_codeloc = line
         end
-    end # @static if
+    end
 end
 
 # For "profiling" where JuliaInterpreter spends its time. See the commented-out block
@@ -982,8 +982,9 @@ function enter_exception_handler!(data::FrameData, @nospecialize(err))
     else
         push!(data.exceptions, err)
     end
-    pc = @static VERSION >= v"1.11-" ? pop!(data.exception_frames) : data.exception_frames[end] # implicit :leave after https://github.com/JuliaLang/julia/pull/52245
-    @static VERSION >= v"1.11-" && pop!(data.exception_scopes)
+    # implicit :leave after https://github.com/JuliaLang/julia/pull/52245
+    pc = pop!(data.exception_frames)
+    pop!(data.exception_scopes)
     return pc
 end
 
