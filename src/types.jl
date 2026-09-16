@@ -36,7 +36,7 @@ As of JuliaInterpreter v0.10, `Compiled` is now an alias for [`NonRecursiveInter
 This alias remains for backward compatibility. Prefer [`NonRecursiveInterpreter`](@ref) in new code.
 """
 const Compiled = NonRecursiveInterpreter # for backward compatibility
-Base.similar(::Compiled, sz) = Compiled()  # to support similar(stack, 0)
+Base.similar(::Compiled, _sz) = Compiled()  # to support similar(stack, 0)
 
 """
     method_table(interpreter::Interpreter) -> mt::Union{Nothing,MethodTable}

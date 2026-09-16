@@ -1,4 +1,4 @@
-using CodeTracking, JuliaInterpreter, Test, InteractiveUtils
+using CodeTracking, InteractiveUtils, JuliaInterpreter, Test
 using JuliaInterpreter: enter_call, enter_call_expr, get_return
 using Base.Meta: isexpr
 include("utils.jl")
@@ -9,7 +9,7 @@ function step_through_command(fr::Frame, cmd::Symbol)
     while true
         ret = JuliaInterpreter.debug_command(fr, cmd)
         ret == nothing && break
-        fr, pc = ret
+        fr, _ = ret
     end
     @test fr.callee === nothing
     @test fr.caller === nothing
@@ -188,7 +188,7 @@ end
             # issue #161: the generator must see the argument *types*, not their values
             cvars = JuliaInterpreter.locals(cframe)
             @test filter(v -> v.name === :T, cvars)[1].value === Int
-            cframe, pc = debug_command(cframe, :finish)
+            cframe, _ = debug_command(cframe, :finish)
             @test JuliaInterpreter.scopeof(cframe).name === :callgenerated
             # Now finish the regular function
             @test debug_command(cframe, :finish) === nothing
@@ -199,13 +199,13 @@ end
         end
 
         # Parametric generated function (see #157)
-        let frame = fr = JuliaInterpreter.enter_call(callgeneratedparams)
+        let fr = JuliaInterpreter.enter_call(callgeneratedparams)
             while fr.pc < JuliaInterpreter.nstatements(fr.framecode) - 1
-                fr, pc = debug_command(fr, :se)
+                fr, _ = debug_command(fr, :se)
             end
-            fr, pc = debug_command(fr, :sg)
+            fr, _ = debug_command(fr, :sg)
             @test JuliaInterpreter.scopeof(fr).name === :generatedparams
-            fr, pc = debug_command(fr, :finish)
+            fr, _ = debug_command(fr, :finish)
             @test debug_command(fr, :finish) === nothing
             @test JuliaInterpreter.get_return(fr) == (Int, 2)
         end
@@ -311,14 +311,14 @@ end
             while pc <= JuliaInterpreter.nstatements(fr.framecode) - 2
                 fr, pc = debug_command(fr, :se)
             end
-            fr, pc = debug_command(frame, :si)
+            debug_command(frame, :si)
             @test stacklength(frame) == 2
             frame = fr = JuliaInterpreter.enter_call(f)
             pc = fr.pc
             while pc <= JuliaInterpreter.nstatements(fr.framecode) - 2
                 fr, pc = debug_command(fr, :se)
             end
-            fr, pc = debug_command(frame, :s)
+            fr, _ = debug_command(frame, :s)
             @test stacklength(frame) > 2
             push!(scopes, JuliaInterpreter.scopeof(fr))
         end
@@ -430,12 +430,12 @@ end
         try
             break_on(:error)
             fr = JuliaInterpreter.enter_call(f_outer)
-            fr, pc = debug_command(fr, :finish)
+            fr, _ = debug_command(fr, :finish)
             @test fr.framecode.scope.name === :error
 
             fundef() = undef_func()
             frame = JuliaInterpreter.enter_call(fundef)
-            fr, pc = debug_command(frame, :s)
+            _, pc = debug_command(frame, :s)
             @test isa(pc, BreakpointRef)
             @test pc.err isa UndefVarError
         finally
@@ -615,7 +615,7 @@ end
         end
         try
             break_on(:error)
-            frame2, pc = @interpret f()
+            frame2, _ = @interpret f()
             @test leaf(frame2).framecode.scope === leaf(frame1).framecode.scope
         finally
             break_off(:error)
