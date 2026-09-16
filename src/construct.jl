@@ -795,7 +795,7 @@ function enter_call_expr(expr::Expr;
                          world::UInt=default_world(),
                          method_table::Union{Nothing,MethodTable}=nothing)
     r = determine_method_for_expr(expr; enter_generated, world, method_table)
-    if r !== nothing && !isa(r[1], Compiled)
+    if r !== nothing && !(r isa Tuple{Compiled,Vararg{Any}})
         return prepare_frame(Base.front(r)...; world)
     end
     nothing
@@ -849,7 +849,7 @@ function enter_call(@nospecialize(finfo), @nospecialize(args...);
         error(f, " is a builtin or intrinsic")
     end
     r = prepare_call(f, allargs; enter_generated, world, method_table)
-    if r !== nothing && !isa(r[1], Compiled)
+    if r !== nothing && !(r isa Tuple{Compiled,Vararg{Any}})
         return prepare_frame(Base.front(r)...; world)
     end
     return nothing

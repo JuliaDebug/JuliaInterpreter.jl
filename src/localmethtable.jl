@@ -86,13 +86,12 @@ function get_call_frameinstance(
     fargs[1] = f = to_function(fargs[1], world)
     ret = prepare_call(f, fargs; enter_generated, world, method_table)
     ret === nothing && return Some{Any}(invoke_in_world(world, f, fargs[2:end]...))
-    is_compiled = isa(ret[1], Compiled)
-    local framecode, env
+    is_compiled = ret isa Tuple{Compiled,Vararg{Any}}
     if is_compiled
         fi = Compiled()
         argtypes = ret[2]
     else
-        framecode, args, env, argtypes = ret
+        framecode, _, env, argtypes = ret
         fi = FrameInstance(framecode, env, is_generated(scopeof(framecode::FrameCode)::Method) && enter_generated)
     end
     # Store the result of the method lookup in the local method table, stamped with the world in
