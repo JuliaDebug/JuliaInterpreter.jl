@@ -714,6 +714,35 @@ call220(x) = ccall(PTR_220, Cint, (Cint,), x)
     @test (@interpret Base.unsafe_convert(Ptr{Int}, [1,2])) isa Ptr{Int}
 end
 
+identity_parametric_pointer(p::Ptr{Cvoid})::Ptr{Cvoid} = p
+const PARAMETRIC_POINTER = @cfunction(identity_parametric_pointer, Ptr{Cvoid}, (Ptr{Cvoid},))
+ccall_parametric_arg(p::Ptr{T}) where T = ccall(PARAMETRIC_POINTER, Ptr{Cvoid}, (Ptr{T},), p)
+ccall_parametric_arg_ret(p::Ptr{T}) where T = ccall(PARAMETRIC_POINTER, Ptr{T}, (Ptr{T},), p)
+ccall_parametric_ref(r::Ref{T}) where T = ccall(PARAMETRIC_POINTER, Ptr{Cvoid}, (Ref{T},), r)
+
+@testset "compiled ccall with parametric argument types" begin
+    function check_compiled_ccall(f, x)
+        frame = JuliaInterpreter.enter_call(f, x)
+        code = frame.framecode.src.code
+        # Result checks alone also pass through the much slower Core.eval fallback.
+        @test !any(stmt -> Meta.isexpr(stmt, :foreigncall), code)
+        @test any(eachindex(code)) do pc
+            Meta.isexpr(code[pc], :call) &&
+                isassigned(frame.framecode.methodtables, pc) &&
+                frame.framecode.methodtables[pc] === Compiled()
+        end
+        @test JuliaInterpreter.finish_and_return!(frame) === f(x)
+    end
+    for T in (UInt8, UInt32, Nothing), f in (ccall_parametric_arg, ccall_parametric_arg_ret)
+        check_compiled_ccall(f, Ptr{T}(UInt(0x1234))) # The callback returns the pointer without dereferencing it.
+    end
+    # Codegen validates `Ref{T}` argument types against the wrapper's own static parameters,
+    # so the wrapper must not embed the original method's `TypeVar`s (issue #536).
+    for T in (UInt8, UInt32)
+        check_compiled_ccall(ccall_parametric_ref, Ref{T}(0x12))
+    end
+end
+
 # ccall with call to get the pointer
 cf = [@cfunction(fcfun, Int, (Int, Int))]
 function call_cf()

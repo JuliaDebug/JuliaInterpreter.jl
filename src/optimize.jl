@@ -362,7 +362,10 @@ function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector
               evalmod, length(sparams), length(args), stmt.args[4], stmt.args[5])  # compiled call key
     f = get(compiled_calls, cc_key, nothing)
     if f === nothing
-        ArgType = Expr(:tuple, Any[parametric_type_to_expr(t) for t in ArgType::SimpleVector]...)
+        argtypes = Any[parametric_type_to_expr(t) for t in ArgType::SimpleVector]
+        # `wrap_params` binds free parameters with `where`, which requires a type body,
+        # not a tuple of type values.
+        ArgType = Expr(:curly, Tuple, argtypes...)
         RetType = parametric_type_to_expr(RetType)
         # #285: test whether we can evaluate an type constraints on parametric expressions
         # this essentially comes down to having the names be available in CompiledCalls,
@@ -382,9 +385,15 @@ function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector
             pushfirst!(wrapargs, cfunc)
         end
         methname = gensym("compiled_ccall")
+        # Spell the argument types as an expression, like `ccall` lowering's `Core.svec(...)`,
+        # so that free type parameters resolve to the wrapper's own static parameters.
+        # Embedding the original `SimpleVector` would carry the original method's `TypeVar`s,
+        # which codegen rejects for `Ref{T}` arguments because it validates them against the
+        # enclosing method's signature (issue #536).
+        argtypes = Expr(:call, Core.svec, argtypes...)
         def = :(
             function $methname($(wrapargs...)) where {$(sparams...)}
-                return $(Expr(:foreigncall, cfunc, RetType, stmt.args[3:5]..., argnames...))
+                return $(Expr(:foreigncall, cfunc, RetType, argtypes, stmt.args[4], stmt.args[5], argnames...))
             end)
         f = Core.eval(evalmod, def)
         compiled_calls[cc_key] = f
