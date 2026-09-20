@@ -409,18 +409,19 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
         fargs = fargs_pruned
     else
         mt = method_table(interp)
-        framecode, lenv = get_call_framecode(fargs, frame.framecode, frame.pc;
-                                             enter_generated, world=frame.world, method_table=mt)
-        if lenv === nothing
-            if isa(framecode, Compiled)
-                return native_call(fargs, frame)
-            end
-            return framecode  # this was a Builtin
+        result = get_call_frameinstance(fargs, frame.framecode, frame.pc;
+            enter_generated, world=frame.world, method_table=mt)
+        if result isa Compiled
+            return native_call(fargs, frame)
+        elseif result isa Some{Any}
+            return result.value  # this was a Builtin
         end
+        instance = result::FrameInstance
+        framecode, lenv = instance.framecode, instance.sparam_vals
     end
     if enter_generated && isa(framecode, FrameCode) && framecode.generator
         # The generator runs on argument *types*. `prepare_call` performs this conversion
-        # but `get_call_framecode` discards the converted arguments, so redo it here
+        # but `get_call_frameinstance` discards the converted arguments, so redo it here
         # (issue #161).
         fargs = Any[_Typeof(a) for a in fargs]
     end
