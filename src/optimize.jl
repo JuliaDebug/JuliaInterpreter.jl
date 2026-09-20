@@ -239,23 +239,50 @@ function optimize!(code::CodeInfo, scope, world::UInt)
     return code, methodtables, world_deps
 end
 
-function parametric_type_to_expr(@nospecialize(t::Type))
-    t isa Core.TypeofBottom && return t
-    while t isa UnionAll
-        t = t.body
+# Convert the type `t` into an expression that reproduces it when evaluated in a scope where
+# each free `TypeVar` of `t` is bound under its name, e.g. as a static parameter of a compiled
+# wrapper method (see `build_compiled_foreigncall!`). A `t` without free `TypeVar`s is returned
+# as it is, so that it gets embedded into the wrapper as a value.
+#
+# The expression applies `t`, wrapped into a `UnionAll` over its free `TypeVar`s, to the names
+# of those `TypeVar`s, i.e. `(t where {T1, T2, ...}){T1, T2, ...}`. This substitutes the
+# `TypeVar`s by identity and so is oblivious to the structure of `t`: nested `UnionAll`s such as
+# `Array{T}` (i.e. `Array{T,N} where N`), `Union`s and `Vararg`s need no special treatment.
+# In particular no `where` expression is needed, which the type positions of a `:foreigncall`
+# could not hold anyway since they are not lowered to SSA form.
+function parametric_type_to_expr(@nospecialize(t))
+    Base.has_free_typevars(t) || return t
+    tvs = free_typevars!(TypeVar[], t)
+    wrapped = t
+    for tv in Iterators.reverse(tvs)
+        wrapped = UnionAll(tv, wrapped)
     end
-    t = t::DataType
-    if Base.isvarargtype(t)
-        return Expr(:(...), t.parameters[1])
-    end
-    if Base.has_free_typevars(t)
-        params = map(t.parameters) do @nospecialize(p)
-            isa(p, TypeVar) ? p.name :
-            isa(p, DataType) && Base.has_free_typevars(p) ? parametric_type_to_expr(p) : p
+    return Expr(:curly, wrapped, Symbol[tv.name for tv in tvs]...)
+end
+
+# Collect the free `TypeVar`s of `t` into `tvs`, in order of first occurrence.
+function free_typevars!(tvs::Vector{TypeVar}, @nospecialize(t), bound::Vector{TypeVar}=TypeVar[])
+    Base.has_free_typevars(t) || return tvs
+    if t isa TypeVar
+        (t in bound || t in tvs) || push!(tvs, t)
+    elseif t isa UnionAll
+        free_typevars!(tvs, t.var.lb, bound)
+        free_typevars!(tvs, t.var.ub, bound)
+        push!(bound, t.var)
+        free_typevars!(tvs, t.body, bound)
+        pop!(bound)
+    elseif t isa Union
+        free_typevars!(tvs, t.a, bound)
+        free_typevars!(tvs, t.b, bound)
+    elseif t isa Core.TypeofVararg
+        isdefined(t, :T) && free_typevars!(tvs, t.T, bound)
+        isdefined(t, :N) && free_typevars!(tvs, t.N, bound)
+    elseif t isa DataType
+        for p in t.parameters
+            free_typevars!(tvs, p, bound)
         end
-        return Expr(:curly, scopename(t.name), params...)::Expr
     end
-    return t
+    return tvs
 end
 
 function build_compiled_llvmcall!(stmt::Expr, code::CodeInfo, idx::Int, evalmod::Module, world::UInt,
