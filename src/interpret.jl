@@ -982,10 +982,13 @@ function enter_exception_handler!(data::FrameData, @nospecialize(err))
         # A `rethrow()` re-raise of this frame's in-flight exception (e.g. a `finally`
         # block re-raising during unwinding): native `jl_rethrow` does not push a new
         # entry onto the task's exception stack, so neither do we.
-        _rethrow_inflight[] = nothing
     else
         push!(data.exceptions, err)
     end
+    # Whichever handler lands here consumes the in-flight `rethrow()`. A marker left set
+    # would make a later fresh throw of an identical value (e.g. a singleton exception)
+    # look like a rethrow in the frame whose stack top happens to match.
+    _rethrow_inflight[] = nothing
     pc = @static VERSION >= v"1.11-" ? pop!(data.exception_frames) : data.exception_frames[end] # implicit :leave after https://github.com/JuliaLang/julia/pull/52245
     @static VERSION >= v"1.11-" && pop!(data.exception_scopes)
     return pc

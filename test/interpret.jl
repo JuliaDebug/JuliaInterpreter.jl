@@ -1813,6 +1813,25 @@ end
           (ErrorException("B"), ErrorException("B"))
 end
 
+@testset "rethrow marker is consumed by the handler that catches it" begin
+    # A `rethrow()` caught in another frame left the in-flight marker set, so a later
+    # fresh throw of an identical value was taken for a rethrow and not recorded.
+    consume_rethrow() = try; rethrow(); catch; end
+    function marker_leak_count()
+        try
+            throw(DivideError())
+        catch
+            consume_rethrow()
+            try
+                throw(DivideError())
+            catch
+                length(Base.current_exceptions())
+            end
+        end
+    end
+    @test (@interpret marker_leak_count()) == marker_leak_count() == 2
+end
+
 @testset "is_global_ref_egal tolerates bindings newer than the world" begin
     w_before = Base.get_world_counter()
     @eval module GREgalTest end
