@@ -272,8 +272,8 @@ end
 
 # Set by the `rethrow` interception just before re-raising, so handler entry can
 # distinguish a re-raise (which must not push a duplicate active-exception entry)
-# from a fresh `throw` of the same object.
-const _rethrow_inflight = Ref{Any}(nothing)
+# from a fresh `throw` of the same object. Wrap the value since `nothing` can be thrown.
+const _rethrow_inflight = Ref{Union{Nothing,Some{Any}}}(nothing)
 
 function native_call(fargs::Vector{Any}, frame::Frame)
     f = popfirst!(fargs)
@@ -340,7 +340,7 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
                 if !isempty(exs)
                     exs[end] = exc
                     fr.framedata.last_exception[] = exc
-                    _rethrow_inflight[] = exc
+                    _rethrow_inflight[] = Some{Any}(exc)
                     throw(exc)
                 end
                 fr = fr.caller
@@ -355,7 +355,7 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
         while fr !== nothing
             exs = fr.framedata.exceptions
             if !isempty(exs)
-                _rethrow_inflight[] = exs[end]
+                _rethrow_inflight[] = Some{Any}(exs[end])
                 throw(exs[end])
             end
             fr = fr.caller
@@ -978,7 +978,9 @@ function enter_exception_handler!(data::FrameData, @nospecialize(err))
     scope_depth = data.exception_scopes[end]
     scope_depth < length(data.current_scopes) && resize!(data.current_scopes, scope_depth)
     data.last_exception[] = err
-    if _rethrow_inflight[] === err && !isempty(data.exceptions) && data.exceptions[end] === err
+    rethrow_inflight = _rethrow_inflight[]
+    if rethrow_inflight !== nothing && rethrow_inflight.value === err &&
+            !isempty(data.exceptions) && data.exceptions[end] === err
         # A `rethrow()` re-raise of this frame's in-flight exception (e.g. a `finally`
         # block re-raising during unwinding): native `jl_rethrow` does not push a new
         # entry onto the task's exception stack, so neither do we.
