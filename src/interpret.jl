@@ -170,12 +170,7 @@ function resolvefc(frame::Frame, @nospecialize(expr))
     # tuple expression; the eval'd `:foreigncall` expects that form unchanged.
     isexpr(expr, :tuple) && return expr
     if isexpr(expr, :call)
-        a = (expr::Expr).args[1]
-        # the tuple constructor may appear as a QuoteNode, a GlobalRef, or the function itself
-        istuple = a === Core.tuple ||
-                  (isa(a, QuoteNode) && a.value === Core.tuple) ||
-                  (isa(a, GlobalRef) && a.mod === Core && a.name === :tuple)
-        istuple || @invokelatest error("unexpected ccall to ", expr)
+        is_core_tuple_call(expr) || @invokelatest error("unexpected ccall to ", expr)
         return Expr(:call, GlobalRef(Core, :tuple), (expr::Expr).args[2:end]...)
     end
     @invokelatest error("unexpected ccall to ", expr)
@@ -214,17 +209,19 @@ function evaluate_foreigncall(interp::Interpreter, frame::Frame, call_expr::Expr
     args = collect_args(interp, frame, call_expr; isfc = head === :foreigncall)
     for i = 2:length(args)
         arg = args[i]
-        if head === :foreigncall && i >= 6
+        if (head === :foreigncall && i >= 6) || (head === :cfunction && i == 2)
             # args[2:5] are metadata (return type, argument types, nreq, calling convention);
             # args[6:end] are the evaluated argument values (plus GC roots). The rebuilt
             # expression is passed to `Core.eval`, which re-evaluates raw `Expr`/`Symbol`/
             # `QuoteNode`/`GlobalRef` values as code, so quote every value unconditionally.
+            # The callback of a `:cfunction` is quoted likewise: as in a lowered toplevel
+            # `@cfunction`, a symbol or expression there is evaluated by `resolve_globals`
+            # (method.c) in the module, and a function value stands for itself.
             args[i] = QuoteNode(arg)
         else
             args[i] = isa(arg, Symbol) ? QuoteNode(arg) : arg
         end
     end
-    head === :cfunction && (args[2] = QuoteNode(args[2]))
     if head === :foreigncall && !isa(args[5], QuoteNode)
         args[5] = QuoteNode(args[5])
     end
