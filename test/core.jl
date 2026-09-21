@@ -19,8 +19,10 @@ using Test
     end
     frame = JuliaInterpreter.enter_call(buildexpr)
     lines = JuliaInterpreter.framecode_lines(frame.framecode.src)
-    # Test that the :copyast ends up on the same line as the println
-    @test any(str->occursin(":copyast", str) && occursin("println", str), lines)
+    # The interpolated `quote` block must display as a single statement that carries the
+    # quoted code: flisp lowers it to `Expr(:copyast, ...)`, JuliaLowering to a call of
+    # `interpolate_expr`; either way the statement's text includes the quoted `println`.
+    @test any(str->(occursin(":copyast", str) || occursin("interpolate_expr", str)) && occursin("println", str), lines)
 
     thunk = Meta.lower(Main, :(return 1+2))
     stmt = thunk.args[1].code[end]::Core.ReturnNode   # the return

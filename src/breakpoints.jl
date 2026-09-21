@@ -78,7 +78,7 @@ function add_breakpoint_if_match!(framecode::FrameCode, bp::BreakpointSignature)
             scope.file
         else
             # TODO: make more precise?
-            first(framecode.src.linetable).file
+            Base.IRShow.debuginfo_file1(linetable(framecode))
         end
         stmtidxs = bp.line === 0 ? [1] : statementnumbers(framecode, bp.line, matching_file::Symbol)
         stmtidxs === nothing && return
@@ -247,8 +247,9 @@ function prepare_slotfunction(framecode::FrameCode, body::Union{Symbol,Expr})
     framename, dataname = gensym("frame"), gensym("data")
     assignments = Expr[:($dataname = $framename.framedata)]
     default = Unassigned()
-    for slotname in unique(framecode.src.slotnames)
-        list = framecode.slotnamelists[slotname]
+    # `slotnamelists` is keyed by base name (shadowed locals' `@N`-suffixed slots are
+    # grouped with their base name), so iterate its keys rather than the raw slotnames.
+    for (slotname, list) in framecode.slotnamelists
         if length(list) == 1
             maxexpr = :($dataname.last_reference[$(list[1])] > 0 ? $(list[1]) : 0)
         else

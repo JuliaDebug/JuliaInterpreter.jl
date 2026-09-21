@@ -118,7 +118,6 @@ JuliaInterpreter.clear_caches
 ```@docs
 JuliaInterpreter.eval_code
 JuliaInterpreter.lookup
-JuliaInterpreter.is_wrapper_call
 JuliaInterpreter.is_doc_expr
 JuliaInterpreter.is_global_ref
 CodeTracking.whereis
