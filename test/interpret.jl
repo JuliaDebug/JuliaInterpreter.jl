@@ -1772,11 +1772,11 @@ end
 end
 
 @testset "rethrow does not duplicate active-exception entries" begin
-    function fin_count()
+    function fin_count(exc)
         local a, b
         try
             try
-                error("A")
+                throw(exc)
             finally
                 a = length(Base.current_exceptions())
             end
@@ -1785,11 +1785,13 @@ end
         end
         (a, b)
     end
-    @test (@interpret fin_count()) == fin_count() == (1, 1)
-    function throw_same()  # a fresh `throw` of the same object does push
+    for exc in (ErrorException("A"), nothing, Some(nothing))
+        @test (@interpret fin_count(exc)) == fin_count(exc) == (1, 1)
+    end
+    function throw_same(exc)  # a fresh `throw` of the same object does push
         try
             try
-                error("A")
+                throw(exc)
             catch err
                 throw(err)
             end
@@ -1797,39 +1799,44 @@ end
             length(Base.current_exceptions())
         end
     end
-    @test (@interpret throw_same()) == throw_same() == 2
-    function rethrow_other()  # `rethrow(exc)` replaces the current exception
+    for exc in (ErrorException("A"), nothing, Some(nothing))
+        @test (@interpret throw_same(exc)) == throw_same(exc) == 2
+    end
+    function rethrow_other(replacement)  # `rethrow(exc)` replaces the current exception
         try
             try
                 error("A")
             catch
-                rethrow(ErrorException("B"))
+                rethrow(replacement)
             end
         catch exc
-            (exc, Base.current_exceptions()[end].exception)
+            (exc, [entry.exception for entry in Base.current_exceptions()])
         end
     end
-    @test (@interpret rethrow_other()) == rethrow_other() ==
-          (ErrorException("B"), ErrorException("B"))
+    for exc in (ErrorException("B"), nothing, Some(nothing))
+        @test (@interpret rethrow_other(exc)) == rethrow_other(exc) == (exc, [exc])
+    end
 end
 
 @testset "rethrow marker is consumed by the handler that catches it" begin
     # A `rethrow()` caught in another frame left the in-flight marker set, so a later
     # fresh throw of an identical value was taken for a rethrow and not recorded.
     consume_rethrow() = try; rethrow(); catch; end
-    function marker_leak_count()
+    function marker_leak_count(exc)
         try
-            throw(DivideError())
+            throw(exc)
         catch
             consume_rethrow()
             try
-                throw(DivideError())
+                throw(exc)
             catch
                 length(Base.current_exceptions())
             end
         end
     end
-    @test (@interpret marker_leak_count()) == marker_leak_count() == 2
+    for exc in (DivideError(), nothing, Some(nothing))
+        @test (@interpret marker_leak_count(exc)) == marker_leak_count(exc) == 2
+    end
 end
 
 @testset "is_global_ref_egal tolerates bindings newer than the world" begin
