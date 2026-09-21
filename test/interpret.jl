@@ -1271,6 +1271,28 @@ JuliaInterpreter.method_table(::OverlayInterpreter) = ex_method_table
     @test cos(42.0) == @interpret interp=OverlayInterpreter() call_func_overlay(42.0)
 end
 
+dispatch_cache_func(x::T) where {T} = x
+dispatch_cache_caller(f, x) = f(x)
+function dispatch_cache_hit_allocations(
+        fargs::Vector{Any}, fc::JuliaInterpreter.FrameCode, idx::Int, world::UInt
+    )
+    JuliaInterpreter.get_call_frameinstance(fargs, fc, idx; world)
+    return @allocated JuliaInterpreter.get_call_frameinstance(fargs, fc, idx; world)
+end
+
+@testset "dispatch cache hits do not allocate" begin
+    w = Base.get_world_counter()
+    m = only(methods(dispatch_cache_caller))
+    fc, _ = JuliaInterpreter.prepare_framecode(
+        m, Tuple{typeof(dispatch_cache_caller), typeof(dispatch_cache_func), Int};
+        world=w)
+    idx = findfirst(JuliaInterpreter.is_call, fc.src.code)::Int
+    fargs = Any[dispatch_cache_func, 1]
+    # Measure a warmed monomorphic hit with concrete arguments, not global-variable boxing.
+    dispatch_cache_hit_allocations(fargs, fc, idx, w)
+    @test dispatch_cache_hit_allocations(fargs, fc, idx, w) == 0
+end
+
 module DispatchWorldTest
     inner(::Number) = 1
     helper() = inner(1)
@@ -1357,12 +1379,30 @@ end
         end
         n
     end
-    JuliaInterpreter.get_call_framecode(Any[GenCacheTest.gfun, 1], fc, idx; enter_generated=false, world=w)
+    fargs = Any[GenCacheTest.gfun, 1]
+    body = JuliaInterpreter.get_call_frameinstance(fargs, fc, idx; enter_generated=false, world=w)
+    @test body isa JuliaInterpreter.FrameInstance
+    @test !body.enter_generated
+    @test !body.framecode.generator
+    @test fc.methodtables[idx].frameinstance === body
     @test chainlength(idx) == 1
-    JuliaInterpreter.get_call_framecode(Any[GenCacheTest.gfun, 1], fc, idx; enter_generated=true, world=w)
+    generator = JuliaInterpreter.get_call_frameinstance(fargs, fc, idx; enter_generated=true, world=w)
+    @test generator isa JuliaInterpreter.FrameInstance
+    @test generator.enter_generated
+    @test generator.framecode.generator
+    @test generator !== body
+    @test fc.methodtables[idx].frameinstance === generator
     @test chainlength(idx) == 2
-    JuliaInterpreter.get_call_framecode(Any[GenCacheTest.gfun, 1], fc, idx; enter_generated=false, world=w)
+    @test JuliaInterpreter.get_call_frameinstance(fargs, fc, idx; enter_generated=false, world=w) === body
     @test chainlength(idx) == 2   # body entry still present: pure cache hit, no third entry
+    code, env = JuliaInterpreter.get_call_framecode(fargs, fc, idx; enter_generated=true, world=w)
+    @test code === generator.framecode
+    @test env === generator.sparam_vals
+    @test JuliaInterpreter.get_call_frameinstance(fargs, fc, idx; enter_generated=true, world=w) === generator
+    code, env = JuliaInterpreter.get_call_framecode(fargs, fc, idx; enter_generated=false, world=w)
+    @test code === body.framecode
+    @test env === body.sparam_vals
+    @test chainlength(idx) == 2
     flavors = let d = fc.methodtables[idx], fl = Bool[]
         while d !== nothing
             fi = d.frameinstance
