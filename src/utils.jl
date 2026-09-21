@@ -140,18 +140,6 @@ function wrap_params(expr, sparams::Vector{Symbol})
     return isempty(params) ? expr : Expr(:where, expr, params...)
 end
 
-function scopename(tn::TypeName)
-    modpath = Base.fullname(tn.module)
-    if isa(modpath, Tuple{Symbol})
-        return Expr(:., modpath[1], QuoteNode(tn.name))
-    end
-    ex = Expr(:., modpath[end-1], QuoteNode(modpath[end]))
-    for i = length(modpath)-2:-1:1
-        ex = Expr(:., modpath[i], ex)
-    end
-    return Expr(:., ex, QuoteNode(tn.name))
-end
-
 ## Predicates
 
 isidentical(x) = Base.Fix2(===, x)   # recommended over isequal(::Symbol) since it cannot be invalidated

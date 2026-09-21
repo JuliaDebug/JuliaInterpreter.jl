@@ -719,10 +719,14 @@ const PARAMETRIC_POINTER = @cfunction(identity_parametric_pointer, Ptr{Cvoid}, (
 ccall_parametric_arg(p::Ptr{T}) where T = ccall(PARAMETRIC_POINTER, Ptr{Cvoid}, (Ptr{T},), p)
 ccall_parametric_arg_ret(p::Ptr{T}) where T = ccall(PARAMETRIC_POINTER, Ptr{T}, (Ptr{T},), p)
 ccall_parametric_ref(r::Ref{T}) where T = ccall(PARAMETRIC_POINTER, Ptr{Cvoid}, (Ref{T},), r)
+ccall_parametric_nested_ret(p::Ptr{T}) where T = ccall(PARAMETRIC_POINTER, Ptr{Array{T}}, (Ptr{T},), p)
+ccall_parametric_nested_arg(p::Ptr{Array{T}}) where T = ccall(PARAMETRIC_POINTER, Ptr{Cvoid}, (Ptr{Array{T}},), p)
+ccall_parametric_nested_ref(r::Ref{Array{T}}) where T = ccall(PARAMETRIC_POINTER, Ptr{Cvoid}, (Ref{Array{T}},), r)
+ccall_parametric_nested_ret_only(p::Ptr{Cvoid}, ::Type{T}) where T = ccall(PARAMETRIC_POINTER, Ptr{Array{T}}, (Ptr{Cvoid},), p)
 
 @testset "compiled ccall with parametric argument types" begin
-    function check_compiled_ccall(f, x)
-        frame = JuliaInterpreter.enter_call(f, x)
+    function check_compiled_ccall(f, args...)
+        frame = JuliaInterpreter.enter_call(f, args...)
         code = frame.framecode.src.code
         # Result checks alone also pass through the much slower Core.eval fallback.
         @test !any(stmt -> Meta.isexpr(stmt, :foreigncall), code)
@@ -731,7 +735,7 @@ ccall_parametric_ref(r::Ref{T}) where T = ccall(PARAMETRIC_POINTER, Ptr{Cvoid}, 
                 isassigned(frame.framecode.methodtables, pc) &&
                 frame.framecode.methodtables[pc] === Compiled()
         end
-        @test JuliaInterpreter.finish_and_return!(frame) === f(x)
+        @test JuliaInterpreter.finish_and_return!(frame) === f(args...)
     end
     for T in (UInt8, UInt32, Nothing), f in (ccall_parametric_arg, ccall_parametric_arg_ret)
         check_compiled_ccall(f, Ptr{T}(UInt(0x1234))) # The callback returns the pointer without dereferencing it.
@@ -741,6 +745,35 @@ ccall_parametric_ref(r::Ref{T}) where T = ccall(PARAMETRIC_POINTER, Ptr{Cvoid}, 
     for T in (UInt8, UInt32)
         check_compiled_ccall(ccall_parametric_ref, Ref{T}(0x12))
     end
+    # Nested `UnionAll`s (`Array{T}` is `Array{T,N} where N`) used to be embedded as values,
+    # leaking the original method's `TypeVar` into the wrapper's types.
+    for T in (UInt8, UInt32)
+        check_compiled_ccall(ccall_parametric_nested_ret, Ptr{T}(UInt(0x1234)))
+        check_compiled_ccall(ccall_parametric_nested_arg, Ptr{Array{T}}(UInt(0x1234)))
+        check_compiled_ccall(ccall_parametric_nested_ref, Ref{Array{T}}(T[1]))
+        # With no parametric argument type this never fell back to `Core.eval`, so the leaked
+        # `TypeVar` in the return type used to be a hard codegen error rather than a slow path.
+        check_compiled_ccall(ccall_parametric_nested_ret_only, Ptr{Cvoid}(UInt(0x1234)), T)
+    end
+end
+
+@testset "parametric_type_to_expr" begin
+    T = TypeVar(:T)
+    # `T` is the only free `TypeVar`: evaluating the expression with `T` bound must reproduce
+    # the type with `T` substituted, i.e. no `TypeVar` object may leak into the expression.
+    reproduce(@nospecialize t) = Core.eval(@__MODULE__,
+        :(let T = UInt8; $(JuliaInterpreter.parametric_type_to_expr(t)); end))
+    @test reproduce(Ptr{T}) == Ptr{UInt8}
+    @test reproduce(Ptr{Array{T}}) == Ptr{Array{UInt8}}                     # nested `UnionAll`
+    @test reproduce(Ref{Tuple{Vararg{T}}}) == Ref{Tuple{Vararg{UInt8}}}     # `Vararg`
+    @test reproduce(Ref{Union{T,Nothing}}) == Ref{Union{UInt8,Nothing}}     # `Union`
+    @test reproduce(Ref{Vector{S} where S<:T}) == Ref{Vector{S} where S<:UInt8} # bounded `where`
+    @test reproduce(Base.Iterators.Stateful{T}) == Base.Iterators.Stateful{UInt8} # nested module
+    # A bound `TypeVar` that happens to be named like the free one must not capture it.
+    T2 = TypeVar(:T)
+    @test reproduce(UnionAll(T2, Ref{Tuple{T,Vector{T2}}})) == (Ref{Tuple{UInt8,Vector{S}}} where S)
+    # Types without free `TypeVar`s are embedded as values.
+    @test JuliaInterpreter.parametric_type_to_expr(Ptr{Vector}) === Ptr{Vector}
 end
 
 # ccall with call to get the pointer
@@ -963,7 +996,8 @@ end
 end
 
 @testset "#466 parametric_type_to_expr" begin
-    @test JuliaInterpreter.parametric_type_to_expr(Array) == :(Core.Array{T, N})
+    # must not choke on a `UnionAll`; without free `TypeVar`s it is embedded as it is
+    @test JuliaInterpreter.parametric_type_to_expr(Array) === Array
 end
 
 @testset "#476 isdefined QuoteNode" begin
