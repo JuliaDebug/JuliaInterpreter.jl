@@ -13,5 +13,9 @@ pattern = "lowering/unused-argument"
 severity = "off"
 
 [[initialization_options.analysis_overrides]]
+path = "bin/generate_builtins.jl"
+full_analysis = false
+
+[[initialization_options.analysis_overrides]]
 path = "test/**/*.jl"
 full_analysis = false
