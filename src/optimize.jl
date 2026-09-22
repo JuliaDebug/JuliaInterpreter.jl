@@ -1,4 +1,9 @@
-const compiled_calls = Dict{Any,Any}()
+# The compiled wrapper methods built for `ccall`s, `llvmcall`s and `@cfunction`s, keyed by tuples
+# of what each wrapper bakes in. Keys are compared with `===`, which compares the symbols,
+# strings, types, `SimpleVector`s and modules of a signature by content, but the callable baked
+# into a `@cfunction` wrapper by identity: a mutable callable that is `isequal` to another by
+# value may still behave differently once mutated, so the two must not share a wrapper.
+const compiled_calls = IdDict{Any,Any}()
 
 # Record the binding partition of `gr` in `world_deps` (a `FrameCode.world_deps` vector under
 # construction). Call this whenever a binding's *value* is resolved at framecode-build time and
@@ -209,10 +214,11 @@ function optimize!(code::CodeInfo, scope, world::UInt)
         end
     end
 
-    # Replace :llvmcall and :foreigncall with compiled variants. See
+    # Replace :llvmcall, :foreigncall and :cfunction with compiled variants. See
     # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/13#issuecomment-464880123
     # Insert the foreigncall wrappers at the updated idxs
     methodtables = Vector{Union{Compiled,DispatchableMethod}}(undef, length(code.code))
+    scopemod = scope isa Module ? scope : nothing
     for (idx, stmt) in enumerate(code.code)
         # Foregincalls can be rhs of assignments
         if isexpr(stmt, :(=))
@@ -228,10 +234,15 @@ function optimize!(code::CodeInfo, scope, world::UInt)
                     @invokelatest build_compiled_llvmcall!(stmt, code, idx, evalmod, world, world_deps)
                     methodtables[idx] = Compiled()
                 end
-            elseif stmt.head === :foreigncall && scope isa Method
+            elseif stmt.head === :foreigncall
                 # Call via `invokelatest` to avoid compiling it until we need it
-                @invokelatest build_compiled_foreigncall!(stmt, code, sparams, evalmod, world, world_deps)
-                methodtables[idx] = Compiled()
+                if @invokelatest build_compiled_foreigncall!(stmt, code, sparams, evalmod, world, world_deps, scopemod)
+                    methodtables[idx] = Compiled()
+                end
+            elseif stmt.head === :cfunction
+                if @invokelatest build_compiled_cfunction!(stmt, mod, evalmod)
+                    methodtables[idx] = Compiled()
+                end
             end
         end
     end
@@ -331,19 +342,89 @@ function build_compiled_llvmcall!(stmt::Expr, code::CodeInfo, idx::Int, evalmod:
     append!(stmt.args, args)
 end
 
+# Resolve a type position of a `:foreigncall`/`:cfunction` statement. In method scope lowering
+# has already evaluated it; toplevel lowering leaves it as an expression over globals, which is
+# evaluated in the statement's module `scopemod`, as `resolve_globals` (method.c) does right
+# before Julia runs such a thunk. Returns `nothing` if it cannot be evaluated (e.g. an earlier
+# statement of the same thunk has yet to define a binding it refers to).
+function resolve_ccall_type(@nospecialize(t), scopemod::Union{Nothing,Module})
+    (isa(t, Type) || isa(t, SimpleVector)) && return t
+    isa(t, QuoteNode) && return t.value
+    scopemod === nothing && return nothing
+    (isa(t, Symbol) || isa(t, GlobalRef) || isa(t, Expr)) || return nothing
+    return try Core.eval(scopemod, t) catch; nothing end
+end
+
+# The `name`, `(name,)` and `(name, lib)` values a compiled wrapper can embed as a constant
+# `ccall` target
+is_ccall_target(@nospecialize(x)) =
+    isa(x, Union{Symbol,String}) || isa(x, Tuple{Union{Symbol,String}}) ||
+    isa(x, Tuple{Union{Symbol,String},Union{Symbol,String}})
+
+# The value of a toplevel statement's `(name, lib)` target expression if the expression is
+# constant, i.e. built from literals and `const` globals only, which native code resolves
+# statically as well; `nothing` otherwise. A library named by a non-`const` global is looked up
+# by native code when the call runs, and an earlier statement of the same thunk may still assign
+# it, which no shared wrapper can reproduce (a compiled call site caches the library it first
+# resolved), so such a target is left to `evaluate_foreigncall`.
+function constant_target_value(ex::Expr, mod::Module)
+    is_constant_target(ex, mod) || return nothing
+    v = try Core.eval(mod, ex) catch _; nothing; end
+    return is_ccall_target(v) ? v : nothing
+end
+
+function is_constant_target(@nospecialize(x), mod::Module)
+    if isa(x, QuoteNode) || isa(x, String)
+        return true
+    elseif isa(x, Symbol)
+        return is_const_global(mod, x)
+    elseif isa(x, GlobalRef)
+        return is_const_global(x.mod, x.name)
+    elseif (isexpr(x, :., 2) || is_getproperty_call(x)) && isa(x.args[end], QuoteNode)
+        # a qualified name such as `Base.Math.libm`, which Julia < 1.13 spells as `getproperty` calls
+        modex = x.args[end-1]
+        is_constant_target(modex, mod) || return false
+        m = try Core.eval(mod, modex) catch _; return false; end
+        return isa(m, Module) && is_const_global(m, (x.args[end]::QuoteNode).value)
+    elseif isexpr(x, :tuple)
+        return all(@nospecialize(a) -> is_constant_target(a, mod), x.args)
+    elseif is_core_tuple_call(x)
+        return all(@nospecialize(a) -> is_constant_target(a, mod), @view x.args[2:end])
+    end
+    return false
+end
+
+is_const_global(mod::Module, @nospecialize name) =
+    isa(name, Symbol) && isdefinedglobal(mod, name) && isconst(mod, name)
+
 # Handle :llvmcall & :foreigncall (issue #28)
+# Replace `stmt` in place with a `:call` to a compiled wrapper method and return `true`, or leave
+# it untouched and return `false` if no wrapper can be built for it. `scopemod` is the module of a
+# toplevel statement, whose target and types are still unresolved; it is `nothing` in method scope.
 function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector{Symbol}, evalmod::Module, world::UInt,
-                                     world_deps::Union{Nothing,Vector{BindingPartition}}=nothing)
+                                     world_deps::Union{Nothing,Vector{BindingPartition}}=nothing,
+                                     scopemod::Union{Nothing,Module}=nothing)
     TVal = evalmod == Core.Compiler ? Core.Compiler.Val : Val
-    RetType, ArgType = stmt.args[2], stmt.args[3]::SimpleVector
+    RetType = resolve_ccall_type(stmt.args[2], scopemod)
+    ArgType = resolve_ccall_type(stmt.args[3], scopemod)
+    (RetType === nothing || !isa(ArgType, SimpleVector)) && return false
 
     dynamic_ccall = false
     argcfunc = cfunc = stmt.args[1]
     cfunc_resolved = nothing
     if @isdefined(__has_internal_change) && __has_internal_change(v"1.13.0", :syntacticccall)
-        if !isexpr(cfunc, :tuple)
+        if isa(cfunc, String) || (isa(cfunc, QuoteNode) && is_ccall_target(cfunc.value))
+            # a literal `"name"` or quoted `:name` target, as toplevel lowering spells `ccall(:name, ...)`
+            cfunc_resolved = isa(cfunc, String) ? cfunc : (cfunc::QuoteNode).value
+        elseif !isexpr(cfunc, :tuple)
             dynamic_ccall = true
             cfunc = gensym("ptr")
+        elseif scopemod !== nothing
+            # A toplevel statement's `(name, lib)` tuple is embedded by value if it is constant
+            # (see `constant_target_value`). The framecode is built right before it runs and is
+            # not cached, so there is no invalidation to record.
+            cfunc_resolved = @something constant_target_value(cfunc, scopemod) return false
+            cfunc = QuoteNode(cfunc_resolved)
         else
             # The `(name, lib)` tuple expression is baked into the compiled wrapper, so the
             # library binding it references is resolved at framecode-build time: record it.
@@ -360,7 +441,14 @@ function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector
         end
         # n.b. Base.memhash is deprecated (continued use would cause serious faults) in the same version as the syntax is deprecated
         # so this is only needed as a legacy hack
-        if isa(cfunc, Expr) || (cfunc isa GlobalRef && cfunc == GlobalRef(Base, :memhash))
+        if scopemod !== nothing && isa(cfunc, Expr)
+            # A toplevel statement's `(name, lib)` tuple is embedded by value if it is constant,
+            # as in the `:syntacticccall` branch above; any other expression is a runtime pointer.
+            if is_core_tuple_call(cfunc)
+                cfunc_resolved = @something constant_target_value(cfunc, scopemod) return false
+                cfunc = QuoteNode(cfunc_resolved)
+            end
+        elseif isa(cfunc, Expr) || (cfunc isa GlobalRef && cfunc == GlobalRef(Base, :memhash))
             evaluated = try QuoteNode(Core.eval(evalmod, cfunc)) catch _; nothing; end
             if evaluated !== nothing
                 # The expression's value (e.g. a `(name, lib)` tuple) is baked into the compiled
@@ -401,7 +489,7 @@ function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector
             isa(RetType, Expr) && Core.eval(CompiledCalls, wrap_params(RetType, sparams))
             isa(ArgType, Expr) && Core.eval(CompiledCalls, wrap_params(ArgType, sparams))
         catch
-            return nothing
+            return false
         end
         argnames = Any[Symbol(:arg, i) for i = 1:length(args)]
         wrapargs = copy(argnames)
@@ -418,10 +506,9 @@ function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector
         # which codegen rejects for `Ref{T}` arguments because it validates them against the
         # enclosing method's signature (issue #536).
         argtypes = Expr(:call, Core.svec, argtypes...)
-        def = :(
-            function $methname($(wrapargs...)) where {$(sparams...)}
-                return $(Expr(:foreigncall, cfunc, RetType, argtypes, stmt.args[4], stmt.args[5], argnames...))
-            end)
+        def = :(function $methname($(wrapargs...)) where {$(sparams...)}
+            return $(Expr(:foreigncall, cfunc, RetType, argtypes, stmt.args[4], stmt.args[5], argnames...))
+        end)
         f = Core.eval(evalmod, def)
         compiled_calls[cc_key] = f
     end
@@ -435,7 +522,76 @@ function build_compiled_foreigncall!(stmt::Expr, code::CodeInfo, sparams::Vector
     for i in 1:length(sparams)
         push!(stmt.args, :($TVal($(Expr(:static_parameter, i)))))
     end
-    return nothing
+    return true
+end
+
+# Handle :cfunction (issue #318)
+# Replace a `@cfunction` statement in place with a `:call` to a compiled wrapper method that
+# evaluates it and return `true`, or leave it untouched (to `evaluate_foreigncall`) and return
+# `false`. `@cfunction(f, rt, (at...))` lowers to `Expr(:cfunction, Ptr{Cvoid}, QuoteNode(f), rt,
+# at, cc)` with `f` the callback as written (a name or any expression); method lowering has
+# already replaced it by its value and evaluated the types. At toplevel, only callback references
+# that can be resolved without invoking user code are evaluated here in the statement's module
+# `mod`, in the latest world as with `Core.eval` (this helper is called via `@invokelatest`, not
+# in the frame's world). Other expressions are left to the fallback without a speculative
+# evaluation. The wrapper bakes the callback value in, like the body of a natively compiled
+# `@cfunction`, and is cached by callback (compared by identity, see `compiled_calls`), types and
+# calling convention. `@cfunction($f, ...)` lowers to `Expr(:cfunction, CFunction, f, rt, at, cc)`
+# with `f` a runtime closure; its wrapper takes the closure as its argument and returns the
+# `CFunction`, and is cached by types and calling convention alone.
+function build_compiled_cfunction!(stmt::Expr, mod::Module, evalmod::Module)
+    length(stmt.args) == 5 || return false
+    T, fexpr, rt, at, cc = stmt.args
+    (T === Ptr{Cvoid} || T === Base.CFunction) || return false
+    (isa(cc, QuoteNode) && isa(cc.value, Symbol)) || return false
+    RetType = resolve_ccall_type(rt, mod)
+    ArgType = resolve_ccall_type(at, mod)
+    (isa(RetType, Type) && isa(ArgType, SimpleVector)) || return false
+    all(@nospecialize(t) -> isa(t, Type), ArgType) || return false
+    (Base.has_free_typevars(RetType) || any(Base.has_free_typevars, ArgType)) && return false
+    if T === Ptr{Cvoid}
+        isa(fexpr, QuoteNode) || return false
+        f = fexpr.value
+        if isa(f, Symbol)
+            isdefinedglobal(mod, f) || return false
+            f = getglobal(mod, f)
+        elseif isa(f, GlobalRef)
+            isdefinedglobal(f.mod, f.name) || return false
+            f = getglobal(f.mod, f.name)
+        elseif isa(f, Expr)
+            # Arbitrary callback expressions can have side effects or throw. Do not evaluate
+            # them speculatively, since the fallback would repeat those effects after an error.
+            is_constant_target(f, mod) || return false
+            f = try Core.eval(mod, f) catch _; return false; end
+        end
+        cc_key = (:cfunction, f, RetType, ArgType, cc.value, evalmod)
+        wrapargs = ()
+        callargs = ()
+        fbody = QuoteNode(f)
+    else
+        cc_key = (:cfunction, Base.CFunction, RetType, ArgType, cc.value, evalmod)
+        closure = gensym("closure")
+        wrapargs = (closure,)
+        callargs = (fexpr,)
+        fbody = closure
+    end
+    wrapper = get(compiled_calls, cc_key, nothing)
+    if wrapper === nothing
+        methname = gensym("compiled_cfunction")
+        def = :(
+            function $methname($(wrapargs...))
+                return $(Expr(:cfunction, T, fbody, RetType, ArgType, cc))
+            end)
+        # Defining the method validates the C types (`check_c_types`); an invalid signature is
+        # left to `evaluate_foreigncall` to report when the statement runs.
+        wrapper = try Core.eval(evalmod, def) catch _; return false; end
+        compiled_calls[cc_key] = wrapper
+    end
+    stmt.head = :call
+    empty!(stmt.args)
+    push!(stmt.args, QuoteNode(wrapper))
+    append!(stmt.args, callargs)
+    return true
 end
 
 function replace_coretypes!(@nospecialize(src); rev::Bool=false)

@@ -266,6 +266,27 @@ end
 
 is_leaf(frame::Frame) = frame.callee === nothing
 
+# Is `ex` a `Core.tuple(...)` call, as lowering emits for a `ccall`'s `(name, lib)` target on
+# Julia < 1.13? The constructor may appear as a `QuoteNode`, a `GlobalRef`, or the function itself.
+function is_core_tuple_call(@nospecialize(ex))
+    isexpr(ex, :call) || return false
+    a = (ex::Expr).args[1]
+    return a === Core.tuple ||
+           (isa(a, QuoteNode) && a.value === Core.tuple) ||
+           (isa(a, GlobalRef) && a.mod === Core && a.name === :tuple)
+end
+
+# Is `ex` a `Base.getproperty(x, :name)` call, as lowering emits for a qualified name `x.name` in
+# some positions (e.g. inside a `ccall` target on Julia < 1.13)? The function may appear as a
+# `QuoteNode`, a `GlobalRef`, or the function itself.
+function is_getproperty_call(@nospecialize(ex))
+    isexpr(ex, :call, 3) || return false
+    a = (ex::Expr).args[1]
+    return a === Base.getproperty ||
+           (isa(a, QuoteNode) && a.value === Base.getproperty) ||
+           is_global_ref(a, Base, :getproperty)
+end
+
 is_vararg_type(@nospecialize x) = x isa Core.TypeofVararg
 
 ## Location info

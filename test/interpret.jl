@@ -1,5 +1,5 @@
 using JuliaInterpreter
-using Test, InteractiveUtils, CodeTracking
+using CodeTracking, InteractiveUtils, Test
 using Mmap
 using LinearAlgebra
 using JuliaInterpreter: isdefinedglobal
@@ -1026,6 +1026,179 @@ end
         ccall(ptr::Ptr{Cvoid}, Int, (Int, Int), 1, 2)
     end
     @test @interpret(f()) === 3
+end
+
+# issue #318: `@cfunction` expressions, and `ccall`s in toplevel code, run through compiled
+# wrapper methods instead of `Core.eval` of the expression, which makes Julia compile a fresh
+# thunk on every execution.
+cfun318(x, y) = x + y
+cfun318_mul(x, y) = x * y
+const LIB318 = "libjulia"
+LIB318_VAR = "lib318_does_not_exist"   # reassigned by an interpreted statement below
+LIB318_A = "libjulia"
+LIB318_B = "libjulia"                  # reassigned by an interpreted statement below
+const OFFSET318 = 10
+const CBREF318 = Ref{Any}(cfun318)
+CB318_GLOBAL = cfun318
+const CF318_ATTEMPTS = Ref(0)
+function cf318_factory()
+    CF318_ATTEMPTS[] += 1
+    CF318_ATTEMPTS[] == 1 && error("callback initialization failed")
+    return cfun318
+end
+function cf318_method()
+    cf = @cfunction(cfun318, Int, (Int, Int))
+    ccall(cf, Int, (Int, Int), 1, 2)
+end
+function cf318_closure(z)
+    f = (x, y) -> x + y + z
+    cf = @cfunction($f, Int, (Int, Int))
+    GC.@preserve cf ccall(cf.ptr, Int, (Int, Int), 1, 2)
+end
+@testset "compiled cfunction wrappers (issue #318)" begin
+    has_stmt(fc, head) = any(fc.src.code) do stmt
+        isexpr(stmt, :(=)) && (stmt = stmt.args[2])
+        isexpr(stmt, head)
+    end
+    is_wrapper_call(stmt) = (isexpr(stmt, :(=)) && (stmt = stmt.args[2]);
+                             isexpr(stmt, :call) && isa(stmt.args[1], QuoteNode) &&
+                             parentmodule(stmt.args[1].value) === JuliaInterpreter.CompiledCalls)
+    # method scope: the `:cfunction` becomes a natively executed call to a cached wrapper
+    fc = JuliaInterpreter.enter_call(cf318_method).framecode
+    @test !has_stmt(fc, :cfunction)
+    @test count(is_wrapper_call, fc.src.code) == 2   # the `@cfunction` and the `ccall`
+    @test @interpret(cf318_method()) == cf318_method() == 3
+    key = (:cfunction, cfun318, Int, Core.svec(Int, Int), :ccall, JuliaInterpreter.CompiledCalls)
+    @test haskey(JuliaInterpreter.compiled_calls, key)
+    # toplevel scope: the function name and the types are resolved when the framecode is built
+    for ex in (:(let; cf = @cfunction(cfun318, Int, (Int, Int)); ccall(cf, Int, (Int, Int), 1, 2) end),
+               :(let; cf = @cfunction(cfun318, Cint, (Cint, Cint)); ccall(cf, Cint, (Cint, Cint), 1, 2) end))
+        frame = Frame(Main, ex)
+        @test !has_stmt(frame.framecode, :cfunction)
+        @test !has_stmt(frame.framecode, :foreigncall)
+        @test count(is_wrapper_call, frame.framecode.src.code) == 2
+        @test JuliaInterpreter.finish_and_return!(frame, true) == 3
+    end
+    # Simple names and constant module-qualified names can be resolved without invoking user
+    # code. Other callback expressions are left to the fallback, which evaluates them in the
+    # statement's module without caching the result across frames.
+    for (ex, call, expected, wrapped) in ((:(@cfunction(Base.abs, Int, (Int,))), p -> ccall(p, Int, (Int,), -3), 3, true),
+                                          (:(@cfunction(CB318_GLOBAL, Int, (Int, Int))), p -> ccall(p, Int, (Int, Int), 3, 4), 7, true),
+                                          (:(@cfunction($(GlobalRef(Main, :CB318_GLOBAL)), Int, (Int, Int))), p -> ccall(p, Int, (Int, Int), 3, 4), 7, true),
+                                          (:(@cfunction(x -> x + OFFSET318, Int, (Int,))), p -> ccall(p, Int, (Int,), 1), 11, false),
+                                          (:(@cfunction(CBREF318[], Int, (Int, Int))), p -> ccall(p, Int, (Int, Int), 3, 4), 7, false))
+        frame = Frame(Main, ex)
+        @test has_stmt(frame.framecode, :cfunction) == !wrapped
+        @test call(JuliaInterpreter.finish_and_return!(frame, true)) == expected
+    end
+    CBREF318[] = cfun318_mul
+    try
+        p = JuliaInterpreter.finish_and_return!(Frame(Main, :(@cfunction(CBREF318[], Int, (Int, Int)))), true)
+        @test ccall(p, Int, (Int, Int), 3, 4) == 12
+    finally
+        CBREF318[] = cfun318
+    end
+    # A failed callback evaluation must not be swallowed and retried by the fallback. Building
+    # either frame must leave the expression untouched, even when its evaluation would succeed.
+    ex = :(@cfunction(cf318_factory(), Int, (Int, Int)))
+    CF318_ATTEMPTS[] = 0
+    try
+        @test_throws ErrorException("callback initialization failed") Core.eval(Main, ex)
+        @test CF318_ATTEMPTS[] == 1
+        CF318_ATTEMPTS[] = 0
+        frame = Frame(Main, ex)
+        @test has_stmt(frame.framecode, :cfunction)
+        @test CF318_ATTEMPTS[] == 0
+        @test_throws ErrorException("callback initialization failed") JuliaInterpreter.finish_and_return!(frame, true)
+        @test CF318_ATTEMPTS[] == 1
+        frame = Frame(Main, ex)
+        @test has_stmt(frame.framecode, :cfunction)
+        @test CF318_ATTEMPTS[] == 1
+        p = JuliaInterpreter.finish_and_return!(frame, true)
+        @test CF318_ATTEMPTS[] == 2
+        @test ccall(p, Int, (Int, Int), 3, 4) == 7
+    finally
+        CF318_ATTEMPTS[] = 0
+    end
+    # a function defined by an earlier statement of the same thunk cannot be resolved when the
+    # framecode is built: the statement is left to `evaluate_foreigncall`, which resolves it
+    frame = Frame(Main, :(begin
+        cfun318_late(x) = x + 1
+        cf = @cfunction(cfun318_late, Int, (Int,))
+        ccall(cf, Int, (Int,), 1)
+    end))
+    @test has_stmt(frame.framecode, :cfunction)
+    @test JuliaInterpreter.finish_and_return!(frame, true) == 2
+    # toplevel `ccall`s are wrapped too: `(name, lib)` targets with a literal or a `const` library
+    # name, bare `:name`/`"name"`/`(name,)` targets, and a runtime pointer target
+    for (ex, expected) in ((:(ccall((:jl_ver_major, "libjulia"), Cint, ())), Cint(VERSION.major)),
+                           (:(ccall((:jl_ver_major, LIB318), Cint, ())), Cint(VERSION.major)),
+                           (:(ccall((:jl_ver_major, Main.LIB318), Cint, ())), Cint(VERSION.major)),
+                           (:(ccall(:jl_typeof, Any, (Any,), 1)), Int),
+                           (:(ccall("jl_typeof", Any, (Any,), 1)), Int),
+                           (:(ccall((:jl_typeof,), Any, (Any,), 1)), Int),
+                           (:(let p = @cfunction(cfun318, Int, (Int, Int)); ccall(p, Int, (Int, Int), 1, 2) end), 3))
+        frame = Frame(Main, ex)
+        @test !has_stmt(frame.framecode, :foreigncall)
+        @test JuliaInterpreter.finish_and_return!(frame, true) == expected
+    end
+    # only a constant target is wrapped: a library named by a `const` that a later statement of
+    # the same thunk defines, or by a non-`const` global (which native code looks up when the call
+    # runs, and which an earlier statement of the same thunk may assign), is left to
+    # `evaluate_foreigncall`
+    frame = Frame(Main, :(begin
+        const LIB318_LATE = "libjulia"
+        ccall((:jl_ver_major, LIB318_LATE), Cint, ())
+    end))
+    @test has_stmt(frame.framecode, :foreigncall)
+    @test JuliaInterpreter.finish_and_return!(frame, true) == Cint(VERSION.major)
+    frame = Frame(Main, :(begin
+        global LIB318_VAR = "libjulia"
+        ccall((:jl_ver_major, LIB318_VAR), Cint, ())
+    end))
+    @test has_stmt(frame.framecode, :foreigncall)
+    @test JuliaInterpreter.finish_and_return!(frame, true) == Cint(VERSION.major)
+    @test LIB318_VAR == "libjulia"
+    # two non-`const` globals holding the same library name must not share a wrapper either
+    @test JuliaInterpreter.finish_and_return!(Frame(Main, :(ccall((:jl_ver_major, LIB318_A), Cint, ()))), true) == Cint(VERSION.major)
+    @test_throws ErrorException JuliaInterpreter.finish_and_return!(Frame(Main, :(begin
+        global LIB318_B = "lib318_does_not_exist"
+        ccall((:jl_ver_major, LIB318_B), Cint, ())
+    end)), true)
+    @test LIB318_B == "lib318_does_not_exist"
+    # closure form: the wrapper takes the closure as its argument and returns the `CFunction`.
+    # `@cfunction` supports closures only on x86 (see `cfunction_closure` in Julia's test/testenv.jl).
+    fc = JuliaInterpreter.enter_call(cf318_closure, 10).framecode
+    @test !has_stmt(fc, :cfunction)
+    if Sys.ARCH === :x86_64 || Sys.ARCH === :i686
+        @test @interpret(cf318_closure(10)) == cf318_closure(10) == 13
+    end
+end
+
+# The wrapper of a `@cfunction` bakes in the callable object itself, so wrappers must be keyed by
+# the callable's identity: two mutable callables that are equal by value must not share one.
+mutable struct Callable318
+    state::Int
+end
+(c::Callable318)(x::Int) = x + c.state
+Base.:(==)(a::Callable318, b::Callable318) = a.state == b.state
+Base.hash(c::Callable318, h::UInt) = hash(c.state, h)
+const CALLABLE318_A = Callable318(10)
+const CALLABLE318_B = Callable318(10)
+cf318_callable_a() = @cfunction(CALLABLE318_A, Int, (Int,))
+cf318_callable_b() = @cfunction(CALLABLE318_B, Int, (Int,))
+@testset "cfunction wrappers are keyed by callable identity" begin
+    pa = @interpret(cf318_callable_a())
+    pb = @interpret(cf318_callable_b())
+    pb_toplevel = finish_and_return!(Frame(Main, :(@cfunction(CALLABLE318_B, Int, (Int,)))), true)
+    CALLABLE318_B.state = 20
+    try
+        @test ccall(pa, Int, (Int,), 1) == 11
+        @test ccall(pb, Int, (Int,), 1) == 21
+        @test ccall(pb_toplevel, Int, (Int,), 1) == 21
+    finally
+        CALLABLE318_B.state = 10
+    end
 end
 
 @testset "https://github.com/JuliaLang/julia/pull/41018" begin
