@@ -33,6 +33,15 @@ const RECENTLY_ADDED = Core.Builtin[
     Core.bitsizeof,
     Core.cancellation_point!,
     Core.task_result_type,
+    Core.const_memoryrefget,
+    Core.depwarn_partition,
+    Core.getglobal_partition,
+    Core.isdefinedglobal_partition,
+    Core.modifyglobal_partition,
+    Core.replaceglobal_partition,
+    Core.setglobal_partition,
+    Core.setglobalonce_partition,
+    Core.swapglobal_partition,
     # Recently became builtins
     Base.invokelatest,
     Base.invoke_in_world,
@@ -57,6 +66,17 @@ const REQUIRES_WORLD = Core.Builtin[
     replaceglobal!,
     setglobalonce!,
     applicable,
+    # `*_partition` forms of the global accesses above. Only the reads (which follow an
+    # import partition to its leaf) and `modifyglobal_partition` (via its `op` callback)
+    # currently consult the world, but all are pinned for consistency with the by-name forms.
+    Core.getglobal_partition,
+    Core.isdefinedglobal_partition,
+    Core.setglobal_partition,
+    Core.swapglobal_partition,
+    Core.modifyglobal_partition,
+    Core.replaceglobal_partition,
+    Core.setglobalonce_partition,
+    Core.depwarn_partition,
     # their `op` callback dispatches in the calling world
     modifyfield!,
     Core.memoryrefmodify!,
