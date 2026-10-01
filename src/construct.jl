@@ -567,7 +567,7 @@ ex = quote
         end
 end
 mod = Main
-ex = :($(Expr(:toplevel, :(#= REPL[7]:6 =#), :(const threshold = 0.1))))
+ex = :(\$(Expr(:toplevel, :(#= REPL[7]:6 =#), :(const threshold = 0.1))))
 ```
 
 `ExprSplitter` created `Main.Private` so that its internal expressions could be evaluated.
