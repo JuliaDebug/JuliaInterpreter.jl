@@ -871,11 +871,11 @@ end
 @test @interpret f_ssaval() == f_ssaval()
 
 # Test JuliaInterpreter version of #265
-f(x) = x
-g(x) = f(x)
-@test (@interpret g(5)) == g(5)
-f(x) = x*x
-@test (@interpret g(5)) == g(5)
+f_265(x) = x
+g_265(x) = f_265(x)
+@test (@interpret g_265(5)) == g_265(5)
+f_265(x) = x*x
+@test (@interpret g_265(5)) == g_265(5)
 
 # Regression test https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/328
 module DataFramesTest

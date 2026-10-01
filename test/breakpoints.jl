@@ -23,14 +23,8 @@ include(tmppath)
 # Don't move these to the top, because line numbers matter for the tests below
 using JuliaInterpreter, CodeTracking, Test, Logging
 
-function stacklength(frame)
-    n = 1
-    frame = frame.callee
-    while frame !== nothing
-        n += 1
-        frame = frame.callee
-    end
-    return n
+if !JuliaInterpreter.isdefinedglobal(@__MODULE__, :read_and_parse)
+    include("utils.jl")
 end
 
 struct Squarer end
@@ -92,14 +86,14 @@ struct Squarer end
     @test isa(frame, Frame) && isa(bp, JuliaInterpreter.BreakpointRef)
 
     # Next line with breakpoints
-    function outer(x)
-        inner(x)
+    function nextline_outer(x)
+        nextline_inner(x)
     end
-    function inner(x)
+    function nextline_inner(x)
         return 2
     end
-    breakpoint(inner)
-    frame = JuliaInterpreter.enter_call(outer, 0)
+    breakpoint(nextline_inner)
+    frame = JuliaInterpreter.enter_call(nextline_outer, 0)
     bp = JuliaInterpreter.next_line!(frame)
     @test isa(bp, JuliaInterpreter.BreakpointRef)
     @test JuliaInterpreter.finish_stack!(frame) == 2
@@ -634,17 +628,18 @@ end
     # Module-scoped frames created by direct `:toplevel` interpretation have a caller, so the
     # resume machinery must identify them as toplevel by scope, not by stack position: the
     # interrupted thunk still contains `:latestworld`/`:method` statements to execute.
-    # Distinct values per scenario keep each run's assertions independent of the previous run.
-    resume_stmts(x, y) = Any[
+    # Distinct values per scenario keep each run's assertions independent of the previous run,
+    # and a distinct name `k` per scenario avoids overwriting the previous run's method.
+    resume_stmts(x, y, k) = Any[
         :(a = callee($x)),
-        :(begin b = callee($y); k() = $x + $y; c = k() end),   # `:method` after the call, same thunk
-        :(d = k() + 1),
+        :(begin b = callee($y); $k() = $x + $y; c = $k() end),   # `:method` after the call, same thunk
+        :(d = $k() + 1),
     ]
     getglob(name) = invokelatest(getproperty, BPResumeToplevel, name)
     breakpoint(BPResumeToplevel.callee)
     try
         # Resume with `:c` (`finish_stack!`)
-        frame = Frame(BPResumeToplevel, Expr(:toplevel, resume_stmts(3, 4)...))
+        frame = Frame(BPResumeToplevel, Expr(:toplevel, resume_stmts(3, 4, :k1)...))
         ret = JuliaInterpreter.debug_command(frame, :c, true)
         nhits = 0
         while ret !== nothing && nhits < 10
@@ -661,7 +656,7 @@ end
 
         # Resume with `:finish` and `:n` (`maybe_reset_frame!`): `:finish` returns from the
         # callee into the interrupted thunk, then `:n` steps the toplevel frames to completion.
-        frame = Frame(BPResumeToplevel, Expr(:toplevel, resume_stmts(5, 6)...))
+        frame = Frame(BPResumeToplevel, Expr(:toplevel, resume_stmts(5, 6, :k2)...))
         leafframe, bp = JuliaInterpreter.debug_command(frame, :c, true)      # first hit
         leafframe, bp = JuliaInterpreter.debug_command(leafframe, :c, true)  # second hit, mid-thunk
         ret = JuliaInterpreter.debug_command(leafframe, :finish, true)
