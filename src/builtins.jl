@@ -604,21 +604,13 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         else
             return Some{Any}(Core.arrayset(getargs(interp, args, frame)...))
         end
-    elseif @static (isdefinedglobal(Core, :arrayset) && Core.arrayset isa Core.Builtin) && f === Core.arrayset
+    elseif @static (isdefinedglobal(Core, :arraysize) && Core.arraysize isa Core.Builtin) && f === Core.arraysize
         if nargs == 1
-            return Some{Any}(Core.arrayset(lookup(interp, frame, args[2])))
+            return Some{Any}(Core.arraysize(lookup(interp, frame, args[2])))
         elseif nargs == 2
-            return Some{Any}(Core.arrayset(lookup(interp, frame, args[2]), lookup(interp, frame, args[3])))
-        elseif nargs == 3
-            return Some{Any}(Core.arrayset(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4])))
-        elseif nargs == 4
-            return Some{Any}(Core.arrayset(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))
-        elseif nargs == 5
-            return Some{Any}(Core.arrayset(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5]), lookup(interp, frame, args[6])))
-        elseif nargs == 6
-            return Some{Any}(Core.arrayset(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5]), lookup(interp, frame, args[6]), lookup(interp, frame, args[7])))
+            return Some{Any}(Core.arraysize(lookup(interp, frame, args[2]), lookup(interp, frame, args[3])))
         else
-            return Some{Any}(Core.arrayset(getargs(interp, args, frame)...))
+            return Some{Any}(Core.arraysize(getargs(interp, args, frame)...))
         end
     elseif @static (isdefinedglobal(Core, :const_arrayref) && Core.const_arrayref isa Core.Builtin) && f === Core.const_arrayref
         if nargs == 1
