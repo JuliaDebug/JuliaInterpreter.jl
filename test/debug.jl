@@ -1,7 +1,7 @@
 using CodeTracking, InteractiveUtils, JuliaInterpreter, Test
 using JuliaInterpreter: enter_call, enter_call_expr, get_return
 using Base.Meta: isexpr
-include("utils.jl")
+JuliaInterpreter.isdefinedglobal(@__MODULE__, :read_and_parse) || include("utils.jl")
 
 const ALL_COMMANDS = (:n, :s, :c, :finish, :nc, :se, :si, :until)
 
