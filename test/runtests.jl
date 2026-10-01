@@ -62,6 +62,7 @@ Core.eval(JuliaInterpreter, :(debug_mode() = true))
 
 @testset "Main tests" begin
     @testset "check_bulitins.jl" begin include("check_builtins.jl") end
+    @testset "builtins.jl" begin include("builtins.jl") end
     @testset "core.jl" begin include("core.jl") end
     @testset "interpret.jl" begin include("interpret.jl") end
     @testset "toplevel.jl" begin include("toplevel.jl") end
