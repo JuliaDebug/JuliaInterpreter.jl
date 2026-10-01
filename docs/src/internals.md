@@ -238,8 +238,15 @@ top-level statements, returning a `:toplevel` expression.
 steps through the unlowered surface statements one at a time, raising the world age between
 each so that each statement sees all definitions from earlier ones.
 
+A `:module` expression is evaluated as native evaluation does: when the driver frame reaches
+it, a fresh module is created (replacing any existing module of the same name), its body is
+interpreted, and its `__init__` runs (natively, so it cannot be stepped into). The statement
+evaluates to the module.
+
 `ExprSplitter` remains available for applications that need fine-grained control
 over when each sub-expression is evaluated; `Revise.jl` uses it for this purpose.
+Unlike `Frame`, it re-enters existing modules, as suits re-evaluating revised source, and
+it never runs `__init__`.
 
 (Incidentally, `JuliaInterpreter.enter_call(map, x->x^2, [1, 2, 3])` works fine on its own,
 because the anonymous function is defined by the caller — you'll see that the created frame

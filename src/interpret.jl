@@ -535,7 +535,7 @@ function maybe_assign!(frame::Frame, @nospecialize(stmt), @nospecialize(val))
         # Driver frames record each statement's value (see `step_toplevel!`). The statement's
         # side effects, including any global assignment, were performed by the child frame, so
         # a surface `:(=)` must not be re-executed here.
-        frame.framedata.ssavalues[pc] = val
+        toplevel_child_returned!(frame, val)
     elseif isexpr(stmt, :(=))
         lhs = stmt.args[1]
         do_assignment!(frame, lhs, val)
@@ -676,12 +676,15 @@ function step_toplevel!(interp::Interpreter, frame::Frame, @nospecialize(node))
         elseif isa(node, Core.ReturnNode)
             return nothing
         elseif isa(node, Expr) && node.head === :module
-            newmod, modbody = find_or_create_module(mod, node)
+            newmod, modbody = begin_module(mod, node)
+            # Completed by `toplevel_child_returned!`, also when a debugger resumes the body.
+            data.ssavalues[pc] = OpenModule(newmod)
             newframe = toplevel_frame(newmod, modbody.args; world=frame.world)
             link_caller_callee!(frame, newframe)
             ret = finish_latestworld!(interp, newframe)
             isa(ret, BreakpointRef) && return ret
             return_from(newframe)
+            toplevel_child_returned!(frame, ret)
             rhs = newmod
         elseif isa(node, Expr) && node.head === :toplevel
             newframe = toplevel_frame(mod, node.args; world=frame.world)
@@ -704,6 +707,31 @@ function step_toplevel!(interp::Interpreter, frame::Frame, @nospecialize(node))
     return (frame.pc = pc + 1)
 end
 
+# The value of a driver frame's `:module` statement while the module's body is evaluated.
+struct OpenModule
+    mod::Module
+end
+
+# Record `val`, returned by the child frame of the current statement of the driver frame
+# `frame`, as the value of that statement. A `:module` statement instead completes its module
+# and evaluates to the module. `step_toplevel!` and the debugger commands that resume a paused
+# child (`finish_stack!`, `maybe_assign!`) all go through here, so the module is completed
+# exactly once.
+function toplevel_child_returned!(frame::Frame, @nospecialize(val))
+    pc = frame.pc
+    ssavals = frame.framedata.ssavalues
+    if isexpr(pc_expr(frame, pc), :module) && isassigned(ssavals, pc)
+        open = ssavals[pc]
+        isa(open, OpenModule) || return nothing # already completed
+        # Record the completion first: `end_module` may throw from `__init__`.
+        ssavals[pc] = open.mod
+        end_module(open.mod)
+        return nothing
+    end
+    ssavals[pc] = val
+    return nothing
+end
+
 # Lower an ordinary toplevel statement and interpret it as a child frame.
 function interpret_toplevel_stmt!(interp::Interpreter, frame::Frame, @nospecialize(stmt))
     mod = moduleof(frame)
@@ -719,7 +747,8 @@ function interpret_toplevel_stmt!(interp::Interpreter, frame::Frame, @nospeciali
     elseif isexpr(lwr, :error)
         throw(ArgumentError("lowering returned an error, $lwr"))
     elseif isexpr(lwr, (:toplevel, :module))
-        # macro expansion surfaced a nested toplevel/module; interpret it directly
+        # Macro expansion surfaced a nested toplevel/module; interpret it in a driver frame of
+        # its own, which evaluates a module expression to the module.
         newframe = Frame(mod, lwr::Expr; world=frame.world)
         link_caller_callee!(frame, newframe)
         ret = finish_latestworld!(interp, newframe)
@@ -809,13 +838,13 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
                 if node.head === :method && length(node.args) > 1
                     rhs = @invokelatest evaluate_methoddef(interp, frame, node)
                 elseif node.head === :module
-                    newmod, modbody = find_or_create_module(moduleof(frame), node)
-                    newframe = toplevel_frame(newmod, modbody.args; world=frame.world)
+                    # A driver frame of its own evaluates the module and completes it.
+                    newframe = toplevel_frame(moduleof(frame), Any[node]; world=frame.world)
                     link_caller_callee!(frame, newframe)
                     ret = finish_latestworld!(interp, newframe)
                     isa(ret, BreakpointRef) && return ret
+                    rhs = get_return(newframe)
                     return_from(newframe)
-                    rhs = newmod
                 elseif node.head === :using || node.head === :import || node.head === :export || node.head === :public
                     Core.eval(moduleof(frame), node)
                 elseif node.head === :const || node.head === :globaldecl
