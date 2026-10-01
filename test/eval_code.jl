@@ -1,3 +1,6 @@
+module test_eval_code
+
+using JuliaInterpreter, Test
 using JuliaInterpreter: eval_code
 
 # Simple evaling of function argument
@@ -153,3 +156,5 @@ frame = JuliaInterpreter.enter_call(toplevel_eval_arg, 1)
 # Multi-statement strings arrive as a nested :toplevel from parse_input_line
 frame = JuliaInterpreter.enter_call(toplevel_eval_arg, 1)
 @test eval_code(frame, "x = 7; x + 1") == 8
+
+end # module test_eval_code

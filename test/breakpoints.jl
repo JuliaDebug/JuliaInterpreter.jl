@@ -1,3 +1,5 @@
+module test_breakpoints
+
 radius2(x, y) = x^2 + y^2
 function loop_radius2(n)
     s = 0
@@ -21,11 +23,9 @@ close(io)
 include(tmppath)
 
 # Don't move these to the top, because line numbers matter for the tests below
-using JuliaInterpreter, CodeTracking, Test, Logging
+using CodeTracking, InteractiveUtils, JuliaInterpreter, Logging, Test
 
-if !JuliaInterpreter.isdefinedglobal(@__MODULE__, :read_and_parse)
-    include("utils.jl")
-end
+include("utils.jl")
 
 struct Squarer end
 
@@ -67,7 +67,7 @@ struct Squarer end
     # Conditional breakpoints on local variables
     remove()
     halfthresh = loop_radius2(5)
-    bp = @breakpoint loop_radius2(10) 5 s>$halfthresh
+    bp = @breakpoint loop_radius2(10) 7 s>$halfthresh
     frame, bpref = @interpret loop_radius2(10)
     @test isa(bpref, JuliaInterpreter.BreakpointRef)
     lframe = leaf(frame)
@@ -196,11 +196,11 @@ struct Squarer end
     frame = JuliaInterpreter.enter_call(loop_radius2, 2)
     LOC = " @ $(@__MODULE__) $(contractuser(@__FILE__))"
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 1)
-    @test repr(bp) == "breakpoint(loop_radius2(n)$LOC:$(3-Δ), line 3)"
+    @test repr(bp) == "breakpoint(loop_radius2(n)$LOC:$(5-Δ), line 5)"
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 0)  # fictive breakpoint
-    @test repr(bp) == "breakpoint(loop_radius2(n)$LOC:$(3-Δ), %0)"
+    @test repr(bp) == "breakpoint(loop_radius2(n)$LOC:$(5-Δ), %0)"
     bp = JuliaInterpreter.BreakpointRef(frame.framecode, 1, ArgumentError("whoops"))
-    @test repr(bp) == "breakpoint(loop_radius2(n)$LOC:$(3-Δ), line 3, ArgumentError(\"whoops\"))"
+    @test repr(bp) == "breakpoint(loop_radius2(n)$LOC:$(5-Δ), line 5, ArgumentError(\"whoops\"))"
 
     # In source breakpointing
     f_outer_bp(x) = g_inner_bp(x)
@@ -784,3 +784,5 @@ end
     @test isempty(bp.instances)
     remove()
 end
+
+end # module test_breakpoints

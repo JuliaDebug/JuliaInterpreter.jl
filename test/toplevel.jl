@@ -1,8 +1,9 @@
+module test_toplevel
+
+using JuliaInterpreter, Test
 using JuliaInterpreter: isdefinedglobal
 
-if !isdefinedglobal(@__MODULE__, :read_and_parse)
-    include("utils.jl")
-end
+include("utils.jl")
 
 module JIVisible
 module JIInvisible
@@ -62,13 +63,13 @@ end
 
         sum
     end
-    modexs = collect(ExprSplitter(Main, ex))
+    modexs = collect(ExprSplitter(@__MODULE__, ex))
     m, ex = first(modexs)       # FIXME don't use index in tests
     @test !JuliaInterpreter.is_doc_expr(ex.args[2])
 
-    @test !isdefinedglobal(Main, :JIInvisible)
+    @test !isdefinedglobal(@__MODULE__, :JIInvisible)
     collect(ExprSplitter(JIVisible, :(module JIInvisible f() = 1 end)))  # this looks up JIInvisible rather than create it
-    @test !isdefinedglobal(Main, :JIInvisible)
+    @test !isdefinedglobal(@__MODULE__, :JIInvisible)
     @test  isdefinedglobal(JIVisible, :JIInvisible)
 
     # `Base` has a self-binding even though `parentmodule(Base) === Main`.
@@ -591,7 +592,7 @@ end
     end
     str = read(filename, String)
     ex = Base.parse_input_line(str)
-    modexs = ExprSplitter(Main, ex)
+    modexs = ExprSplitter(@__MODULE__, ex)
     @test !isempty(modexs)
     pop!(LOAD_PATH)
     rm(tmpdir, recursive=true)
@@ -960,3 +961,5 @@ end
     fr = Frame(MacroDeclTest, ex)
     @test JuliaInterpreter.finish_and_return!(fr, true) === nothing
 end
+
+end # module test_toplevel

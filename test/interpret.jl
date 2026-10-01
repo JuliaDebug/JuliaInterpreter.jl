@@ -1,12 +1,12 @@
+module test_interpret
+
 using JuliaInterpreter
 using CodeTracking, InteractiveUtils, Test
 using Mmap
 using LinearAlgebra
 using JuliaInterpreter: isdefinedglobal
 
-if !isdefinedglobal(@__MODULE__, :runframe)
-    include("utils.jl")
-end
+include("utils.jl")
 
 module Isolated end
 
@@ -111,12 +111,12 @@ else
 end
 @test !JuliaInterpreter.is_vararg_type(Union{})
 if Vararg isa UnionAll
-    frame = Frame(Main, :(Vararg.body.body.name))
+    frame = Frame(@__MODULE__, :(Vararg.body.body.name))
     @test JuliaInterpreter.finish_and_return!(frame, true) === Vararg.body.body.name
 else
-    frame = Frame(Main, :(Vararg{Int}.T))
+    frame = Frame(@__MODULE__, :(Vararg{Int}.T))
     @test JuliaInterpreter.finish_and_return!(frame, true) === Vararg{Int}.T
-    frame = Frame(Main, :(Vararg{Any,3}.N))
+    frame = Frame(@__MODULE__, :(Vararg{Any,3}.N))
     @test JuliaInterpreter.finish_and_return!(frame, true) === Vararg{Any,3}.N
 end
 frame = Frame(Base, :(Union{AbstractChar,Tuple{Vararg{AbstractChar}},AbstractVector{<:AbstractChar},Set{<:AbstractChar}}))
@@ -138,7 +138,7 @@ ex = quote
        @test 2 > 1
     end
 end
-frame = Frame(Main, ex)
+frame = Frame(@__MODULE__, ex)
 JuliaInterpreter.finish_and_return!(frame, true)
 
 @test @interpret Base.Math.DoubleFloat64(-0.5707963267948967, 4.9789962508669555e-17).hi ≈ -0.5707963267948967
@@ -149,7 +149,7 @@ ex = quote   # in lowered code, cf is a Symbol
     cf = @eval @cfunction(fcfun, Int, (Int, Int))
     ccall(cf, Int, (Int, Int), 1, 2)
 end
-frame = Frame(Main, ex)
+frame = Frame(@__MODULE__, ex)
 @test JuliaInterpreter.finish_and_return!(frame, true) == 1
 ex = quote
     let   # in lowered code, cf is a SlotNumber
@@ -157,7 +157,7 @@ ex = quote
         ccall(cf, Int, (Int, Int), 1, 2)
     end
 end
-frame = Frame(Main, ex)
+frame = Frame(@__MODULE__, ex)
 @test JuliaInterpreter.finish_and_return!(frame, true) == 1
 function cfcfun()
     cf = @cfunction(fcfun, Int, (Int, Int))
@@ -177,14 +177,14 @@ ex = quote
         @test_throws(MethodError, ccall(cf, Int, (UInt8, Int), 1, 2))
     end
 end
-frame = Frame(Main, ex)
+frame = Frame(@__MODULE__, ex)
 JuliaInterpreter.finish_and_return!(frame, true)
 
 # Core.Compiler
 ex = quote
     length(code_typed(fcfun, (Int, Int)))
 end
-frame = Frame(Main, ex)
+frame = Frame(@__MODULE__, ex)
 @test JuliaInterpreter.finish_and_return!(frame, true) == 1
 
 # copyast
@@ -415,8 +415,8 @@ f113(;x) = x
 @test @interpret(f113(;x=[1,2,3])) == f113(;x=[1,2,3])
 
 # Some expressions can appear nontrivial but lower to nothing
-# @test isa(Frame(Main, :(@static if ccall(:jl_get_UNAME, Any, ()) === :NoOS 1+1 end)), Nothing)
-# @test isa(Frame(Main, :(Base.BaseDocs.@kw_str "using")), Nothing)
+# @test isa(Frame(@__MODULE__, :(@static if ccall(:jl_get_UNAME, Any, ()) === :NoOS 1+1 end)), Nothing)
+# @test isa(Frame(@__MODULE__, :(Base.BaseDocs.@kw_str "using")), Nothing)
 
 @testset "locals" begin
     f_locals(x::Int64, y::T, z::Vararg{Symbol}) where {T} = x
@@ -659,7 +659,7 @@ end
 
 try
     break_on(:error)
-    exs = collect(ExprSplitter(Main, quote
+    exs = collect(ExprSplitter(@__MODULE__, quote
             g_1(2.0)
         end))
     line2_g = @__LINE__
@@ -1073,7 +1073,7 @@ end
     # toplevel scope: the function name and the types are resolved when the framecode is built
     for ex in (:(let; cf = @cfunction(cfun318, Int, (Int, Int)); ccall(cf, Int, (Int, Int), 1, 2) end),
                :(let; cf = @cfunction(cfun318, Cint, (Cint, Cint)); ccall(cf, Cint, (Cint, Cint), 1, 2) end))
-        frame = Frame(Main, ex)
+        frame = Frame(@__MODULE__, ex)
         @test !has_stmt(frame.framecode, :cfunction)
         @test !has_stmt(frame.framecode, :foreigncall)
         @test count(is_wrapper_call, frame.framecode.src.code) == 2
@@ -1084,16 +1084,16 @@ end
     # statement's module without caching the result across frames.
     for (ex, call, expected, wrapped) in ((:(@cfunction(Base.abs, Int, (Int,))), p -> ccall(p, Int, (Int,), -3), 3, true),
                                           (:(@cfunction(CB318_GLOBAL, Int, (Int, Int))), p -> ccall(p, Int, (Int, Int), 3, 4), 7, true),
-                                          (:(@cfunction($(GlobalRef(Main, :CB318_GLOBAL)), Int, (Int, Int))), p -> ccall(p, Int, (Int, Int), 3, 4), 7, true),
+                                          (:(@cfunction($(GlobalRef(@__MODULE__, :CB318_GLOBAL)), Int, (Int, Int))), p -> ccall(p, Int, (Int, Int), 3, 4), 7, true),
                                           (:(@cfunction(x -> x + OFFSET318, Int, (Int,))), p -> ccall(p, Int, (Int,), 1), 11, false),
                                           (:(@cfunction(CBREF318[], Int, (Int, Int))), p -> ccall(p, Int, (Int, Int), 3, 4), 7, false))
-        frame = Frame(Main, ex)
+        frame = Frame(@__MODULE__, ex)
         @test has_stmt(frame.framecode, :cfunction) == !wrapped
         @test call(JuliaInterpreter.finish_and_return!(frame, true)) == expected
     end
     CBREF318[] = cfun318_mul
     try
-        p = JuliaInterpreter.finish_and_return!(Frame(Main, :(@cfunction(CBREF318[], Int, (Int, Int)))), true)
+        p = JuliaInterpreter.finish_and_return!(Frame(@__MODULE__, :(@cfunction(CBREF318[], Int, (Int, Int)))), true)
         @test ccall(p, Int, (Int, Int), 3, 4) == 12
     finally
         CBREF318[] = cfun318
@@ -1103,15 +1103,15 @@ end
     ex = :(@cfunction(cf318_factory(), Int, (Int, Int)))
     CF318_ATTEMPTS[] = 0
     try
-        @test_throws ErrorException("callback initialization failed") Core.eval(Main, ex)
+        @test_throws ErrorException("callback initialization failed") Core.eval(@__MODULE__, ex)
         @test CF318_ATTEMPTS[] == 1
         CF318_ATTEMPTS[] = 0
-        frame = Frame(Main, ex)
+        frame = Frame(@__MODULE__, ex)
         @test has_stmt(frame.framecode, :cfunction)
         @test CF318_ATTEMPTS[] == 0
         @test_throws ErrorException("callback initialization failed") JuliaInterpreter.finish_and_return!(frame, true)
         @test CF318_ATTEMPTS[] == 1
-        frame = Frame(Main, ex)
+        frame = Frame(@__MODULE__, ex)
         @test has_stmt(frame.framecode, :cfunction)
         @test CF318_ATTEMPTS[] == 1
         p = JuliaInterpreter.finish_and_return!(frame, true)
@@ -1122,7 +1122,7 @@ end
     end
     # a function defined by an earlier statement of the same thunk cannot be resolved when the
     # framecode is built: the statement is left to `evaluate_foreigncall`, which resolves it
-    frame = Frame(Main, :(begin
+    frame = Frame(@__MODULE__, :(begin
         cfun318_late(x) = x + 1
         cf = @cfunction(cfun318_late, Int, (Int,))
         ccall(cf, Int, (Int,), 1)
@@ -1133,12 +1133,12 @@ end
     # name, bare `:name`/`"name"`/`(name,)` targets, and a runtime pointer target
     for (ex, expected) in ((:(ccall((:jl_ver_major, "libjulia"), Cint, ())), Cint(VERSION.major)),
                            (:(ccall((:jl_ver_major, LIB318), Cint, ())), Cint(VERSION.major)),
-                           (:(ccall((:jl_ver_major, Main.LIB318), Cint, ())), Cint(VERSION.major)),
+                           (:(ccall((:jl_ver_major, test_interpret.LIB318), Cint, ())), Cint(VERSION.major)),
                            (:(ccall(:jl_typeof, Any, (Any,), 1)), Int),
                            (:(ccall("jl_typeof", Any, (Any,), 1)), Int),
                            (:(ccall((:jl_typeof,), Any, (Any,), 1)), Int),
                            (:(let p = @cfunction(cfun318, Int, (Int, Int)); ccall(p, Int, (Int, Int), 1, 2) end), 3))
-        frame = Frame(Main, ex)
+        frame = Frame(@__MODULE__, ex)
         @test !has_stmt(frame.framecode, :foreigncall)
         @test JuliaInterpreter.finish_and_return!(frame, true) == expected
     end
@@ -1146,13 +1146,13 @@ end
     # the same thunk defines, or by a non-`const` global (which native code looks up when the call
     # runs, and which an earlier statement of the same thunk may assign), is left to
     # `evaluate_foreigncall`
-    frame = Frame(Main, :(begin
+    frame = Frame(@__MODULE__, :(begin
         const LIB318_LATE = "libjulia"
         ccall((:jl_ver_major, LIB318_LATE), Cint, ())
     end))
     @test has_stmt(frame.framecode, :foreigncall)
     @test JuliaInterpreter.finish_and_return!(frame, true) == Cint(VERSION.major)
-    frame = Frame(Main, :(begin
+    frame = Frame(@__MODULE__, :(begin
         global LIB318_VAR = "libjulia"
         ccall((:jl_ver_major, LIB318_VAR), Cint, ())
     end))
@@ -1160,8 +1160,8 @@ end
     @test JuliaInterpreter.finish_and_return!(frame, true) == Cint(VERSION.major)
     @test LIB318_VAR == "libjulia"
     # two non-`const` globals holding the same library name must not share a wrapper either
-    @test JuliaInterpreter.finish_and_return!(Frame(Main, :(ccall((:jl_ver_major, LIB318_A), Cint, ()))), true) == Cint(VERSION.major)
-    @test_throws ErrorException JuliaInterpreter.finish_and_return!(Frame(Main, :(begin
+    @test JuliaInterpreter.finish_and_return!(Frame(@__MODULE__, :(ccall((:jl_ver_major, LIB318_A), Cint, ()))), true) == Cint(VERSION.major)
+    @test_throws ErrorException JuliaInterpreter.finish_and_return!(Frame(@__MODULE__, :(begin
         global LIB318_B = "lib318_does_not_exist"
         ccall((:jl_ver_major, LIB318_B), Cint, ())
     end)), true)
@@ -1190,7 +1190,7 @@ cf318_callable_b() = @cfunction(CALLABLE318_B, Int, (Int,))
 @testset "cfunction wrappers are keyed by callable identity" begin
     pa = @interpret(cf318_callable_a())
     pb = @interpret(cf318_callable_b())
-    pb_toplevel = finish_and_return!(Frame(Main, :(@cfunction(CALLABLE318_B, Int, (Int,)))), true)
+    pb_toplevel = finish_and_return!(Frame(@__MODULE__, :(@cfunction(CALLABLE318_B, Int, (Int,)))), true)
     CALLABLE318_B.state = 20
     try
         @test ccall(pa, Int, (Int,), 1) == 11
@@ -1719,7 +1719,7 @@ end
 
 @testset "Foreigncall values that look like ASTs are passed as data" begin
     astval = :(1 + 2)
-    frame = Frame(Main, :(ccall(:jl_typeof, Any, (Any,), $(QuoteNode(astval)))))
+    frame = Frame(@__MODULE__, :(ccall(:jl_typeof, Any, (Any,), $(QuoteNode(astval)))))
     @test finish_and_return!(frame, true) === Expr
 end
 
@@ -1930,7 +1930,7 @@ end
     @eval cbworld_op(a, b) = a + b
     @eval mutable struct CBWorldMF; @atomic x::Int; end
     @eval cbworld_mf(m) = modifyfield!(m, :x, cbworld_op, 5, :sequentially_consistent)
-    fr = JuliaInterpreter.enter_call(Main.cbworld_mf, Main.CBWorldMF(2))
+    fr = JuliaInterpreter.enter_call(test_interpret.cbworld_mf, test_interpret.CBWorldMF(2))
     res = Base.invoke_in_world(w_before, JuliaInterpreter.finish_and_return!, NonRecursiveInterpreter(), fr)
     @test res == (2 => 7)
 end
@@ -1941,7 +1941,7 @@ end
     @eval const resolvefc_lib = "libjulia"
     @eval resolvefc_f() = ccall((:jl_ver_major, resolvefc_lib), Cint, ())
     # the (name, lib) tuple lowers with the tuple constructor as a GlobalRef
-    @test (@interpret Main.resolvefc_f()) == Main.resolvefc_f()
+    @test (@interpret test_interpret.resolvefc_f()) == test_interpret.resolvefc_f()
 end
 
 @testset "rethrow does not duplicate active-exception entries" begin
@@ -2042,5 +2042,7 @@ end
     ocex = VERSION >= v"1.12-" ? Expr(:new_opaque_closure, Tuple{}, Union{}, Any, true, ocm) :
                                  Expr(:new_opaque_closure, Tuple{}, Union{}, Any, ocm)
     @eval oc_from_raw_expr() = $ocex
-    @test (@interpret Main.oc_from_raw_expr())() == 1
+    @test (@interpret test_interpret.oc_from_raw_expr())() == 1
 end
+
+end # module test_interpret

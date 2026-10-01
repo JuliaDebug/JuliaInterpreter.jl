@@ -59,10 +59,6 @@ if isdefined(Test, :detect_closure_boxes)
     @test isempty(Test.detect_closure_boxes(JuliaInterpreter))
 end
 
-if !JuliaInterpreter.isdefinedglobal(@__MODULE__, :read_and_parse)
-    include("utils.jl")
-end
-
 Core.eval(JuliaInterpreter, :(debug_mode() = true))
 
 @testset "Main tests" begin
