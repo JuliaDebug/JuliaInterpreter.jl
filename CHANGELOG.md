@@ -6,7 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- links start -->
-[Unreleased]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.11.5...HEAD
+[Unreleased]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.11.6...HEAD
+[0.11.6]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.11.5...v0.11.6
 [0.11.5]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.11.4...v0.11.5
 [0.11.4]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.11.3...v0.11.4
 [0.11.3]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.11.2...v0.11.3
@@ -17,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.6]
+
 ### Changed
 - Added this changelog (JuliaDebug/JuliaInterpreter.jl#780).
 
@@ -26,11 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   errors (JuliaDebug/JuliaInterpreter.jl#773).
 - A `throw(nothing)` inside a `catch` block is no longer mistaken for a
   `rethrow()` (JuliaDebug/JuliaInterpreter.jl#774).
-- Updated the builtins for Julia 1.14 (JuliaDebug/JuliaInterpreter.jl#778).
+- Updated the builtins for Julia 1.14, and `Core.arraysize` is evaluated by the
+  interpreter on Julia 1.10 instead of falling back to a native call
+  (JuliaDebug/JuliaInterpreter.jl#778, JuliaDebug/JuliaInterpreter.jl#779).
 - Frames built with `optimize=false` can run methods that contain an `llvmcall`.
   `optimize=false` now skips only the optimizations (folding `const` globals and
   compiling `ccall`s and `@cfunction`s into wrappers), not the compilation of
-  `llvmcall`s, which cannot be interpreted.
+  `llvmcall`s, which cannot be interpreted (JuliaDebug/JuliaInterpreter.jl#781).
 
 ## [0.11.5]
 
