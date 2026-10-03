@@ -162,9 +162,10 @@ function lookup_getproperties(code::Vector{Any}, @nospecialize(a), world::UInt,
     return lookup_global_ref(GlobalRef(arg2, arg3), world, world_deps)
 end
 
-# `FrameCode` transforms the lowered code in two steps: `compile_llvmcalls!` is required to
-# interpret the code at all, whereas `optimize!` only speeds up its interpretation and is skipped
-# for `optimize=false`. Both rewrite statements in place, so statement indices are preserved.
+# `FrameCode` transforms the lowered code in two steps: `compile_llvmcalls!` and
+# `expose_eval_call!` determine what gets interpreted, whereas `optimize!` only speeds up its
+# interpretation and is skipped for `optimize=false`. All of them rewrite statements in place, so
+# statement indices are preserved.
 # On Julia 1.12+ a redefinable `const` makes a value resolved at build time world-dependent, so
 # every such value — folded `const` globals as well as library names and llvmcall ingredients
 # baked into compiled wrappers — records its binding in `world_deps`, and `framecode_valid_world`
@@ -197,6 +198,25 @@ function compile_llvmcalls!(code::CodeInfo, methodtables::Vector{Union{Compiled,
             # Call via `invokelatest` to avoid compiling it until we need it
             @invokelatest build_compiled_llvmcall!(stmt, code, idx, evalmod, world, world_deps)
             methodtables[idx] = Compiled()
+        end
+    end
+    return nothing
+end
+
+# In the method of `Core.eval`, replace the `ccall` that evaluates the expression with a call to
+# `eval_in_frame`. As an ordinary call, it gets interpreted by `RecursiveInterpreter` (see
+# `evaluate_eval!`), and debugger commands can step into or over it, including when `Core.eval`
+# is the entry frame or invoked directly. Left as a `:foreigncall`, the expression would be
+# evaluated natively, so unlike `optimize!` this is applied regardless of `optimize`.
+function expose_eval_call!(code::CodeInfo, scope)
+    is_core_eval(scope) || return nothing
+    for stmt in code.code
+        if isexpr(stmt, :(=))
+            stmt = stmt.args[2]
+        end
+        if isexpr(stmt, :foreigncall)
+            stmt.head = :call
+            stmt.args = Any[eval_in_frame, stmt.args[6], stmt.args[7]]
         end
     end
     return nothing

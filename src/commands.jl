@@ -267,6 +267,7 @@ that supply default positional arguments or handle keywords. `cframe` is the lea
 which execution should start.
 """
 function maybe_step_through_wrapper!(interp::Interpreter, frame::Frame)
+    is_toplevel_frame(frame) && return frame
     code = frame.framecode
     src = code.src
     stmts, scope = src.code, code.scope::Method
@@ -727,6 +728,10 @@ function debug_command(interp::Interpreter, frame::Frame, cmd::Symbol, rootistop
             is_return(stmt0) && return maybe_reset_frame!(interp, frame, nothing, rootistoplevel)
             if isexpr(stmt, :(=))
                 stmt = stmt.args[2]
+            end
+            # This call bypasses step_expr!, which refreshes top-level worlds before 1.12.
+            @static if VERSION < v"1.12-"
+                is_toplevel_frame(frame) && (frame.world = Base.get_world_counter())
             end
             local ret
             try

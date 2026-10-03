@@ -19,6 +19,9 @@ end
 # into the stack (see `step_toplevel!`), so a frame with a caller may still be toplevel.
 is_toplevel_frame(frame::Frame) = scopeof(frame) isa Module
 
+is_core_eval(scope) = scope isa Method && scope.sig === Tuple{typeof(Core.eval),Module,Any}
+will_catch_err(frame::Frame) = !isempty(frame.framedata.exception_frames) || frame.framedata.caller_will_catch_err
+
 function Base.nameof(frame::Frame)
     s = frame.framecode.scope
     isa(s, Method) ? s.name : nameof(s)

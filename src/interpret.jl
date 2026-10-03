@@ -267,6 +267,30 @@ function bypass_builtins(interp::Interpreter, frame::Frame, call_expr::Expr, pc:
     return nothing
 end
 
+# `expose_eval_call!` exposes Core.eval's runtime call as this ordinary call. Non-recursive
+# execution keeps native eval semantics; recursive execution intercepts it below.
+eval_in_frame(mod::Module, @nospecialize(ex)) = Core.eval(mod, ex)
+
+function evaluate_eval!(interp::Interpreter, frame::Frame, mod::Module, @nospecialize(ex))
+    # Non-expressions have no calls to recurse into. In particular, IR nodes supplied
+    # as values must not be mistaken for the synthetic driver's instructions.
+    if !(ex isa Expr)
+        ret = maybe_eval_with_scope(Core.eval, Any[mod, ex], frame)
+        return ret === nothing ? Core.eval(mod, ex) : ret.value
+    end
+    world = Base.get_world_counter()
+    newframe = toplevel_frame(mod, Any[ex]; world,
+                             caller_will_catch_err=will_catch_err(frame))
+    link_caller_callee!(frame, newframe)
+    shouldbreak(newframe, newframe.pc) && return BreakpointRef(newframe.framecode, newframe.pc)
+    # Use the normal recursion hook (including BreakOnCall) in a fresh top-level world,
+    # without advancing the suspended method caller's world.
+    ret = invoke_in_world(world, finish_and_return!, interp, newframe, true)
+    isa(ret, BreakpointRef) && return ret
+    return_from(newframe)
+    return ret
+end
+
 # Set by the `rethrow` interception just before re-raising, so handler entry can
 # distinguish a re-raise (which must not push a duplicate active-exception entry)
 # from a fresh `throw` of the same object. Wrap the value since `nothing` can be thrown.
@@ -324,8 +348,8 @@ function evaluate_call!(interp::Interpreter, frame::Frame, call_expr::Expr, ente
     return evaluate_call!(interp, frame, fargs, enter_generated)
 end
 function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, enter_generated::Bool)
-    if fargs[1] === Core.eval
-        return Core.eval(fargs[2], fargs[3])  # not a builtin, but worth treating specially
+    if fargs[1] === eval_in_frame
+        return evaluate_eval!(interp, frame, fargs[2], fargs[3])
     elseif fargs[1] === Base.rethrow
         if length(fargs) > 1
             exc = fargs[2]
@@ -468,17 +492,7 @@ function evaluate_methoddef(interp::Interpreter, frame::Frame, node::Expr)
     if f isa Symbol || f isa GlobalRef
         mod = f isa Symbol ? moduleof(frame) : f.mod
         name = f isa Symbol ? f : f.name
-        if isbindingresolved_deprecated
-            f = Core.eval(mod, Expr(:function, name))
-        else
-            # TODO: This logic isn't fully correct, but it's been used for a long
-            # time, so let's leave it for now.
-            if Base.isbindingresolved(mod, name) && @invokelatest isdefinedglobal(mod, name)  # `isdefinedglobal` accesses the binding, making it impossible to create a new one
-                f = @invokelatest getfield(mod, name)
-            else
-                f = Core.eval(mod, Expr(:function, name))  # create a new function
-            end
-        end
+        f = Core.eval(mod, Expr(:function, name))
     end
     length(node.args) == 1 && return f
     sig = lookup(interp, frame, node.args[2])::SimpleVector
@@ -673,13 +687,14 @@ function step_toplevel!(interp::Interpreter, frame::Frame, @nospecialize(node))
     try
         if isa(node, LineNumberNode) || isa(node, Nothing)
             # nothing to do; just advance
-        elseif isa(node, Core.ReturnNode)
+        elseif isa(node, Core.ReturnNode) && pc == nstatements(frame.framecode)
             return nothing
         elseif isa(node, Expr) && node.head === :module
             newmod, modbody = begin_module(mod, node)
             # Completed by `toplevel_child_returned!`, also when a debugger resumes the body.
             data.ssavalues[pc] = OpenModule(newmod)
-            newframe = toplevel_frame(newmod, modbody.args; world=frame.world)
+            newframe = toplevel_frame(newmod, modbody.args; world=frame.world,
+                                      caller_will_catch_err=will_catch_err(frame))
             link_caller_callee!(frame, newframe)
             ret = finish_latestworld!(interp, newframe)
             isa(ret, BreakpointRef) && return ret
@@ -687,7 +702,8 @@ function step_toplevel!(interp::Interpreter, frame::Frame, @nospecialize(node))
             toplevel_child_returned!(frame, ret)
             rhs = newmod
         elseif isa(node, Expr) && node.head === :toplevel
-            newframe = toplevel_frame(mod, node.args; world=frame.world)
+            newframe = toplevel_frame(mod, node.args; world=frame.world,
+                                      caller_will_catch_err=will_catch_err(frame))
             link_caller_callee!(frame, newframe)
             ret = finish_latestworld!(interp, newframe)
             isa(ret, BreakpointRef) && return ret
@@ -735,21 +751,32 @@ end
 # Lower an ordinary toplevel statement and interpret it as a child frame.
 function interpret_toplevel_stmt!(interp::Interpreter, frame::Frame, @nospecialize(stmt))
     mod = moduleof(frame)
-    lwr = isa(stmt, Expr) ? Meta.lower(mod, stmt) : stmt
+    lwr = if isexpr(stmt, :thunk, 1)
+        stmt  # already lowered; lowering again wraps it in another thunk
+    elseif isa(stmt, Expr)
+        # Macros run natively during lowering and must see interpreted dynamic scopes.
+        ret = maybe_eval_with_scope(Meta.lower, Any[mod, stmt], frame)
+        ret === nothing ? Meta.lower(mod, stmt) : ret.value
+    else
+        stmt
+    end
     if isexpr(lwr, :thunk, 1)
-        newframe = Frame(mod, (lwr.args[1])::CodeInfo; world=frame.world)
+        newframe = Frame(mod, (lwr.args[1])::CodeInfo;
+            world=Base.get_world_counter(), caller_will_catch_err=will_catch_err(frame))
         link_caller_callee!(frame, newframe)
         ret = finish_latestworld!(interp, newframe)
         isa(ret, BreakpointRef) && return ret
         rhs = get_return(newframe)
         return_from(newframe)
         return rhs
-    elseif isexpr(lwr, :error)
-        throw(ArgumentError("lowering returned an error, $lwr"))
+    elseif isexpr(lwr, (:error, :incomplete))
+        # Raise Julia's syntax error, without repeating macro expansion.
+        return Core.eval(mod, lwr)
     elseif isexpr(lwr, (:toplevel, :module))
         # Macro expansion surfaced a nested toplevel/module; interpret it in a driver frame of
         # its own, which evaluates a module expression to the module.
-        newframe = Frame(mod, lwr::Expr; world=frame.world)
+        newframe = Frame(mod, lwr::Expr;
+            world=frame.world, caller_will_catch_err=will_catch_err(frame))
         link_caller_callee!(frame, newframe)
         ret = finish_latestworld!(interp, newframe)
         isa(ret, BreakpointRef) && return ret
@@ -758,7 +785,7 @@ function interpret_toplevel_stmt!(interp::Interpreter, frame::Frame, @nospeciali
         return rhs
     else
         # not lowerable to a thunk (e.g. a bare `:global` declaration or a literal value)
-        return invoke_in_world(Base.get_world_counter(), Core.eval, mod, isa(lwr, Expr) ? lwr : stmt)
+        return invoke_in_world(Base.get_world_counter(), Core.eval, mod, lwr)
     end
 end
 
@@ -769,10 +796,14 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
     #     @show node
     # end
     @assert is_leaf(frame)
-    # Toplevel code always runs in the latest world: each statement must see the
-    # bindings, methods, and types defined by earlier statements in the same frame.
-    # Method frames, by contrast, execute in the fixed world captured at frame creation.
-    istoplevel && (frame.world = Base.get_world_counter())
+    # Like native evaluation, toplevel code starts in the latest world (see `Frame`) and sees
+    # the definitions of its earlier statements: before Julia 1.12 by running each statement
+    # in the latest world, and since then by advancing the world at `:latestworld`
+    # statements (handled below). Method frames, by contrast, execute in the fixed world
+    # captured at frame creation.
+    @static if VERSION < v"1.12-"
+        istoplevel && (frame.world = Base.get_world_counter())
+    end
     if frame.framecode.is_toplevel_surface
         return step_toplevel!(interp, frame, node)
     end
@@ -839,7 +870,8 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
                     rhs = @invokelatest evaluate_methoddef(interp, frame, node)
                 elseif node.head === :module
                     # A driver frame of its own evaluates the module and completes it.
-                    newframe = toplevel_frame(moduleof(frame), Any[node]; world=frame.world)
+                    newframe = toplevel_frame(moduleof(frame), Any[node];
+                        world=frame.world, caller_will_catch_err=will_catch_err(frame))
                     link_caller_callee!(frame, newframe)
                     ret = finish_latestworld!(interp, newframe)
                     isa(ret, BreakpointRef) && return ret
@@ -855,13 +887,18 @@ function step_expr!(interp::Interpreter, frame::Frame, @nospecialize(node), isto
                         Core.eval(moduleof(frame), Expr(:block, Expr(node.head, g), nothing))
                     end
                 elseif node.head === :thunk
-                    newframe = Frame(moduleof(frame), node.args[1]::CodeInfo; world=frame.world)
-                    finish!(interp, newframe, true)
+                    newframe = Frame(moduleof(frame), node.args[1]::CodeInfo;
+                        world=Base.get_world_counter(), caller_will_catch_err=will_catch_err(frame))
+                    link_caller_callee!(frame, newframe)
+                    ret = finish_latestworld!(interp, newframe)
+                    isa(ret, BreakpointRef) && return ret
+                    rhs = get_return(interp, newframe)
                     return_from(newframe)
                 elseif node.head === :global
                     Core.eval(moduleof(frame), node)
                 elseif node.head === :toplevel
-                    newframe = toplevel_frame(moduleof(frame), node.args; world=frame.world)
+                    newframe = toplevel_frame(moduleof(frame), node.args;
+                        world=frame.world, caller_will_catch_err=will_catch_err(frame))
                     link_caller_callee!(frame, newframe)
                     ret = finish_latestworld!(interp, newframe)
                     isa(ret, BreakpointRef) && return ret
@@ -950,8 +987,23 @@ The default value `interp = RecursiveInterpreter()` will use recursive interpret
 
 If you are evaluating `frame` at module scope you should pass `istoplevel=true`.
 """
-step_expr!(interp::Interpreter, frame::Frame, istoplevel::Bool=false) =
-    step_expr!(interp, frame, pc_expr(frame), istoplevel)
+function step_expr!(interp::Interpreter, frame::Frame, istoplevel::Bool=false)
+    if frame.caller !== nothing && is_toplevel_frame(frame)
+        # A top-level frame called from another frame, e.g. by `Core.eval` from a method,
+        # runs in its own world, also when a debugger resumes it with a method at the root
+        # and `rootistoplevel=false`. A driver frame uses the latest world for each statement.
+        world = frame.framecode.is_toplevel_surface || VERSION < v"1.12-" ?
+            Base.get_world_counter() : frame.world
+        # Optimization: the task usually runs in that world already (e.g. within
+        # `finish_latestworld!`), and the dynamic call of `invoke_in_world` would make
+        # every statement of nested top-level frames markedly slower.
+        if tls_world_age() != world
+            return invoke_in_world(world, step_expr!, interp, frame, pc_expr(frame), true)
+        end
+        istoplevel = true
+    end
+    return step_expr!(interp, frame, pc_expr(frame), istoplevel)
+end
 step_expr!(frame::Frame, istoplevel::Bool=false) = step_expr!(RecursiveInterpreter(), frame, istoplevel)
 
 """
@@ -1022,7 +1074,18 @@ function enter_exception_handler!(data::FrameData, @nospecialize(err))
     return pc
 end
 
-lookup_return(interp::Interpreter, frame::Frame, node::ReturnNode) = lookup(interp, frame, node.val)
+function lookup_return(interp::Interpreter, frame::Frame, node::ReturnNode)
+    val = node.val
+    # Older lowering puts creation of the generic function directly in a thunk's return.
+    isexpr(val, :method) && return evaluate_methoddef(interp, frame, val)
+    # A driver frame returns the value of its last statement, which an `Interpreter` that
+    # handles statements itself (overloading `step_expr!`) may not have recorded.
+    if frame.framecode.is_toplevel_surface && isa(val, SSAValue) &&
+            !isassigned(frame.framedata.ssavalues, val.id)
+        return nothing
+    end
+    return lookup(interp, frame, val)
+end
 
 """
     ret = get_return(interp, frame)
