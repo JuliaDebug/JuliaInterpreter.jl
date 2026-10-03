@@ -65,6 +65,7 @@ end
 function link_caller_callee!(caller::Frame, callee::Frame)
     caller.callee = callee
     callee.caller = caller
+    copy!(callee.framedata.current_scopes, caller.framedata.current_scopes)
     return callee
 end
 
@@ -631,7 +632,7 @@ function prepare_frame(framecode::FrameCode, args::Vector{Any}, lenv::SimpleVect
 end
 
 function prepare_frame_caller(caller::Frame, framecode::FrameCode, args::Vector{Any}, lenv::SimpleVector)
-    caller_will_catch_err = !isempty(caller.framedata.exception_frames) || caller.framedata.caller_will_catch_err
+    caller_will_catch_err = will_catch_err(caller)
     caller.callee = frame = prepare_frame(framecode, args, lenv, caller_will_catch_err; world=caller.world)
     copy!(frame.framedata.current_scopes, caller.framedata.current_scopes)
     frame.caller = caller

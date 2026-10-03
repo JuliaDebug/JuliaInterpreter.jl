@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `RecursiveInterpreter` interprets the code passed to `Core.eval`, also through
+  `Base.eval`, `@eval`, and `include`, in top-level frames linked to the
+  calling frame, so breakpoints, stepping, and exception handling extend into
+  it. To evaluate it natively, use `NonRecursiveInterpreter` or add the method
+  of `Core.eval` to `JuliaInterpreter.compiled_methods`.
+
 ### Changed
 - `Frame(mod, ex)` now evaluates `:module` expressions as native evaluation
   does: each evaluation creates a fresh module instead of re-entering an
@@ -28,11 +35,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-entering existing modules and does not run `__init__`. On Julia 1.10–1.12,
   `__init__` may run out of order or twice when the parent module is itself
   being evaluated natively, e.g. from a package's top-level code.
+- On Julia 1.12 and later, top-level frames advance their world only at
+  `:latestworld` statements, as native evaluation does, rather than before
+  every statement, and `Frame(mod, ex)` and `Frame(mod, src::CodeInfo)` start in
+  the latest world by default. Code that evaluates top-level frames selectively
+  must still advance the world at the `:latestworld` statements it skips.
+- A top-level statement driven by `Frame(mod, ex)` that fails to lower throws
+  the error of native evaluation (e.g. `syntax: invalid assignment location`)
+  instead of an `ArgumentError`.
 - `:s` on a top-level statement driven by `Frame(mod, ex)` enters the lowered
   frame of the statement like a callee and stops at its first call, instead of
   entering the callee of the surface call expression, which failed when the
   call's arguments contained calls and skipped the rest of the statement, such
   as the assignment of `x = f(1)`.
+
+### Fixed
+- The frame of a nested `:thunk` in top-level code, as lowered for closures, is
+  linked to its caller, so breakpoints, errors, and its value propagate.
 
 ## [0.11.6]
 

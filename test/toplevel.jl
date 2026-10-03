@@ -502,6 +502,16 @@ module ApplyIterateDirect end
     @test invokelatest(() -> M.fn4(:w, 1, 2, 3, 4)) == (:w, (1, 2, 3, 4))
 end
 
+@testset "Top-level frames start in the latest world" begin
+    m = Module(:LatestStart)
+    world = Base.get_world_counter()
+    Core.eval(m, :(defined_later() = :visible))
+    # Even when constructed by code running in an older world, like native evaluation.
+    frame = Base.invoke_in_world(world, Frame, m, :(defined_later()))
+    @test frame.world > world
+    @test JuliaInterpreter.finish_and_return!(frame, true) === :visible
+end
+
 @testset "Docstrings" begin
     ex = quote
         """
@@ -859,8 +869,8 @@ module DirectSurface end
     @test_throws "boom" JuliaInterpreter.finish_and_return!(
         Frame(DirectSurface, Expr(:toplevel, :(error("boom")))), true)
 
-    # A statement that lowering rejects surfaces as an `ArgumentError`.
-    @test_throws "lowering returned an error" JuliaInterpreter.finish_and_return!(
+    # Lowering failures preserve the syntax error raised by native eval.
+    @test_throws "syntax: invalid assignment location" JuliaInterpreter.finish_and_return!(
         Frame(DirectSurface, Expr(:toplevel, :(1 = 2))), true)
 
     # A bare literal statement is evaluated and returned.
