@@ -6,7 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- links start -->
-[Unreleased]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.11.6...HEAD
+[Unreleased]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.11.6...v0.12.0
 [0.11.6]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.11.5...v0.11.6
 [0.11.5]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.11.4...v0.11.5
 [0.11.4]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.11.3...v0.11.4
@@ -18,40 +19,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0]
+
 ### Added
 - `RecursiveInterpreter` interprets the code passed to `Core.eval`, also through
   `Base.eval`, `@eval`, and `include`, in top-level frames linked to the
   calling frame, so breakpoints, stepping, and exception handling extend into
   it. To evaluate it natively, use `NonRecursiveInterpreter` or add the method
-  of `Core.eval` to `JuliaInterpreter.compiled_methods`.
+  of `Core.eval` to `JuliaInterpreter.compiled_methods`
+  (JuliaDebug/JuliaInterpreter.jl#783).
 
 ### Changed
-- `Frame(mod, ex)` now evaluates `:module` expressions as native evaluation
-  does: each evaluation creates a fresh module instead of re-entering an
-  existing one of the same name, `__init__` runs (natively) after the body,
+- **Breaking**: `Frame(mod, ex)` now evaluates `:module` expressions as native
+  evaluation does: each evaluation creates a fresh module instead of re-entering
+  an existing one of the same name, `__init__` runs (natively) after the body,
   and the statement evaluates to the module, also when the module expression
   comes from a macro. `Frame(mod, :(module X end))` no longer creates `X` when
   the frame is constructed, and returns a frame in `mod`. `ExprSplitter` keeps
   re-entering existing modules and does not run `__init__`. On Julia 1.10–1.12,
   `__init__` may run out of order or twice when the parent module is itself
-  being evaluated natively, e.g. from a package's top-level code.
-- On Julia 1.12 and later, top-level frames advance their world only at
-  `:latestworld` statements, as native evaluation does, rather than before
-  every statement, and `Frame(mod, ex)` and `Frame(mod, src::CodeInfo)` start in
-  the latest world by default. Code that evaluates top-level frames selectively
-  must still advance the world at the `:latestworld` statements it skips.
+  being evaluated natively, e.g. from a package's top-level code
+  (JuliaDebug/JuliaInterpreter.jl#782).
+- **Breaking**: On Julia 1.12 and later, top-level frames advance their world
+  only at `:latestworld` statements, as native evaluation does, rather than
+  before every statement, and `Frame(mod, ex)` and `Frame(mod, src::CodeInfo)`
+  start in the latest world by default. Code that evaluates top-level frames
+  selectively must still advance the world at the `:latestworld` statements it
+  skips (JuliaDebug/JuliaInterpreter.jl#783).
 - A top-level statement driven by `Frame(mod, ex)` that fails to lower throws
   the error of native evaluation (e.g. `syntax: invalid assignment location`)
-  instead of an `ArgumentError`.
+  instead of an `ArgumentError` (JuliaDebug/JuliaInterpreter.jl#783).
 - `:s` on a top-level statement driven by `Frame(mod, ex)` enters the lowered
   frame of the statement like a callee and stops at its first call, instead of
   entering the callee of the surface call expression, which failed when the
   call's arguments contained calls and skipped the rest of the statement, such
-  as the assignment of `x = f(1)`.
+  as the assignment of `x = f(1)` (JuliaDebug/JuliaInterpreter.jl#784).
 
 ### Fixed
 - The frame of a nested `:thunk` in top-level code, as lowered for closures, is
-  linked to its caller, so breakpoints, errors, and its value propagate.
+  linked to its caller, so breakpoints, errors, and its value propagate
+  (JuliaDebug/JuliaInterpreter.jl#783).
 
 ## [0.11.6]
 
