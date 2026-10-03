@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-entering existing modules and does not run `__init__`. On Julia 1.10–1.12,
   `__init__` may run out of order or twice when the parent module is itself
   being evaluated natively, e.g. from a package's top-level code.
+- `:s` on a top-level statement driven by `Frame(mod, ex)` enters the lowered
+  frame of the statement like a callee and stops at its first call, instead of
+  entering the callee of the surface call expression, which failed when the
+  call's arguments contained calls and skipped the rest of the statement, such
+  as the assignment of `x = f(1)`.
 
 ## [0.11.6]
 

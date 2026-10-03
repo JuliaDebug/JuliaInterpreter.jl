@@ -896,6 +896,36 @@ module DirectSurface end
     @test JuliaInterpreter.whereis(fr, 2) == ("somefile", 7)
 end
 
+@testset "Stepping into a surface statement: $ex" for (name, ex) in (
+        (:y, :(y = g(h(1)))), (:z, :(global z::Int = g(h(1)))))
+    # `:s` enters the lowered frame of the statement like a callee, before any of the
+    # statement's side effects, and stops at its first call, past the global declarations
+    # (builtin calls on some versions). The surface expression itself cannot be stepped,
+    # since its arguments may contain calls.
+    m = Module(:SurfaceStep)
+    Core.eval(m, :(h(x) = x + 1))
+    Core.eval(m, :(g(x) = 2x))
+    frame = Frame(m, Expr(:toplevel, ex))
+    ret = JuliaInterpreter.debug_command(frame, :s, true)
+    @test ret isa Tuple{Frame, BreakpointRef}
+    current = ret[1]
+    @test JuliaInterpreter.scopeof(current) === m && current.caller === frame
+    stmt = JuliaInterpreter.pc_expr(current)
+    @test JuliaInterpreter.is_call(stmt) &&
+        JuliaInterpreter.lookup(current, stmt.args[1]) === invokelatest(getglobal, m, :h)
+    @test !invokelatest(isdefinedglobal, m, name)
+    # `:si` stops at the exact entry.
+    ret = JuliaInterpreter.debug_command(Frame(m, Expr(:toplevel, ex)), :si, true)
+    @test ret isa Tuple{Frame, BreakpointRef} && ret[1].pc == 1
+    for _ in 1:100
+        ret = JuliaInterpreter.debug_command(current, :s, true)
+        ret === nothing && break
+        current = ret[1]
+    end
+    @test ret === nothing
+    @test invokelatest(getglobal, m, name) == 4
+end
+
 # `Frame` evaluates `:module` expressions like native evaluation does: each evaluation
 # creates a fresh module, runs `__init__` after the body, and evaluates to the module.
 # Native `Core.eval` is the reference for the observable behavior.
