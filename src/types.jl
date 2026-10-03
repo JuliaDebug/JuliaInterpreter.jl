@@ -436,6 +436,12 @@ Construct a `Frame` to evaluate `ex` in module `mod`.
 `ex` may be an ordinary expression (lowered to a `:thunk`) or a `:toplevel`/`:module`
 expression, in which case the resulting frame interprets the surface statements directly.
 
+A `:module` expression is evaluated like native evaluation does: the frame creates a fresh
+module when it reaches the expression (replacing any existing module of the same name),
+interprets the body in it, runs its `__init__` (natively), and evaluates to the module.
+This differs from [`ExprSplitter`](@ref), which re-enters existing modules and never runs
+`__init__`.
+
 This constructor can error, for example if lowering `ex` results in an `:error` or `:incomplete`
 expression, or if it otherwise fails to return a `:thunk`.
 """
@@ -443,8 +449,8 @@ function Frame(mod::Module, ex::Expr; world::UInt=default_world())
     if isexpr(ex, :toplevel)
         return toplevel_frame(mod, ex.args; world)
     elseif isexpr(ex, :module)
-        newmod, modbody = find_or_create_module(mod, ex)
-        return toplevel_frame(newmod, modbody.args; world)
+        # The module is created when the frame evaluates the expression, not here.
+        return toplevel_frame(mod, Any[ex]; world)
     end
     lwr = Meta.lower(mod, ex)
     isexpr(lwr, :thunk, 1) && return Frame(mod, (lwr.args[1])::CodeInfo; world)

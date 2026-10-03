@@ -18,6 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `Frame(mod, ex)` now evaluates `:module` expressions as native evaluation
+  does: each evaluation creates a fresh module instead of re-entering an
+  existing one of the same name, `__init__` runs (natively) after the body,
+  and the statement evaluates to the module, also when the module expression
+  comes from a macro. `Frame(mod, :(module X end))` no longer creates `X` when
+  the frame is constructed, and returns a frame in `mod`. `ExprSplitter` keeps
+  re-entering existing modules and does not run `__init__`. On Julia 1.10–1.12,
+  `__init__` may run out of order or twice when the parent module is itself
+  being evaluated natively, e.g. from a package's top-level code.
+
 ## [0.11.6]
 
 ### Changed

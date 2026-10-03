@@ -81,7 +81,13 @@ function finish_stack!(interp::Interpreter, frame::Frame, rootistoplevel::Bool=f
             # Driver frames record each statement's value (see `step_toplevel!`). The statement's
             # side effects, including any global assignment, were performed by the child frame,
             # so a surface `:(=)` must not be re-executed here.
-            frame.framedata.ssavalues[pc] = ret
+            try
+                # completing a `:module` statement runs `__init__`, which may throw
+                toplevel_child_returned!(frame, ret)
+            catch err
+                frame = unwind_exception(frame, err)
+                continue
+            end
         elseif isassign(frame, pc)
             lhs = SSAValue(pc)
             do_assignment!(frame, lhs, ret)
@@ -637,6 +643,7 @@ function debug_command(interp::Interpreter, frame::Frame, cmd::Symbol, rootistop
         return frame, frame.pc
     end
 
+    rootframe = root(frame)
     istoplevel = rootistoplevel && is_toplevel_frame(frame)
     cmd0 = cmd
     is_si = false
@@ -725,7 +732,9 @@ function debug_command(interp::Interpreter, frame::Frame, cmd::Symbol, rootistop
         end
         cmd === :finish && return maybe_reset_frame!(interp, frame, finish!(interp, frame, istoplevel), rootistoplevel)
     catch err
-        frame = unwind_exception(frame, err)
+        # Returning may recycle `frame` before module initialization re-enters the interpreter.
+        # Recover from the live stack, not from the possibly reused entry frame.
+        frame = unwind_exception(leaf(rootframe), err)
         if cmd === :c
             return debug_command(interp, frame, :c, rootistoplevel)
         else
