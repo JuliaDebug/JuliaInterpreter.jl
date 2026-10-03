@@ -1310,6 +1310,26 @@ end
     @test (@interpret iscallexpr(:(sin(3.14))))
 end
 
+llvmcall_unoptimized(x::Int32, y::Int32) = Base.llvmcall("""%3 = add i32 %0, %1
+    ret i32 %3""", Int32, Tuple{Int32,Int32}, x, y)
+ccall_unoptimized(s::String) = ccall(:strlen, Csize_t, (Cstring,), s)
+@testset "unoptimized method frames" begin
+    function unoptimized_frame(f, args...)
+        m = which(f, Base.typesof(args...))
+        framecode = JuliaInterpreter.FrameCode(m, JuliaInterpreter.get_source(m); optimize=false)
+        return JuliaInterpreter.prepare_frame(framecode, Any[f, args...], Core.svec())
+    end
+    # an `llvmcall` cannot be interpreted, so it is compiled even without optimizations
+    frame = unoptimized_frame(llvmcall_unoptimized, Int32(1), Int32(2))
+    @test JuliaInterpreter.finish_and_return!(frame) === Int32(3)
+    # otherwise the statements stay as lowered: neither `const` globals nor `ccall`s are compiled
+    frame = unoptimized_frame(ccall_unoptimized, "foo")
+    code = frame.framecode.src.code
+    @test any(stmt -> isexpr(stmt, :call) && stmt.args[1] isa GlobalRef, code)
+    @test any(stmt -> isexpr(stmt, :foreigncall), code)
+    @test JuliaInterpreter.finish_and_return!(frame) === Csize_t(3)
+end
+
 f_fma() = Base.have_fma(Float64)
 @testset "fma" begin
     @test (@interpret f_fma()) == f_fma()

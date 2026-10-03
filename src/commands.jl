@@ -491,7 +491,7 @@ maybe_step_through_kwprep!(frame::Frame, istoplevel::Bool=false) =
     maybe_step_through_kwprep!(RecursiveInterpreter(), frame, istoplevel)
 
 # The `NamedTuple` callee is a `QuoteNode` when `optimize!` folded the const (method scope),
-# or a `GlobalRef` when it didn't (toplevel scope on 1.12+); accept both forms.
+# or a `GlobalRef` when it didn't (toplevel scope on 1.12+, or `optimize=false`); accept both forms.
 function is_empty_namedtuple(stmt)
     isexpr(stmt, :call) && length(stmt.args) == 1 || return false
     arg1 = stmt.args[1]
