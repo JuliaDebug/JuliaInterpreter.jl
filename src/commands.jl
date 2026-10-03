@@ -46,6 +46,7 @@ struct BreakOnCall <: Interpreter end
 function finish_and_return!(::BreakOnCall, frame::Frame, ::Bool=false)
     return BreakpointRef(frame.framecode, 0)
 end
+finish_latestworld!(::BreakOnCall, frame::Frame) = BreakpointRef(frame.framecode, 0)
 
 """
     ret = finish_stack!(interp::Interpreter, frame::Frame, rootistoplevel::Bool=false)
@@ -409,6 +410,30 @@ function advance_to_kwcall!(interp::Interpreter, frame::Frame, pccall::Int, isto
     return frame
 end
 
+# When stepping into a frame, advance from its entry to the first call or return, past
+# statements that would show the user internal-looking code that is not even the next call:
+# - On Julia 1.12 a method body may start with bare global loads (e.g. the `+` of
+#   `f(x) = g(x) + 1`). `optimize!` folds `const` globals to `QuoteNode`s, so the leading
+#   load is either a `GlobalRef` or a `QuoteNode`. Keyword/closure bodies (gensym `#` names)
+#   keep their exact entry point.
+# - The lowered code of a top-level statement typically begins with global declarations,
+#   `:latestworld`, and global loads. A declaration may itself be a builtin call (see
+#   `is_global_declaration_call`), which is not the next call either. (The statements of a
+#   driver frame are not stepped through, since each would run a whole surface statement.)
+function maybe_step_through_prelude!(interp::Interpreter, frame::Frame, istoplevel::Bool)
+    frame.framecode.is_toplevel_surface && return frame.pc
+    scope = scopeof(frame)
+    if scope isa Method
+        entrystmt = pc_expr(frame)
+        (entrystmt isa GlobalRef || entrystmt isa QuoteNode) || return frame.pc
+        startswith(string(scope.name), "#") && return frame.pc
+    end
+    return maybe_next_until!(interp, frame, istoplevel) do fr::Frame
+        stmt = pc_expr(fr)
+        shouldbreak(fr, fr.pc) || (is_call_or_return(stmt) && !is_global_declaration_call(stmt))
+    end
+end
+
 """
     frame = maybe_step_through_kwprep!(interp::Interpreter, frame::Frame)
     frame = maybe_step_through_kwprep!(frame::Frame)
@@ -649,7 +674,7 @@ function debug_command(interp::Interpreter, frame::Frame, cmd::Symbol, rootistop
     is_si = false
     if cmd === :si
         stmt = pc_expr(frame)
-        cmd = is_call(stmt) ? :s : :se
+        cmd = frame.framecode.is_toplevel_surface || is_call(stmt) ? :s : :se
         is_si = true
     end
     try
@@ -677,6 +702,20 @@ function debug_command(interp::Interpreter, frame::Frame, cmd::Symbol, rootistop
             cmd = :s
         end
         if cmd === :s
+            if frame.framecode.is_toplevel_surface
+                # The lowered frame of a surface statement is its callee: enter it like a
+                # call. (The surface expression itself cannot be stepped, since its
+                # arguments may contain calls.)
+                pc = step_expr!(BreakOnCall(), frame, true)
+                isa(pc, BreakpointRef) || return maybe_reset_frame!(interp, frame, pc, rootistoplevel)
+                newframe = leaf(frame)
+                if !is_si && newframe !== frame && pc.stmtidx == 0
+                    pc = maybe_step_through_prelude!(interp, newframe, istoplevel)
+                    isa(pc, BreakpointRef) && return leaf(newframe), pc
+                    return newframe, BreakpointRef(newframe.framecode, 0)
+                end
+                return newframe, pc
+            end
             # Keyword calls begin with NamedTuple construction, which is not a
             # useful step target. Skip it before searching for the next call.
             is_si || maybe_step_through_kwprep!(interp, frame, istoplevel)
@@ -701,21 +740,8 @@ function debug_command(interp::Interpreter, frame::Frame, cmd::Symbol, rootistop
                 cmd0 === :si && return newframe, ret
                 is_si || (newframe = maybe_step_through_wrapper!(interp, newframe))
                 is_si || maybe_step_through_kwprep!(interp, newframe, istoplevel)
-                # On Julia 1.12 a method body may start with bare global loads
-                # (e.g. the `+` of `f(x) = g(x) + 1`); pausing there shows the
-                # user an internal-looking statement that is not even the next
-                # call. `optimize!` folds `const` globals to `QuoteNode`s, so the
-                # leading load is either a `GlobalRef` or a `QuoteNode`. Advance
-                # to the first call or return, like frame entry does.
-                # Keyword/closure bodies (gensym `#` names) keep their exact entry point.
-                scope = scopeof(newframe)
-                entrystmt = pc_expr(newframe)
-                normalize_entry = (entrystmt isa GlobalRef || entrystmt isa QuoteNode) &&
-                    !(scope isa Method && startswith(string(scope.name), "#"))
-                if !is_si && normalize_entry
-                    pc = maybe_next_until!(interp, newframe, istoplevel) do fr::Frame
-                        shouldbreak(fr, fr.pc) || is_call_or_return(pc_expr(fr))
-                    end
+                if !is_si
+                    pc = maybe_step_through_prelude!(interp, newframe, istoplevel)
                     isa(pc, BreakpointRef) && return leaf(newframe), pc
                 end
                 return newframe, BreakpointRef(newframe.framecode, 0)

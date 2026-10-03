@@ -177,6 +177,22 @@ function is_define_method_call(@nospecialize(stmt))
            is_quotenode_egal(f, Core.define_method)
 end
 
+# Lowering declares a global with a builtin call on some versions: `Core.declare_global` on
+# Julia 1.13+, and `Core.set_binding_type!` for a typed global on Julia 1.10–1.11.
+function is_global_declaration_call(@nospecialize(stmt))
+    isexpr(stmt, :call) || return false
+    f = stmt.args[1]
+    @static if isdefinedglobal(Core, :declare_global)
+        return f === Core.declare_global || is_global_ref(f, Core, :declare_global) ||
+               is_quotenode_egal(f, Core.declare_global)
+    elseif isdefinedglobal(Core, :set_binding_type!)
+        return f === Core.set_binding_type! || is_global_ref(f, Core, :set_binding_type!) ||
+               is_quotenode_egal(f, Core.set_binding_type!)
+    else
+        return false
+    end
+end
+
 is_methoddef1(@nospecialize(stmt)) = isexpr(stmt, :method, 1) ||
                                       (is_define_method_call(stmt) && length(stmt.args) == 3)
 is_methoddef3(@nospecialize(stmt)) = isexpr(stmt, :method, 3) ||
