@@ -118,10 +118,11 @@ function do_coverage(m::Module)
     return false
 end
 
-# Element type of `FrameCode.world_deps`: the binding partitions of globals whose *values*
-# `optimize!` resolved at framecode-build time (e.g. a library name baked into a compiled `ccall`
-# wrapper; see `record_world_dep!`). `Core.BindingPartition` only exists on Julia 1.12+; pre-1.12
-# a binding cannot be replaced in a way the world age tracks, so `world_deps` is always empty there.
+# Element type of `FrameCode.world_deps`: the binding partitions of globals whose *values* were
+# resolved at framecode-build time (e.g. a folded `const` global or a library name baked into a
+# compiled `ccall` wrapper; see `record_world_dep!`). `Core.BindingPartition` only exists on
+# Julia 1.12+; pre-1.12 a binding cannot be replaced in a way the world age tracks, so
+# `world_deps` is always empty there.
 @static if isbindingresolved_deprecated
     const BindingPartition = Core.BindingPartition
 else
@@ -153,10 +154,11 @@ struct FrameCode
     # true if `src.code` holds *unlowered* surface statements of a `:toplevel`/`:module`
     # expression that must be interpreted statement-by-statement (see `step_toplevel!`)
     is_toplevel_surface::Bool
-    # `Core.BindingPartition`s for globals whose values `optimize!` baked into this framecode's
-    # compiled `ccall`/`llvmcall` wrappers (empty unless any were baked). Each is an in-place
-    # invalidation token: redefining the binding drops its `max_world`, so `framecode_valid_world`
-    # can reject this cached `FrameCode` for worlds in which a baked value would be stale.
+    # `Core.BindingPartition`s for globals whose values were baked into this framecode, as folded
+    # `const` globals or into compiled `ccall`/`llvmcall` wrappers (empty unless any were baked).
+    # Each is an in-place invalidation token: redefining the binding drops its `max_world`, so
+    # `framecode_valid_world` can reject this cached `FrameCode` for worlds in which a baked value
+    # would be stale.
     # Only populated on Julia 1.12+ (see `record_world_dep!`).
     world_deps::Vector{BindingPartition}
 end
@@ -223,13 +225,11 @@ default_world() = tls_world_age()
 
 function FrameCode(scope, src::CodeInfo; generator=false, optimize=true, world::UInt=default_world(),
                    is_toplevel_surface::Bool=false)
-    if optimize
-        src, methodtables, world_deps = optimize!(copy(src), scope, world)
-    else
-        src = replace_coretypes!(copy(src))
-        methodtables = Vector{Union{Compiled,DispatchableMethod}}(undef, length(src.code))
-        world_deps = BindingPartition[]
-    end
+    src = replace_coretypes!(copy(src))
+    methodtables = Vector{Union{Compiled,DispatchableMethod}}(undef, length(src.code))
+    world_deps = BindingPartition[]
+    compile_llvmcalls!(src, methodtables, world_deps, scope, world)
+    optimize && optimize!(src, methodtables, world_deps, scope, world)
     breakpoints = Vector{BreakpointState}(undef, length(src.code))
     for (i, pc_expr) in enumerate(src.code)
         if is_breakpoint_marker(lookup_stmt(src.code, pc_expr, world))
@@ -389,6 +389,10 @@ dispatch; it defaults to the calling task's current world, matching the semantic
 ordinary (non-`invokelatest`) call. Pass `world=Base.get_world_counter()` to instead resolve
 methods and bindings in the latest committed world. Additional keyword arguments
 (`generator`, `optimize`) are forwarded to [`FrameCode`](@ref).
+
+Pass `optimize=false` to skip [`JuliaInterpreter.optimize!`](@ref): the statements of `src`
+then stay as lowered, except for the transformations required to interpret them (`llvmcall`s
+are always compiled). Statement indices are preserved either way.
 """
 function Frame(mod::Module, src::CodeInfo; world::UInt=default_world(), kwargs...)
     framecode = FrameCode(mod, src; world, kwargs...)

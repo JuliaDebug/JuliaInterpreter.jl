@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A `throw(nothing)` inside a `catch` block is no longer mistaken for a
   `rethrow()` (JuliaDebug/JuliaInterpreter.jl#774).
 - Updated the builtins for Julia 1.14 (JuliaDebug/JuliaInterpreter.jl#778).
+- Frames built with `optimize=false` can run methods that contain an `llvmcall`.
+  `optimize=false` now skips only the optimizations (folding `const` globals and
+  compiling `ccall`s and `@cfunction`s into wrappers), not the compilation of
+  `llvmcall`s, which cannot be interpreted.
 
 ## [0.11.5]
 

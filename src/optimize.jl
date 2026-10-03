@@ -162,35 +162,68 @@ function lookup_getproperties(code::Vector{Any}, @nospecialize(a), world::UInt,
     return lookup_global_ref(GlobalRef(arg2, arg3), world, world_deps)
 end
 
-# HACK This isn't optimization really, but necessary to bypass llvmcall and foreigncall
-# TODO This "optimization" should be refactored into a "minimum compilation" necessary to
-# execute `llvmcall` and `foreigncall` and pure optimizations on the lowered code representation.
-# On Julia 1.12+ a redefinable `const` makes a folded value world-dependent, so every value
-# resolved at build time — folded `const` globals as well as library names and llvmcall
-# ingredients baked into the compiled wrappers below — records its binding in `world_deps`,
-# and `framecode_valid_world` rejects the cached framecode once any of them is redefined.
+# `FrameCode` transforms the lowered code in two steps: `compile_llvmcalls!` is required to
+# interpret the code at all, whereas `optimize!` only speeds up its interpretation and is skipped
+# for `optimize=false`. Both rewrite statements in place, so statement indices are preserved.
+# On Julia 1.12+ a redefinable `const` makes a value resolved at build time world-dependent, so
+# every such value — folded `const` globals as well as library names and llvmcall ingredients
+# baked into compiled wrappers — records its binding in `world_deps`, and `framecode_valid_world`
+# rejects the cached framecode once any of them is redefined.
+
+# Replace each `llvmcall` in `code` with a call to a compiled wrapper method, marked `Compiled()`
+# in `methodtables`. An `llvmcall` cannot be called dynamically ("`llvmcall` requires the
+# compiler"), so unlike `optimize!` this is required to interpret `code` at all, and `FrameCode`
+# applies it regardless of its `optimize` keyword.
+#
+# Only methods without static parameters are handled: `prepare_framecode` executes a method with
+# static parameters that contains an `llvmcall` natively instead, and a top-level `llvmcall` is not
+# supported. The binding partitions of globals whose values get baked into a wrapper are recorded
+# in `world_deps` (see `record_world_dep!`).
+function compile_llvmcalls!(code::CodeInfo, methodtables::Vector{Union{Compiled,DispatchableMethod}},
+                            world_deps::Vector{BindingPartition}, scope, world::UInt)
+    # `build_compiled_llvmcall!` evaluates the ingredients of an `llvmcall` with a mini-interpreter
+    # that runs in module scope, so it cannot resolve static parameters
+    (scope isa Method && isempty(sparam_syms(scope))) || return nothing
+    evalmod = moduleof(scope) == Core.Compiler ? Core.Compiler : CompiledCalls
+    for idx = 1:length(code.code)
+        stmt = code.code[idx]
+        if isexpr(stmt, :(=))
+            stmt = stmt.args[2]
+        end
+        isexpr(stmt, :call) || continue
+        arg1 = stmt.args[1]
+        larg1 = lookup_stmt(code.code, arg1, world)
+        if arg1 === :llvmcall || larg1 === Base.llvmcall || is_global_ref_egal(larg1, :llvmcall, Core.Intrinsics.llvmcall, world)
+            # Call via `invokelatest` to avoid compiling it until we need it
+            @invokelatest build_compiled_llvmcall!(stmt, code, idx, evalmod, world, world_deps)
+            methodtables[idx] = Compiled()
+        end
+    end
+    return nothing
+end
 
 """
-    optimize!(code::CodeInfo, scope, world::UInt) -> code, methodtables, world_deps
+    optimize!(code::CodeInfo, methodtables, world_deps, scope, world::UInt)
 
-Perform minor optimizations on the lowered AST in `code` to reduce execution time
-of the interpreter.
-Currently it looks up `GlobalRef`s (for which it needs `scope` to know the module in
-which this will run) and ensures that no statement includes nested `:call` expressions
-(splitting them out into multiple SSA-form statements if needed).
-`world_deps` collects the binding partitions of globals whose values were baked into
-the code (see `record_world_dep!`); it becomes `FrameCode.world_deps`.
+Perform optimizations on the lowered code `code` that reduce the execution time of the
+interpreter. None of them is needed to interpret `code` (see `compile_llvmcalls!` for
+the transformation that is), and `FrameCode` skips them when passed `optimize=false`:
+
+- `const` globals, including ones accessed as `getproperty(mod, :name)`, are replaced by
+  `QuoteNode`s of their values. On Julia 1.12+ this is done for method scope only.
+- `ccall`s and `@cfunction`s are replaced with calls to compiled wrapper methods, marked
+  `Compiled()` in `methodtables`. A statement left as is gets evaluated by
+  `evaluate_foreigncall` with `Core.eval`, which compiles it anew each time it runs.
+
+`scope` is the `Method` or `Module` in which `code` runs. The binding partitions of globals whose
+values get baked into `code` are recorded in `world_deps` (see `record_world_dep!`).
 """
-function optimize!(code::CodeInfo, scope, world::UInt)
+function optimize!(code::CodeInfo, methodtables::Vector{Union{Compiled,DispatchableMethod}},
+                   world_deps::Vector{BindingPartition}, scope, world::UInt)
     mod = moduleof(scope)
     evalmod = mod == Core.Compiler ? Core.Compiler : CompiledCalls
     sparams = scope isa Method ? sparam_syms(scope) : Symbol[]
-    replace_coretypes!(code)
 
-    # Binding partitions of globals whose values get baked into this framecode (folded `const`
-    # globals and compiled `ccall`/`llvmcall` wrappers); recorded so a cached `FrameCode` can be
-    # invalidated once any baked value goes stale (see `FrameCode.world_deps`).
-    world_deps = BindingPartition[]
     # On 1.12+, fold `const` globals only for method scope: the framecode cache is guarded by
     # `framecode_valid_world`, and a method frame's world is fixed at construction. Toplevel
     # frames advance `frame.world` mid-execution (see `step_toplevel!`), so a value folded in
@@ -214,10 +247,8 @@ function optimize!(code::CodeInfo, scope, world::UInt)
         end
     end
 
-    # Replace :llvmcall, :foreigncall and :cfunction with compiled variants. See
+    # Replace :foreigncall and :cfunction with compiled variants. See
     # https://github.com/JuliaDebug/JuliaInterpreter.jl/issues/13#issuecomment-464880123
-    # Insert the foreigncall wrappers at the updated idxs
-    methodtables = Vector{Union{Compiled,DispatchableMethod}}(undef, length(code.code))
     scopemod = scope isa Module ? scope : nothing
     for (idx, stmt) in enumerate(code.code)
         # Foregincalls can be rhs of assignments
@@ -225,16 +256,7 @@ function optimize!(code::CodeInfo, scope, world::UInt)
             stmt = (stmt::Expr).args[2]
         end
         if isa(stmt, Expr)
-            if stmt.head === :call
-                # Check for :llvmcall
-                arg1 = stmt.args[1]
-                larg1 = lookup_stmt(code.code, arg1, world)
-                if (arg1 === :llvmcall || larg1 === Base.llvmcall || is_global_ref_egal(larg1, :llvmcall, Core.Intrinsics.llvmcall, world)) && isempty(sparams) && scope isa Method
-                    # Call via `invokelatest` to avoid compiling it until we need it
-                    @invokelatest build_compiled_llvmcall!(stmt, code, idx, evalmod, world, world_deps)
-                    methodtables[idx] = Compiled()
-                end
-            elseif stmt.head === :foreigncall
+            if stmt.head === :foreigncall
                 # Call via `invokelatest` to avoid compiling it until we need it
                 if @invokelatest build_compiled_foreigncall!(stmt, code, sparams, evalmod, world, world_deps, scopemod)
                     methodtables[idx] = Compiled()
@@ -247,7 +269,7 @@ function optimize!(code::CodeInfo, scope, world::UInt)
         end
     end
 
-    return code, methodtables, world_deps
+    return nothing
 end
 
 # Convert the type `t` into an expression that reproduces it when evaluated in a scope where
