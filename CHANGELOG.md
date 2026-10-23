@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Updated the builtins for Julia 1.14.0-alpha1, where `Core.depwarn_partition`
+  was replaced by `Core.depwarn_binding` (JuliaLang/julia#63470).
+
 ## [0.12.0]
 
 ### Added
