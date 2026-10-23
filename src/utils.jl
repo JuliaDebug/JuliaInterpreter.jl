@@ -351,17 +351,22 @@ end
 
 @static if VERSION ≥ v"1.12.0-DEV.173"
 
+function sourceline(debuginfo::Core.DebugInfo, k::Int)
+    line::Int = Core.Compiler.getdebugidx(debuginfo, k)[1]
+    line > 0 && debuginfo.linetable isa String && return Int(Base.IRShow.source_location(debuginfo, k).line)
+    return line
+end
+
 getfirstline(arg) = getfirstline(linetable(arg))
 function getfirstline(debuginfo::Core.DebugInfo)
     while true
         ltnext = debuginfo.linetable
-        ltnext === nothing && break
+        ltnext isa Core.DebugInfo || break
         debuginfo = ltnext
     end
     firstline = typemax(Int)
     for k = 0:typemax(Int)
-        codeloc = Core.Compiler.getdebugidx(debuginfo, k)
-        line::Int = codeloc[1]
+        line = sourceline(debuginfo, k)
         line < 0 && break
         line > 0 && (firstline = min(firstline, line))
     end
@@ -371,13 +376,12 @@ getlastline(arg) = getlastline(linetable(arg))
 function getlastline(debuginfo::Core.DebugInfo)
     while true
         ltnext = debuginfo.linetable
-        ltnext === nothing && break
+        ltnext isa Core.DebugInfo || break
         debuginfo = ltnext
     end
     lastline = 0
     for k = 0:typemax(Int)
-        codeloc = Core.Compiler.getdebugidx(debuginfo, k)
-        line::Int = codeloc[1]
+        line = sourceline(debuginfo, k)
         line < 0 && break
         lastline = max(lastline, line)
     end

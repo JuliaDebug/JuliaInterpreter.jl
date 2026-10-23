@@ -1,6 +1,6 @@
 using Base.Meta
 using Base: invoke_in_world, invokelatest, mapany, ntupleany
-using Core: CodeInfo, GeneratedFunctionStub, GotoIfNot, GotoNode, MethodInstance,
+using Core: CodeInfo, GotoIfNot, GotoNode, MethodInstance,
     MethodTable, NewvarNode, ReturnNode, SimpleVector
 
 # The following are for circumventing #28, memcpy invalid instruction error,
