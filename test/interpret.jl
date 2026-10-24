@@ -767,6 +767,7 @@ end
     @test reproduce(Ptr{Array{T}}) == Ptr{Array{UInt8}}                     # nested `UnionAll`
     @test reproduce(Ref{Tuple{Vararg{T}}}) == Ref{Tuple{Vararg{UInt8}}}     # `Vararg`
     @test reproduce(Ref{Union{T,Nothing}}) == Ref{Union{UInt8,Nothing}}     # `Union`
+    @test reproduce(Ref{Type{T}}) == Ref{Type{UInt8}}                       # `Type`
     @test reproduce(Ref{Vector{S} where S<:T}) == Ref{Vector{S} where S<:UInt8} # bounded `where`
     @test reproduce(Base.Iterators.Stateful{T}) == Base.Iterators.Stateful{UInt8} # nested module
     # A bound `TypeVar` that happens to be named like the free one must not capture it.
