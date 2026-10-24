@@ -167,6 +167,3 @@ function __init__()
     FMA_FLOAT32[] = _have_fma_compiled(Float32)
     FMA_FLOAT16[] = _have_fma_compiled(Float16)
 end
-
-include("precompile.jl")
-_precompile_()
