@@ -452,9 +452,14 @@ function maybe_step_through_kwprep!(interp::Interpreter, frame::Frame, istopleve
     n = length(src.code)
     stmt = pc_expr(frame, pc)
     if isbindingresolved_deprecated && !isa(stmt, Tuple{Symbol,Vararg{Symbol}}) && !is_empty_namedtuple(stmt) && n >= pc+1
-        nextstmt = pc_expr(frame, pc + 1)
+        # JuliaLowering evaluates Mod.func_name before the keyword names
+        pcnext = pc + 1
+        while pcnext < n && (isa(pc_expr(frame, pcnext), Union{QuoteNode,GlobalRef}) || is_getproperty_call(pc_expr(frame, pcnext)))
+            pcnext += 1
+        end
+        nextstmt = pc_expr(frame, pcnext)
         if isa(nextstmt, Tuple{Symbol,Vararg{Symbol}}) || is_empty_namedtuple(nextstmt)
-            pc += 1
+            pc = pcnext
             stmt = nextstmt
         end
     elseif kw_has_f_first && pc < n && is_empty_namedtuple(pc_expr(frame, pc+1)) && isa(stmt, QuoteNode)
