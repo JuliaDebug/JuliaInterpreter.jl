@@ -2065,4 +2065,14 @@ end
     @test (@interpret test_interpret.oc_from_raw_expr())() == 1
 end
 
+@testset "generated function called with a type argument" begin
+    # on Julia 1.14+, `Tuple{typeof(gentype), Type{Int}}` is not a dispatch tuple, so the
+    # call must be typed with `Core.Typeof(Int)` to expand the generated function
+    @generated gentype(x) = QuoteNode(x)
+    invoke_gentype(x) = invoke(gentype, Tuple{Any}, x)
+    @test JuliaInterpreter.enter_call(gentype, Int) isa Frame
+    @test (@interpret gentype(Int)) === gentype(Int)
+    @test (@interpret invoke_gentype(Int)) === invoke_gentype(Int)
+end
+
 end # module test_interpret
