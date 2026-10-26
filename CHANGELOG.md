@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - On Julia 1.14, a generated function called with a type argument, as in
   `f(Int)`, is interpreted instead of being called natively, and calling it
   through `invoke` no longer throws an `AssertionError`.
+- On Julia 1.10, stepping out of a call that throws into a `catch err` block
+  no longer stops on the internal `err = the_exception` statement.
 
 ## [0.12.0]
 

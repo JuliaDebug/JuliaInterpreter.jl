@@ -775,6 +775,11 @@ function debug_command(interp::Interpreter, frame::Frame, cmd::Symbol, rootistop
             # displayed the error path.
             handleristoplevel = rootistoplevel && is_toplevel_frame(frame)
             stmt = pc_expr(frame)
+            # Julia 1.10 lowers a `leave` at the catch destination, before the binding
+            while isexpr(stmt, :leave)
+                step_expr!(interp, frame, handleristoplevel)
+                stmt = pc_expr(frame)
+            end
             if isexpr(stmt, :(=)) && isexpr((stmt::Expr).args[2], :the_exception)
                 # the exception binding (`err = the_exception`) is plumbing
                 step_expr!(interp, frame, handleristoplevel)

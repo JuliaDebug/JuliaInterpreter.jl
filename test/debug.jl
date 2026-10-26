@@ -749,6 +749,22 @@ end
     @test (body_start + 5) in seen_lines
 end
 
+catch_binding_inner() = error()
+function catch_binding_outer()
+    try
+        catch_binding_inner()
+    catch err
+        return err
+    end
+end
+
+@testset "stepping out of a throwing callee skips the exception binding" begin
+    frame = JuliaInterpreter.enter_call(catch_binding_outer)
+    frame, pc = JuliaInterpreter.debug_command(frame, :s) # into `catch_binding_inner`
+    frame, pc = JuliaInterpreter.debug_command(frame, :n) # throws, caught by the caller
+    @test JuliaInterpreter.is_return(JuliaInterpreter.pc_expr(frame))
+end
+
 @testset "uncaught errors leave the frame tree intact" begin
     frame = JuliaInterpreter.enter_call(uncaught_thrower_fuzz, 1)
     frame, pc = JuliaInterpreter.debug_command(frame, :n)
