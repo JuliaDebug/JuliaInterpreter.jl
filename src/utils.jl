@@ -351,7 +351,9 @@ end
 
 function sourceline(debuginfo::Core.DebugInfo, k::Int)
     line::Int = Core.Compiler.getdebugidx(debuginfo, k)[1]
-    line > 0 && debuginfo.linetable isa String && return Int(Base.IRShow.source_location(debuginfo, k).line)
+    @static if isdefined(Base.IRShow, :source_location)
+        line > 0 && debuginfo.linetable isa String && return Int(Base.IRShow.source_location(debuginfo, k).line)
+    end
     return line
 end
 

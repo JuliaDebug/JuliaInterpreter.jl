@@ -271,8 +271,9 @@ end
 # execution keeps native eval semantics; recursive execution intercepts it below.
 eval_in_frame(mod::Module, @nospecialize(ex)) = Core.eval(mod, ex)
 
-# JuliaLowering's `@eval` evaluates a `Base.Syntax` with `at_eval_hook` rather than `Core.eval`
-@static if isdefinedglobal(Base, :JuliaLowering)
+# JuliaLowering's `@eval` doesn't call `Core.eval`
+@static if isdefinedglobal(Base, :JuliaLowering) &&
+        isdefinedglobal(Base.JuliaLowering, :at_eval_hook)
     is_at_eval_hook(@nospecialize(f)) = f === Base.JuliaLowering.at_eval_hook
     const Syntax = Base.Syntax
 else
