@@ -451,8 +451,8 @@ function maybe_step_through_kwprep!(interp::Interpreter, frame::Frame, istopleve
     pc, src = frame.pc, frame.framecode.src
     n = length(src.code)
     stmt = pc_expr(frame, pc)
-    if isbindingresolved_deprecated && !isa(stmt, Tuple{Symbol,Vararg{Symbol}}) && !is_empty_namedtuple(stmt) && n >= pc+1
-        # JuliaLowering evaluates Mod.func_name before the keyword names
+    if isbindingresolved_deprecated && !isa(stmt, Tuple{Symbol,Vararg{Symbol}}) && !is_empty_namedtuple(stmt) &&
+            !(is_call(stmt) && !is_getproperty_call(stmt)) && n >= pc+1
         pcnext = pc + 1
         while pcnext < n && (isa(pc_expr(frame, pcnext), Union{QuoteNode,GlobalRef}) || is_getproperty_call(pc_expr(frame, pcnext)))
             pcnext += 1

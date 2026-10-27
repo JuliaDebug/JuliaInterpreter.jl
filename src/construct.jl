@@ -322,8 +322,8 @@ end
 
 get_source(meth::Method) = Base.uncompressed_ast(meth)
 
-@static if isdefinedglobal(Base, :JuliaLowering)
-    const GeneratorStub = Union{GeneratedFunctionStub,Base.JuliaLowering.GeneratedFunctionStub}
+@static if isdefinedglobal(Base, :SyntaxGeneratedFunctionStub)
+    const GeneratorStub = Union{GeneratedFunctionStub,Base.SyntaxGeneratedFunctionStub}
 else
     const GeneratorStub = GeneratedFunctionStub
 end

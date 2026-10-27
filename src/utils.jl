@@ -349,12 +349,16 @@ end
 
 @static if VERSION ≥ v"1.12.0-DEV.173"
 
+@static if VERSION ≥ v"1.14.0-DEV.2304"   # julia #61979
 function sourceline(debuginfo::Core.DebugInfo, k::Int)
     line::Int = Core.Compiler.getdebugidx(debuginfo, k)[1]
-    @static if isdefined(Base.IRShow, :source_location)
-        line > 0 && debuginfo.linetable isa String && return Int(Base.IRShow.source_location(debuginfo, k).line)
-    end
+    line > 0 && debuginfo.linetable isa String &&
+        return Int(Base.IRShow.source_location(debuginfo, k).line)
     return line
+end
+else
+sourceline(debuginfo::Core.DebugInfo, k::Int) =
+    Int(Core.Compiler.getdebugidx(debuginfo, k)[1])
 end
 
 getfirstline(arg) = getfirstline(linetable(arg))
@@ -585,7 +589,7 @@ function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
             first_in_block = nothing   # start new block
             continue
         end
-        thisscope = first(lt)
+        thisscope = last(lt)
         if first_in_block === nothing && !iszero(thisscope.line)
             first_in_block, block_recorded = thisscope.line, false
         end
