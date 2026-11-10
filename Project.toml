@@ -9,8 +9,10 @@ projects = ["docs", "test"]
 [deps]
 CodeTracking = "da1fd8a2-8d9e-5ec2-8556-3022fb5608a2"
 InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
+PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 
 [compat]
 CodeTracking = "2, 3"
+PrecompileTools = "1.2.1"
 julia = "1.10"

@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The precompile workload runs through PrecompileTools.jl, so the callees it
+  reaches through runtime dispatch are also cached. JuliaInterpreter now depends
+  on PrecompileTools.jl, and the workload can be skipped by setting the
+  `precompile_workload` preference to `false`:
+  ```julia
+  using JuliaInterpreter, Preferences
+  set_preferences!(JuliaInterpreter, "precompile_workload" => false; force=true)
+  ```
+
 ### Fixed
 - Updated the builtins for Julia 1.14.0-alpha1, where `Core.depwarn_partition`
   was replaced by `Core.depwarn_binding` (JuliaLang/julia#63470).
