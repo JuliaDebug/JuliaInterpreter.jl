@@ -322,7 +322,13 @@ end
 
 get_source(meth::Method) = Base.uncompressed_ast(meth)
 
-function get_source(g::GeneratedFunctionStub, source::Method, env, world::UInt)
+@static if isdefinedglobal(Base, :SyntaxGeneratedFunctionStub)
+    const GeneratorStub = Union{GeneratedFunctionStub,Base.SyntaxGeneratedFunctionStub}
+else
+    const GeneratorStub = GeneratedFunctionStub
+end
+
+function get_source(g::GeneratorStub, source::Method, env, world::UInt)
     b = @static if VERSION < v"1.12.0-DEV.1968"   # julia #57230
         g(world, LineNumberNode(Int(source.line), source.file), env..., g.argnames...)
     else
@@ -496,7 +502,7 @@ function prepare_call(@nospecialize(f), allargs;
     elseif any(is_vararg_type, allargs)
         return nothing  # https://github.com/JuliaLang/julia/issues/30995
     end
-    argtypesv = Any[_Typeof(a) for a in allargs]
+    argtypesv = Any[Core.Typeof(a) for a in allargs]
     argtypes = Tuple{argtypesv...}
     if f isa Core.OpaqueClosure
         method = f.source
@@ -529,7 +535,7 @@ function prepare_call(@nospecialize(f), allargs;
     # Typical return
     framecode, lenv = ret
     if is_generated(method) && enter_generated
-        allargs = Any[_Typeof(a) for a in allargs]
+        allargs = Any[Core.Typeof(a) for a in allargs]
     end
     return framecode, allargs, lenv, argtypes
 end

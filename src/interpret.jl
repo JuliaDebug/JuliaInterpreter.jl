@@ -271,10 +271,20 @@ end
 # execution keeps native eval semantics; recursive execution intercepts it below.
 eval_in_frame(mod::Module, @nospecialize(ex)) = Core.eval(mod, ex)
 
+# JuliaLowering's `@eval` doesn't call `Core.eval`
+@static if isdefinedglobal(Base, :JuliaLowering) &&
+        isdefinedglobal(Base.JuliaLowering, :at_eval_hook)
+    is_at_eval_hook(@nospecialize(f)) = f === Base.JuliaLowering.at_eval_hook
+    const Syntax = Base.Syntax
+else
+    is_at_eval_hook(@nospecialize(f)) = false
+    const Syntax = Union{}
+end
+
 function evaluate_eval!(interp::Interpreter, frame::Frame, mod::Module, @nospecialize(ex))
     # Non-expressions have no calls to recurse into. In particular, IR nodes supplied
     # as values must not be mistaken for the synthetic driver's instructions.
-    if !(ex isa Expr)
+    if !(ex isa Union{Expr,Syntax})
         ret = maybe_eval_with_scope(Core.eval, Any[mod, ex], frame)
         return ret === nothing ? Core.eval(mod, ex) : ret.value
     end
@@ -303,24 +313,26 @@ end
 
 function maybe_eval_with_scope(@nospecialize(f), fargs::Vector{Any}, frame::Frame)
     @static isdefinedglobal(Core.IR, :EnterNode) || return nothing
+    # Only scopes entered by *interpreted* code need to be installed here. A scope that is
+    # already active on the running task (`Core.current_scope()`) is visible to any native call
+    # we make anyway. That is the common case: on Julia 1.13+ `include` and the REPL run code
+    # inside a scope, and lowering + evaluating an expression per call costs ~70 µs.
+    isempty(frame.framedata.current_scopes) && return nothing
     newscope = Core.current_scope()
-    if newscope !== nothing || !isempty(frame.framedata.current_scopes)
-        for scope in frame.framedata.current_scopes
-            newscope = Scope(newscope, scope.values...)
-        end
-        # `Core.eval` only installs the dynamic scope (a lowering construct) and so runs in
-        # the latest world; pin the call itself to the frame's world inside the expression.
-        # Quote every spliced value: AST-significant arguments (e.g. the `Symbol` property name
-        # in `getproperty(mod, :name)`) must enter the expression as literals, not be re-evaluated
-        # as variable references.
-        call = Expr(:call, invoke_in_world, frame.world, QuoteNode(f))
-        for a in fargs
-            push!(call.args, QuoteNode(a))
-        end
-        ex = Expr(:tryfinally, call, nothing, newscope)
-        return Some{Any}(Core.eval(moduleof(frame), ex))
+    for scope in frame.framedata.current_scopes
+        newscope = Scope(newscope, scope.values...)
     end
-    return nothing
+    # `Core.eval` only installs the dynamic scope (a lowering construct) and so runs in
+    # the latest world; pin the call itself to the frame's world inside the expression.
+    # Quote every spliced value: AST-significant arguments (e.g. the `Symbol` property name
+    # in `getproperty(mod, :name)`) must enter the expression as literals, not be re-evaluated
+    # as variable references.
+    call = Expr(:call, invoke_in_world, frame.world, QuoteNode(f))
+    for a in fargs
+        push!(call.args, QuoteNode(a))
+    end
+    ex = Expr(:tryfinally, call, nothing, newscope)
+    return Some{Any}(Core.eval(moduleof(frame), ex))
 end
 
 function evaluate_call!(interp::NonRecursiveInterpreter, frame::Frame, call_expr::Expr, enter_generated::Bool=false)
@@ -348,7 +360,7 @@ function evaluate_call!(interp::Interpreter, frame::Frame, call_expr::Expr, ente
     return evaluate_call!(interp, frame, fargs, enter_generated)
 end
 function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, enter_generated::Bool)
-    if fargs[1] === eval_in_frame
+    if fargs[1] === eval_in_frame || is_at_eval_hook(fargs[1])
         return evaluate_eval!(interp, frame, fargs[2], fargs[3])
     elseif fargs[1] === Base.rethrow
         if length(fargs) > 1
@@ -406,7 +418,7 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
     if fargs[1] === Core.invoke # invoke needs special handling
         argtypes = fargs[3]
         fargs_pruned = [fargs[2]; fargs[4:end]]
-        sig = Tuple{mapany(_Typeof, fargs_pruned)...}
+        sig = Tuple{mapany(Core.Typeof, fargs_pruned)...}
         if isa(argtypes, Method)
             # `invoke(f, method::Method, args...)` (Julia 1.12+)
             f_invoked = argtypes
@@ -444,7 +456,7 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
         # The generator runs on argument *types*. `prepare_call` performs this conversion
         # but `get_call_frameinstance` discards the converted arguments, so redo it here
         # (issue #161).
-        fargs = Any[_Typeof(a) for a in fargs]
+        fargs = Any[Core.Typeof(a) for a in fargs]
     end
     newframe = prepare_frame_caller(frame, framecode, fargs, lenv)
     npc = newframe.pc
@@ -753,7 +765,7 @@ function interpret_toplevel_stmt!(interp::Interpreter, frame::Frame, @nospeciali
     mod = moduleof(frame)
     lwr = if isexpr(stmt, :thunk, 1)
         stmt  # already lowered; lowering again wraps it in another thunk
-    elseif isa(stmt, Expr)
+    elseif isa(stmt, Union{Expr,Syntax})
         # Macros run natively during lowering and must see interpreted dynamic scopes.
         ret = maybe_eval_with_scope(Meta.lower, Any[mod, stmt], frame)
         ret === nothing ? Meta.lower(mod, stmt) : ret.value

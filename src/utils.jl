@@ -27,8 +27,6 @@ function Base.nameof(frame::Frame)
     isa(s, Method) ? s.name : nameof(s)
 end
 
-_Typeof(x) = isa(x, Type) ? Type{x} : typeof(x)
-
 function to_function(@nospecialize(x), world::UInt)
     isa(x, GlobalRef) ? invoke_in_world(world, getglobal, x.mod, x.name) : x
 end
@@ -351,17 +349,28 @@ end
 
 @static if VERSION ≥ v"1.12.0-DEV.173"
 
+@static if VERSION ≥ v"1.14.0-DEV.2304"   # julia #61979
+function sourceline(debuginfo::Core.DebugInfo, k::Int)
+    line::Int = Core.Compiler.getdebugidx(debuginfo, k)[1]
+    line > 0 && debuginfo.linetable isa String &&
+        return Int(Base.IRShow.source_location(debuginfo, k).line)
+    return line
+end
+else
+sourceline(debuginfo::Core.DebugInfo, k::Int) =
+    Int(Core.Compiler.getdebugidx(debuginfo, k)[1])
+end
+
 getfirstline(arg) = getfirstline(linetable(arg))
 function getfirstline(debuginfo::Core.DebugInfo)
     while true
         ltnext = debuginfo.linetable
-        ltnext === nothing && break
+        ltnext isa Core.DebugInfo || break
         debuginfo = ltnext
     end
     firstline = typemax(Int)
     for k = 0:typemax(Int)
-        codeloc = Core.Compiler.getdebugidx(debuginfo, k)
-        line::Int = codeloc[1]
+        line = sourceline(debuginfo, k)
         line < 0 && break
         line > 0 && (firstline = min(firstline, line))
     end
@@ -371,13 +380,12 @@ getlastline(arg) = getlastline(linetable(arg))
 function getlastline(debuginfo::Core.DebugInfo)
     while true
         ltnext = debuginfo.linetable
-        ltnext === nothing && break
+        ltnext isa Core.DebugInfo || break
         debuginfo = ltnext
     end
     lastline = 0
     for k = 0:typemax(Int)
-        codeloc = Core.Compiler.getdebugidx(debuginfo, k)
-        line::Int = codeloc[1]
+        line = sourceline(debuginfo, k)
         line < 0 && break
         lastline = max(lastline, line)
     end
@@ -581,7 +589,7 @@ function statementnumbers(framecode::FrameCode, line::Integer, file::Symbol)
             first_in_block = nothing   # start new block
             continue
         end
-        thisscope = first(lt)
+        thisscope = last(lt)
         if first_in_block === nothing && !iszero(thisscope.line)
             first_in_block, block_recorded = thisscope.line, false
         end
@@ -895,7 +903,7 @@ function Base.StackTraces.StackFrame(frame::Frame)
     if scope isa Method
         method = scope
         method_args = Any[something(frame.framedata.locals[i]) for i in 1:method.nargs]
-        argt = Tuple{mapany(_Typeof, method_args)...}
+        argt = Tuple{mapany(Core.Typeof, method_args)...}
         sig = method.sig
         atype, sparams = ccall(:jl_type_intersection_with_env, Any, (Any, Any), argt, sig)::SimpleVector
         if atype === Union{}
