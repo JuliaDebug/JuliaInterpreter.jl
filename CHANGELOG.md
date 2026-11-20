@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The precompile workload runs through PrecompileTools.jl, so the callees it
+  reaches through runtime dispatch are also cached. JuliaInterpreter now depends
+  on PrecompileTools.jl, and the workload can be skipped by setting the
+  `precompile_workload` preference to `false`:
+  ```julia
+  using JuliaInterpreter, Preferences
+  set_preferences!(JuliaInterpreter, "precompile_workload" => false; force=true)
+  ```
+
 ### Fixed
 - On Julia 1.10, stepping over an error caught by a `catch err` block no longer
   stops on the exception binding (`err = the_exception`) on the line of the

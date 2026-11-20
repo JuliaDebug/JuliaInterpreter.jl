@@ -2,8 +2,7 @@ module var"#Internal"
 public_fn(x::String) = false
 end
 
-function _precompile_()
-    ccall(:jl_generating_output, Cint, ()) == 1 || return nothing
+PrecompileTools.@compile_workload let
     @interpret sum(rand(10))
     expr = quote
         public_fn(x::Integer) = true
