@@ -6,7 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- links start -->
-[Unreleased]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.12.3...HEAD
+[0.12.3]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.12.2...v0.12.3
+[0.12.2]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.12.1...v0.12.2
+[0.12.1]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.11.6...v0.12.0
 [0.11.6]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.11.5...v0.11.6
 [0.11.5]: https://github.com/JuliaDebug/JuliaInterpreter.jl/compare/v0.11.4...v0.11.5
@@ -29,16 +32,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   set_preferences!(JuliaInterpreter, "precompile_workload" => false; force=true)
   ```
 
+## [0.12.3]
+
 ### Fixed
+- Under a dynamic scope that was already active when the interpreter was
+  entered, calls run natively are no longer each evaluated through `Core.eval`
+  of an expression that re-installs the scope, which made them much slower
+  (JuliaDebug/JuliaInterpreter.jl#792).
 - On Julia 1.10, stepping over an error caught by a `catch err` block no longer
   stops on the exception binding (`err = the_exception`) on the line of the
   `try` body, and lands in the catch body as on later Julia versions
   (JuliaDebug/JuliaInterpreter.jl#786).
+
+## [0.12.2]
+
+### Added
+- Added initial support for the IR and the byte-precise `DebugInfo` that
+  JuliaLowering produces. `RecursiveInterpreter` also interprets the code passed
+  to JuliaLowering's `@eval`, which does not call `Core.eval`
+  (JuliaDebug/JuliaInterpreter.jl#788).
+
+## [0.12.1]
+
+### Fixed
 - Updated the builtins for Julia 1.14.0-alpha1, where `Core.depwarn_partition`
-  was replaced by `Core.depwarn_binding` (JuliaLang/julia#63470).
+  was replaced by `Core.depwarn_binding` (JuliaDebug/JuliaInterpreter.jl#787,
+  JuliaLang/julia#63470).
 - On Julia 1.14, a generated function called with a type argument, as in
   `f(Int)`, is interpreted instead of being called natively, and calling it
-  through `invoke` no longer throws an `AssertionError`.
+  through `invoke` no longer throws an `AssertionError`
+  (JuliaDebug/JuliaInterpreter.jl#789).
 
 ## [0.12.0]
 
