@@ -1442,10 +1442,19 @@ end
 function func_overlay end
 func_overlay(x) = sin(x)
 call_func_overlay(x) = func_overlay(x)
+invoke_func_overlay(x) = invoke(func_overlay, Tuple{Any}, x)
 Base.Experimental.@MethodTable ex_method_table
 Base.Experimental.@overlay ex_method_table func_overlay(x) = cos(x)
 struct OverlayInterpreter <: Interpreter end
 JuliaInterpreter.method_table(::OverlayInterpreter) = ex_method_table
+struct CallableVector <: AbstractVector{Float64}
+    data::Vector{Float64}
+end
+Base.size(cv::CallableVector) = size(cv.data)
+Base.getindex(cv::CallableVector, i::Int) = cv.data[i]
+(::CallableVector)(x::Number) = 2x
+Base.Experimental.@overlay ex_method_table (::CallableVector)(x::Number) = 3x
+invoke_callable_vector(cv, x) = invoke(cv, Tuple{Number}, x)
 
 @testset "Interpret overlay method" begin
     let frame = JuliaInterpreter.Frame(@__MODULE__, :(func_overlay(42.0)))
@@ -1463,6 +1472,16 @@ JuliaInterpreter.method_table(::OverlayInterpreter) = ex_method_table
     # re-resolve `func_overlay` through their own table rather than reuse the other's cached entry.
     @test sin(42.0) == @interpret call_func_overlay(42.0)
     @test cos(42.0) == @interpret interp=OverlayInterpreter() call_func_overlay(42.0)
+    # The entry call of `@interpret` is resolved through the interpreter's table as well.
+    @test sin(42.0) == @interpret func_overlay(42.0)
+    @test cos(42.0) == @interpret interp=OverlayInterpreter() func_overlay(42.0)
+    @test cos(42.0) == @interpret interp=OverlayInterpreter() world=:latest func_overlay(42.0)
+    @test sin(42.0) == @interpret invoke_func_overlay(42.0)
+    @test cos(42.0) == @interpret interp=OverlayInterpreter() invoke_func_overlay(42.0)
+    # An `invoke`d callable that is an `AbstractVector` must not be spliced into the arguments.
+    cv = CallableVector([10.0, 20.0])
+    @test 3.0 == @interpret invoke_callable_vector(cv, 1.5)
+    @test 4.5 == @interpret interp=OverlayInterpreter() invoke_callable_vector(cv, 1.5)
 end
 
 dispatch_cache_func(x::T) where {T} = x
@@ -1829,6 +1848,13 @@ end
     @test_throws MethodError finish_and_return!(JuliaInterpreter.enter_call(InvokeWorld.probe, 1; world=w))
     # the resolved form still works at the current world
     @test finish_and_return!(JuliaInterpreter.enter_call(InvokeWorld.probe, 1)) === :too_new
+end
+
+@testset "invoke rejects arguments not matching argtypes" begin
+    invoke_mismatch_target(x) = x
+    invoke_mismatch(x) = invoke(invoke_mismatch_target, Tuple{Int}, x)
+    expected = VERSION >= v"1.11-" ? TypeError : ErrorException
+    @test_throws expected @interpret invoke_mismatch(1.0)
 end
 
 @testset "pop_exception restores the active-exception stack" begin

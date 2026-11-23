@@ -34,6 +34,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Updated the builtins for Julia nightly (JuliaLang/julia#63575).
+- `@interpret interp=... f(args...)` resolves `f` itself through
+  `method_table(interp)`, as it already did for the calls `f` makes, so an
+  overlay method of `f` is no longer bypassed.
+- `invoke(f, argtypes, args...)` in interpreted code looks up the method through
+  `method_table(interp)`.
+- `invoke(f, argtypes, args...)` with arguments that do not match `argtypes`
+  throws the same error as native `invoke` instead of running the method.
+- `invoke(f, ...)` where `f` is a callable `AbstractArray` no longer passes the
+  elements of `f` as the arguments of the call.
 
 ## [0.12.3]
 
