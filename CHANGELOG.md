@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   set_preferences!(JuliaInterpreter, "precompile_workload" => false; force=true)
   ```
 
+### Fixed
+- Updated the builtins for Julia nightly (JuliaLang/julia#63575).
+
 ## [0.12.3]
 
 ### Fixed

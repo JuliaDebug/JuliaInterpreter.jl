@@ -42,6 +42,8 @@ const RECENTLY_ADDED = Core.Builtin[
     Core.setglobal_partition,
     Core.setglobalonce_partition,
     Core.swapglobal_partition,
+    Core.unsafe_memoryrefload,
+    Core.unsafe_memoryrefstore!,
     # Recently became builtins
     Base.invokelatest,
     Base.invoke_in_world,
@@ -100,6 +102,9 @@ function scopedname(f)
     fstr = String(take!(io))
     occursin('.', fstr) && return fstr
     tn = typeof(f).name
+    # Some versions define a recently added builtin without exporting it yet (e.g.
+    # `Core.bitsizeof` on 1.14.0-alpha1), so refer to it as its guard checks it.
+    f in RECENTLY_ADDED && return string(tn.module) * '.' * fstr
     Base.isexported(tn.module, Symbol(fstr)) && return fstr
     fsym = Symbol(fstr)
     isdefinedglobal(tn.module, fsym) && return string(tn.module) * '.' * fstr
