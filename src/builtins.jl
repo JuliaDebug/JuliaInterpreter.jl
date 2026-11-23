@@ -161,12 +161,6 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         return Some{Any}(Core._using(getargs(interp, args, frame)...))
     elseif f === Core.apply_type
         return Some{Any}(Core.apply_type(getargs(interp, args, frame)...))
-    elseif @static isdefinedglobal(Core, :bitsizeof) && f === Core.bitsizeof
-        if nargs == 1
-            return Some{Any}(Core.bitsizeof(lookup(interp, frame, args[2])))
-        else
-            return Some{Any}(Core.bitsizeof(getargs(interp, args, frame)...))
-        end
     elseif @static isdefinedglobal(Core, :cancellation_point!) && f === Core.cancellation_point!
         return Some{Any}(Core.cancellation_point!(getargs(interp, args, frame)...))
     elseif f === Core.compilerbarrier
@@ -373,8 +367,26 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         end
     elseif @static isdefinedglobal(Core, :throw_methoderror) && f === Core.throw_methoderror
         return Some{Any}(Core.throw_methoderror(getargs(interp, args, frame)...))
+    elseif @static isdefinedglobal(Core, :unsafe_memoryrefload) && f === Core.unsafe_memoryrefload
+        if nargs == 4
+            return Some{Any}(Core.unsafe_memoryrefload(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))
+        else
+            return Some{Any}(Core.unsafe_memoryrefload(getargs(interp, args, frame)...))
+        end
+    elseif @static isdefinedglobal(Core, :unsafe_memoryrefstore!) && f === Core.unsafe_memoryrefstore!
+        if nargs == 4
+            return Some{Any}(Core.unsafe_memoryrefstore!(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))
+        else
+            return Some{Any}(Core.unsafe_memoryrefstore!(getargs(interp, args, frame)...))
+        end
     elseif f === applicable
         return Some{Any}(Base.invoke_in_world(frame.world, applicable, getargs(interp, args, frame)...))
+    elseif @static isdefinedglobal(Core, :bitsizeof) && f === Core.bitsizeof
+        if nargs == 1
+            return Some{Any}(Core.bitsizeof(lookup(interp, frame, args[2])))
+        else
+            return Some{Any}(Core.bitsizeof(getargs(interp, args, frame)...))
+        end
     elseif f === fieldtype
         if nargs == 2
             return Some{Any}(fieldtype(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]))::Type)
@@ -437,8 +449,8 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         else
             return Some{Any}(isdefined(getargs(interp, args, frame)...))
         end
-    elseif @static isdefinedglobal(Core, :isdefinedglobal) && f === isdefinedglobal
-        return Some{Any}(Base.invoke_in_world(frame.world, isdefinedglobal, getargs(interp, args, frame)...))
+    elseif @static isdefinedglobal(Core, :isdefinedglobal) && f === Core.isdefinedglobal
+        return Some{Any}(Base.invoke_in_world(frame.world, Core.isdefinedglobal, getargs(interp, args, frame)...))
     elseif f === modifyfield!
         if nargs == 4
             return Some{Any}(Base.invoke_in_world(frame.world, modifyfield!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))
@@ -447,13 +459,13 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         else
             return Some{Any}(Base.invoke_in_world(frame.world, modifyfield!, getargs(interp, args, frame)...))
         end
-    elseif @static isdefinedglobal(Core, :modifyglobal!) && f === modifyglobal!
+    elseif @static isdefinedglobal(Core, :modifyglobal!) && f === Core.modifyglobal!
         if nargs == 4
-            return Some{Any}(Base.invoke_in_world(frame.world, modifyglobal!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))
+            return Some{Any}(Base.invoke_in_world(frame.world, Core.modifyglobal!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))
         elseif nargs == 5
-            return Some{Any}(Base.invoke_in_world(frame.world, modifyglobal!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5]), lookup(interp, frame, args[6])))
+            return Some{Any}(Base.invoke_in_world(frame.world, Core.modifyglobal!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5]), lookup(interp, frame, args[6])))
         else
-            return Some{Any}(Base.invoke_in_world(frame.world, modifyglobal!, getargs(interp, args, frame)...))
+            return Some{Any}(Base.invoke_in_world(frame.world, Core.modifyglobal!, getargs(interp, args, frame)...))
         end
     elseif f === nfields
         if nargs == 1
@@ -471,15 +483,15 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         else
             return Some{Any}(replacefield!(getargs(interp, args, frame)...))
         end
-    elseif @static isdefinedglobal(Core, :replaceglobal!) && f === replaceglobal!
+    elseif @static isdefinedglobal(Core, :replaceglobal!) && f === Core.replaceglobal!
         if nargs == 4
-            return Some{Any}(Base.invoke_in_world(frame.world, replaceglobal!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))
+            return Some{Any}(Base.invoke_in_world(frame.world, Core.replaceglobal!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))
         elseif nargs == 5
-            return Some{Any}(Base.invoke_in_world(frame.world, replaceglobal!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5]), lookup(interp, frame, args[6])))
+            return Some{Any}(Base.invoke_in_world(frame.world, Core.replaceglobal!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5]), lookup(interp, frame, args[6])))
         elseif nargs == 6
-            return Some{Any}(Base.invoke_in_world(frame.world, replaceglobal!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5]), lookup(interp, frame, args[6]), lookup(interp, frame, args[7])))
+            return Some{Any}(Base.invoke_in_world(frame.world, Core.replaceglobal!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5]), lookup(interp, frame, args[6]), lookup(interp, frame, args[7])))
         else
-            return Some{Any}(Base.invoke_in_world(frame.world, replaceglobal!, getargs(interp, args, frame)...))
+            return Some{Any}(Base.invoke_in_world(frame.world, Core.replaceglobal!, getargs(interp, args, frame)...))
         end
     elseif f === setfield!
         if nargs == 3
@@ -489,15 +501,15 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         else
             return Some{Any}(setfield!(getargs(interp, args, frame)...))
         end
-    elseif @static isdefinedglobal(Core, :setfieldonce!) && f === setfieldonce!
+    elseif @static isdefinedglobal(Core, :setfieldonce!) && f === Core.setfieldonce!
         if nargs == 3
-            return Some{Any}(setfieldonce!(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4])))
+            return Some{Any}(Core.setfieldonce!(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(setfieldonce!(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))
+            return Some{Any}(Core.setfieldonce!(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))
         elseif nargs == 5
-            return Some{Any}(setfieldonce!(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5]), lookup(interp, frame, args[6])))
+            return Some{Any}(Core.setfieldonce!(lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5]), lookup(interp, frame, args[6])))
         else
-            return Some{Any}(setfieldonce!(getargs(interp, args, frame)...))
+            return Some{Any}(Core.setfieldonce!(getargs(interp, args, frame)...))
         end
     elseif f === setglobal!
         if nargs == 3
@@ -507,15 +519,15 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         else
             return Some{Any}(Base.invoke_in_world(frame.world, setglobal!, getargs(interp, args, frame)...))
         end
-    elseif @static isdefinedglobal(Core, :setglobalonce!) && f === setglobalonce!
+    elseif @static isdefinedglobal(Core, :setglobalonce!) && f === Core.setglobalonce!
         if nargs == 3
-            return Some{Any}(Base.invoke_in_world(frame.world, setglobalonce!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4])))
+            return Some{Any}(Base.invoke_in_world(frame.world, Core.setglobalonce!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(Base.invoke_in_world(frame.world, setglobalonce!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))
+            return Some{Any}(Base.invoke_in_world(frame.world, Core.setglobalonce!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))
         elseif nargs == 5
-            return Some{Any}(Base.invoke_in_world(frame.world, setglobalonce!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5]), lookup(interp, frame, args[6])))
+            return Some{Any}(Base.invoke_in_world(frame.world, Core.setglobalonce!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5]), lookup(interp, frame, args[6])))
         else
-            return Some{Any}(Base.invoke_in_world(frame.world, setglobalonce!, getargs(interp, args, frame)...))
+            return Some{Any}(Base.invoke_in_world(frame.world, Core.setglobalonce!, getargs(interp, args, frame)...))
         end
     elseif f === swapfield!
         if nargs == 3
@@ -525,13 +537,13 @@ function maybe_evaluate_builtin(interp::Interpreter, frame::Frame, call_expr::Ex
         else
             return Some{Any}(swapfield!(getargs(interp, args, frame)...))
         end
-    elseif @static isdefinedglobal(Core, :swapglobal!) && f === swapglobal!
+    elseif @static isdefinedglobal(Core, :swapglobal!) && f === Core.swapglobal!
         if nargs == 3
-            return Some{Any}(Base.invoke_in_world(frame.world, swapglobal!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4])))
+            return Some{Any}(Base.invoke_in_world(frame.world, Core.swapglobal!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4])))
         elseif nargs == 4
-            return Some{Any}(Base.invoke_in_world(frame.world, swapglobal!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))
+            return Some{Any}(Base.invoke_in_world(frame.world, Core.swapglobal!, lookup(interp, frame, args[2]), lookup(interp, frame, args[3]), lookup(interp, frame, args[4]), lookup(interp, frame, args[5])))
         else
-            return Some{Any}(Base.invoke_in_world(frame.world, swapglobal!, getargs(interp, args, frame)...))
+            return Some{Any}(Base.invoke_in_world(frame.world, Core.swapglobal!, getargs(interp, args, frame)...))
         end
     elseif f === throw
         if nargs == 1

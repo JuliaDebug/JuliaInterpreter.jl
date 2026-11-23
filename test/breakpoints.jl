@@ -310,7 +310,7 @@ end
 @testset "breakpoint in Base by path" begin
     m = @which sin(2.0)
     f = String(m.file)
-    l = m.line + 1
+    l = whereis(JuliaInterpreter.enter_call(sin, 2.0))[2]
     for f in (f, basename(f))
         remove()
         breakpoint(f, l)
