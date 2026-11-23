@@ -1026,7 +1026,7 @@ function interpret(mod::Module, @nospecialize(ex0); interp=RecursiveInterpreter(
     if world === nothing
         wexpr = :nothing
         theargs = :($(esc(args)))
-        entercall = :(enter_call_expr(Expr(:call, theargs...)))
+        entercall = :(enter_call_expr(Expr(:call, theargs...); method_table=method_table(interp)))
     else
         if world === :latest
             # Resolve the function and arguments in the latest committed world captured here at call time
@@ -1039,11 +1039,12 @@ function interpret(mod::Module, @nospecialize(ex0); interp=RecursiveInterpreter(
             theargs = :($(esc(args)))
         end
         # The call itself always runs in the world that will be resolved from evaluating `wexpr`
-        entercall = :(enter_call_expr(Expr(:call, theargs...); world=w))
+        entercall = :(enter_call_expr(Expr(:call, theargs...); world=w, method_table=method_table(interp)))
     end
     quote
         local w = $wexpr
         local theargs = $theargs
+        local interp = $interp
         local frame = $entercall
         if frame === nothing
             # Call the (already-resolved) function directly rather than through `Core.eval`:
@@ -1057,7 +1058,7 @@ function interpret(mod::Module, @nospecialize(ex0); interp=RecursiveInterpreter(
         elseif shouldbreak(frame, 1)
             frame, BreakpointRef(frame.framecode, 1)
         else
-            local ret = finish_and_return!($interp, frame)
+            local ret = finish_and_return!(interp, frame)
             # We deliberately return the top frame here; future debugging commands
             # via debug_command may alter the leaves, we want the top frame so we can
             # ultimately do `get_return`.

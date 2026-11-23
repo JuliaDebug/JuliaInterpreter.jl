@@ -417,7 +417,7 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
     end
     if fargs[1] === Core.invoke # invoke needs special handling
         argtypes = fargs[3]
-        fargs_pruned = [fargs[2]; fargs[4:end]]
+        fargs_pruned = Any[fargs[2], fargs[4:end]...]
         sig = Tuple{mapany(Core.Typeof, fargs_pruned)...}
         if isa(argtypes, Method)
             # `invoke(f, method::Method, args...)` (Julia 1.12+)
@@ -429,9 +429,12 @@ function evaluate_call!(interp::Interpreter, frame::Frame, fargs::Vector{Any}, e
             # run it natively.
             return invoke(fargs[2:end]...)
         else
+            tt = Base.signature_type(fargs[2], argtypes)
+            # Arguments not matching `argtypes` are an error; defer to the native `invoke` to raise it.
+            sig <: tt || return invoke_in_world(frame.world, invoke, fargs[2:end]...)
             # Select the method in the frame's world; plain `which` would use the task's
             # (possibly newer) world.
-            f_invoked = whichtt(Base.signature_type(fargs[2], argtypes); world=frame.world)
+            f_invoked = whichtt(tt, method_table(interp); world=frame.world)
             f_invoked === nothing && throw(MethodError(fargs[2], argtypes, frame.world))
         end
         ret = prepare_framecode(f_invoked, sig; enter_generated, world=frame.world)
