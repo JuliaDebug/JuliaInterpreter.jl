@@ -1029,9 +1029,13 @@ function interpret(mod::Module, @nospecialize(ex0); interp=RecursiveInterpreter(
         entercall = :(enter_call_expr(Expr(:call, theargs...); method_table=method_table(interp)))
     else
         if world === :latest
-            # Resolve the function and arguments in the latest committed world captured here at call time
-            wexpr = :(Base.get_world_counter())
-            theargs = :(Base.invoke_in_world(w, () -> $(esc(args))))
+            # Resolve the function and arguments in the latest committed world captured here at call time,
+            # after creating the closure, whose method may be defined where it is created in top-level code.
+            wexpr = :(begin
+                local getargs = () -> $(esc(args))
+                Base.get_world_counter()
+            end)
+            theargs = :(Base.invoke_in_world(w, getargs))
         else
             # Numeric world: the interpreted call runs in `world`, but the function and arguments are
             # resolved in the caller's current world.
