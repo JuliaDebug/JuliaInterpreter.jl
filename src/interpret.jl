@@ -302,10 +302,7 @@ eval_in_frame(mod::Module, @nospecialize(ex)) = Core.eval(mod, ex)
         return lnn.line == 0 ? nothing : lnn
     end
     function begin_module(parentmod::Module, st::Syntax)
-        args = Base.children(st)
-        # Until JuliaLang/julia#65070, a 4-arg form starts with the syntax version.
-        length(args) == 4 && (args = args[2:end])
-        std_imports, name, body = args
+        std_imports, name, body = Base.children(st)
         ex = Expr(:module, std_imports.value::Bool, Symbol(name.value::String),
                   Expr(:block, Base.first_linenode(st)))
         return begin_module(parentmod, ex)[1], body

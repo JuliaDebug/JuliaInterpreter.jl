@@ -116,8 +116,6 @@ end
 # Validate the parts as native evaluation does, throwing the same errors.
 function ModuleExprParts(ex::Expr)
     args = ex.args
-    # Until JuliaLang/julia#65070, a 4-arg form starts with the syntax version.
-    length(args) == 4 && !isa(args[1], Bool) && (args = args[2:end])
     if length(args) != 3 || !isa(args[3], Expr)
         error("syntax: malformed module expression")
     end
@@ -191,14 +189,8 @@ function begin_module(parentmod::Module, ex::Expr)
     @static if has_module_c_api
         filename = (lnn === nothing || !isa(lnn.file, Symbol)) ? "none" : String(lnn.file)
         lineno = lnn === nothing ? 0 : lnn.line
-        # Until JuliaLang/julia#65070, the first step also takes the syntax version, which it ignores.
-        @static if isdefinedglobal(Base, :_setup_module!)
-            newmod = ccall(:jl_begin_new_module, Any, (Any, Any, Any, Cint, Cstring, Cint),
-                           parentmod, name, nothing, std_imports, filename, lineno)
-        else
-            newmod = ccall(:jl_begin_new_module, Any, (Any, Any, Cint, Cstring, Cint),
-                           parentmod, name, std_imports, filename, lineno)
-        end
+        newmod = ccall(:jl_begin_new_module, Any, (Any, Any, Cint, Cstring, Cint),
+                       parentmod, name, std_imports, filename, lineno)
     else
         # Evaluate an empty module natively and interpret the body into it afterwards. The
         # module is then already closed natively, so `end_module` emulates the deferred
@@ -815,8 +807,7 @@ function Base.iterate(iter::ExprSplitter, state=nothing)
             # *inside* the module, *after* its body: module docstrings are evaluated
             # within the module, and interpolation may reference bindings the body defines.
             excopy = Expr(ex.head, ex.args[1], ex.args[2], ex.args[3])
-            module_name = body.args[end - 1]
-            push!(excopy.args, module_name)
+            push!(excopy.args, body.args[2])
             append!(excopy.args, ex.args[5:end])   # there should only be at most a 5th, but just for robustness
             newmod, modbody = find_or_create_module(mod, body)
             push_modex!(iter, newmod, excopy)   # popped only once the body is exhausted

@@ -776,30 +776,6 @@ module ModuleFormsTest end
         toplevel_eval(ModuleFormsTest, Expr(:toplevel, Expr(:module, true, :ThreeArgModule, body)))
         @test @invokelatest(isdefinedglobal(ModuleFormsTest, :ThreeArgModule))
         @test @invokelatest(@invokelatest(ModuleFormsTest.ThreeArgModule).f()) == 42
-
-        if VERSION ≥ v"1.14-DEV.1836"
-            # 4-arg form: Expr(:module, syntax_ver::VersionNumber, std_imports::Bool, name::Symbol, body::Expr)
-            toplevel_eval(ModuleFormsTest, Expr(:toplevel, Expr(:module, v"1.14", true, :FourArgModule, body)))
-            @test @invokelatest(isdefinedglobal(ModuleFormsTest, :FourArgModule))
-            @test @invokelatest(@invokelatest(ModuleFormsTest.FourArgModule).f()) == 42
-        end
-    end
-    if VERSION ≥ v"1.14-DEV.1836"
-        # 4-arg :module form (with syntax version) should also work with docstrings
-        ex = Base.parse_input_line("""
-            "docstring"
-            module OuterModDocstring4
-                "docstring for InnerModDocstring4"
-                module InnerModDocstring4
-                end
-            end
-            """; mod=Main)
-        # The parser should have given us the 4-arg :module form
-        mod_ex = ex.args[2].args[4]
-        @test mod_ex.head === :module && length(mod_ex.args) == 4
-        modexs = collect(ExprSplitter(JIVisible, ex))
-        @test isdefinedglobal(JIVisible, :OuterModDocstring4)
-        @test isdefinedglobal(JIVisible.OuterModDocstring4, :InnerModDocstring4)
     end
 end
 
