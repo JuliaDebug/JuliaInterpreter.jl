@@ -774,14 +774,28 @@ end
         frame = JuliaInterpreter.enter_call(catch_binding_fuzz)
         frame, pc = JuliaInterpreter.debug_command(frame, :s)
         @test JuliaInterpreter.scopeof(frame).name === :catch_binding_inner_fuzz
-        # `err = the_exception` is on the `try` call's line and is not a stop:
-        # the error lands on `return err`, 4 lines below the signature
+        # `err = the_exception` is not a stop, also when JuliaLowering locates it on the
+        # `catch err` line: the error lands on `return err`, 4 lines below the signature
         frame, pc = JuliaInterpreter.debug_command(frame, cmd)
         @test JuliaInterpreter.scopeof(frame).name === :catch_binding_fuzz
         @test JuliaInterpreter.linenumber(frame) == body_start + 4
         @test JuliaInterpreter.is_return(JuliaInterpreter.pc_expr(frame))
         @test JuliaInterpreter.debug_command(frame, cmd) === nothing
         @test get_return(frame) == ErrorException("caught")
+    end
+end
+
+@testset "stepping over a caught error stops at a breakpoint in the handler" begin
+    m = first(methods(catch_binding_fuzz))
+    # the `catch err` line, which has the binding with JuliaLowering, and the next one
+    for line in (m.line + 3, m.line + 4), cmd in (:n, :nc, :finish)
+        breakpoint(String(m.file), line)
+        frame = JuliaInterpreter.enter_call(catch_binding_fuzz)
+        frame, pc = JuliaInterpreter.debug_command(frame, :s)
+        frame, pc = JuliaInterpreter.debug_command(frame, cmd)
+        @test pc isa BreakpointRef
+        @test JuliaInterpreter.scopeof(frame).name === :catch_binding_fuzz
+        remove()
     end
 end
 
