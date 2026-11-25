@@ -461,7 +461,7 @@ function toplevel_surface_lnn(framecode::FrameCode, pc::Int)
     for i in min(pc, length(code)):-1:1
         stmt = code[i]
         isa(stmt, LineNumberNode) && return stmt
-        if isa(stmt, Expr)
+        if isa(stmt, Union{Expr,Syntax})
             lnn = firstline(stmt)
             lnn !== nothing && return lnn
         end

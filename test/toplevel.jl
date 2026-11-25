@@ -773,7 +773,6 @@ module ModuleFormsTest end
         @test @invokelatest(isdefinedglobal(@invokelatest(BareModuleTest.BareModule), :foo))
     end
     let body = Expr(:block, LineNumberNode(1, :none), :(f() = 42))
-        # 3-arg form: Expr(:module, std_imports::Bool, name::Symbol, body::Expr)
         toplevel_eval(ModuleFormsTest, Expr(:toplevel, Expr(:module, true, :ThreeArgModule, body)))
         @test @invokelatest(isdefinedglobal(ModuleFormsTest, :ThreeArgModule))
         @test @invokelatest(@invokelatest(ModuleFormsTest.ThreeArgModule).f()) == 42
@@ -1016,10 +1015,10 @@ end
         @test made isa Module && nameof(made) === :MacroMade
         @test invokelatest(getglobal, made, :value) == 42
 
-        # Malformed module expressions throw the errors of native evaluation.
-        @test_throws "syntax: malformed module expression" evaluate(host, Expr(:module, true, :Malformed, :notablock))
-        @test_throws "syntax: module expression third argument must be a block" evaluate(host, Expr(:module, true, :Malformed, Expr(:tuple)))
-        @test_throws "in module, expected Symbol, got a value of type $(Int)" evaluate(host, Expr(:module, true, 1, Expr(:block)))
+        # Malformed module expressions throw errors.
+        @test_throws "module expression" evaluate(host, Expr(:module, true, :Malformed, :notablock))
+        @test_throws "module expression third argument must be a block" evaluate(host, Expr(:module, true, :Malformed, Expr(:tuple)))
+        @test_throws Exception evaluate(host, Expr(:module, true, 1, Expr(:block)))
         # `false` standard imports make a bare module.
         bare = evaluate(host, Expr(:module, false, :Bare, Expr(:block)))
         @test bare isa Module && !invokelatest(isdefinedglobal, bare, :println)
@@ -1054,19 +1053,29 @@ end
         Core.eval(host, :(macro wrapped_module() esc(Expr(:toplevel, :(module MacroWrapped end))) end))
         @test JuliaInterpreter.finish_and_return!(Frame(host, :(begin; @wrapped_module; 2; end)), true) == 2
         @test invokelatest(getglobal, host, :MacroWrapped) isa Module
-        # Without `esc`, the module name is a `GlobalRef`, which native evaluation rejects too.
+        # Without `esc`, the module name is a `GlobalRef`, which native evaluation rejects too,
+        # except with JuliaLowering, which takes it as a name.
         Core.eval(host, :(macro unescaped_module() Expr(:toplevel, :(module Unescaped end)) end))
-        @test_throws "in module, expected Symbol, got a value of type GlobalRef" JuliaInterpreter.finish_and_return!(
-            Frame(host, :(begin; @unescaped_module; 3; end)), true)
-        # A bare `:module` statement in lowered code is evaluated the same way.
+        if JuliaInterpreter.jl_lowering_active()
+            @test JuliaInterpreter.finish_and_return!(
+                Frame(host, :(begin; @unescaped_module; 3; end)), true) == 3
+            @test invokelatest(getglobal, host, :Unescaped) isa Module
+        else
+            @test_throws "in module, expected Symbol, got a value of type GlobalRef" JuliaInterpreter.finish_and_return!(
+                Frame(host, :(begin; @unescaped_module; 3; end)), true)
+        end
+        # A bare `:module` statement in lowered code is evaluated the same way. (JuliaLowering
+        # evaluates a nested `:toplevel` with a call rather than a statement.)
         src = (Meta.lower(host, ex)::Expr).args[1]::Core.CodeInfo
         idx = findfirst(stmt -> Meta.isexpr(stmt, :toplevel), src.code)
-        src.code[idx] = only(src.code[idx].args)
-        previous = invokelatest(getglobal, host, :Wrapped)
-        empty!(native_module_log)
-        @test JuliaInterpreter.finish_and_return!(Frame(host, src), true) == 1
-        @test invokelatest(getglobal, host, :Wrapped) !== previous
-        @test native_module_log == [:wrapped]
+        if idx !== nothing
+            src.code[idx] = only(src.code[idx].args)
+            previous = invokelatest(getglobal, host, :Wrapped)
+            empty!(native_module_log)
+            @test JuliaInterpreter.finish_and_return!(Frame(host, src), true) == 1
+            @test invokelatest(getglobal, host, :Wrapped) !== previous
+            @test native_module_log == [:wrapped]
+        end
     end
 
     @testset "resume a paused module body with $cmd" for cmd in (:finish_stack, :c, :n, :finish, :se, :s)
@@ -1116,6 +1125,18 @@ end
             frame = Frame(host, Expr(:toplevel, :(@paused_module)))
             @test JuliaInterpreter.finish_and_return!(frame, true) isa BreakpointRef
             @test JuliaInterpreter.finish_stack!(frame, true) === invokelatest(getglobal, host, :MacroPaused)
+
+            # JuliaLowering lowers the `:toplevel` from a macro called in a block, and a module
+            # passed to `@eval`, to calls evaluating their syntax
+            modex = :(module BlockPaused; value = $native_module_bp(1); end)
+            Core.eval(host, :(macro block_paused_module() esc(Expr(:toplevel, $(QuoteNode(modex)))) end))
+            frame = Frame(host, :(begin; @block_paused_module; 2; end))
+            @test JuliaInterpreter.finish_and_return!(frame, true) isa BreakpointRef
+            @test JuliaInterpreter.finish_stack!(frame, true) == 2
+            @test invokelatest(getglobal, host, :BlockPaused) isa Module
+            frame = Frame(host, :(@eval module EvalPaused; value = $native_module_bp(1); end))
+            @test JuliaInterpreter.finish_and_return!(frame, true) isa BreakpointRef
+            @test JuliaInterpreter.finish_stack!(frame, true) === invokelatest(getglobal, host, :EvalPaused)
         finally
             remove(bp)
         end

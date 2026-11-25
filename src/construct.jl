@@ -106,48 +106,40 @@ function find_toplevel_module_id(parentmod::Module, newname::Symbol, ex::Expr)
     return fallback
 end
 
-# The parts of a `:module` expression, in either the 3-arg or the 4-arg (syntax-versioned) form.
+# The parts of a `:module` expression. JET uses this.
 struct ModuleExprParts
-    syntax_version::Any # an AST element, `nothing` for the 3-arg form
     std_imports::Bool
     name::Symbol
     body::Expr
-    ModuleExprParts(@nospecialize(syntax_version), std_imports::Bool, name::Symbol, body::Expr) =
-        new(syntax_version, std_imports, name, body)
 end
 
 # Validate the parts as native evaluation does, throwing the same errors.
 function ModuleExprParts(ex::Expr)
-    @assert ex.head === :module
     args = ex.args
-    # Native evaluation (Julia 1.14) tells the syntax version from the `Bool` that follows it.
-    # Earlier versions never produce the 4-arg form.
-    i = (!isempty(args) && !isa(args[1], Bool)) ? 2 : 1
-    syntax_version = i == 2 ? args[1] : nothing
-    if length(args) != i + 2 || !isa(args[i+2], Expr)
+    # Until JuliaLang/julia#65070, a 4-arg form starts with the syntax version.
+    length(args) == 4 && !isa(args[1], Bool) && (args = args[2:end])
+    if length(args) != 3 || !isa(args[3], Expr)
         error("syntax: malformed module expression")
     end
+    std_imports, name, body = args
     # e.g. an unescaped module name from a macro, which is a `GlobalRef`
-    name = args[i+1]
     name isa Symbol || throw(TypeError(:module, "", Symbol, name))
-    body = args[i+2]::Expr
-    body.head === :block || error("syntax: module expression third argument must be a block")
-    return ModuleExprParts(syntax_version, args[i] === true, name, body)
+    (body::Expr).head === :block || error("syntax: module expression third argument must be a block")
+    return ModuleExprParts(std_imports === true, name, body)
 end
 
 """
     mod, body = find_or_create_module(parentmod::Module, ex::Expr)
 
 Given a `:module` expression `ex`, return the module it refers to (creating an empty one in
-`parentmod` if it does not yet exist) together with the `:block` of body statements. Handles
-both the 3-arg and 4-arg (syntax-versioned) `:module` forms.
+`parentmod` if it does not yet exist) together with the `:block` of body statements.
 
 This is the revision-oriented resolution used by [`ExprSplitter`](@ref): unlike native
 evaluation, it re-enters an existing module, and it never runs `__init__`. `Frame` instead
 evaluates `:module` expressions as native evaluation does.
 """
 function find_or_create_module(parentmod::Module, ex::Expr)
-    parts = ModuleExprParts(ex)
+    (; std_imports, body) = parts = ModuleExprParts(ex)
     newname = parts.name
     mod = nothing
     if invokelatest(isdefinedglobal, parentmod, newname)
@@ -178,45 +170,40 @@ function find_or_create_module(parentmod::Module, ex::Expr)
     end
     if mod === nothing
         loc = firstline(ex)
-        module_ex = Expr(:module, parts.std_imports, newname, Expr(:block, loc))
-        if parts.syntax_version !== nothing
-            pushfirst!(module_ex.args, parts.syntax_version)
-        end
-        mod = Core.eval(parentmod, module_ex)::Module
+        mod = Core.eval(parentmod, Expr(:module, std_imports, newname, Expr(:block, loc)))::Module
     end
-    return mod, parts.body
+    return mod, body
 end
 
 # Native evaluation of a `:module` expression creates the module, evaluates the body in it,
 # and then completes it, which runs `__init__`. `Frame` interprets the body in between.
-# Julia 1.13 exports the two native steps (JuliaLang/julia#59604), and Julia 1.14 adds a
-# syntax-version argument to the first, along with `Base._setup_module!`.
+# Julia 1.13 exports the two native steps (JuliaLang/julia#59604).
 const has_module_c_api = VERSION ≥ v"1.13.0-DEV.1199"
 
 # Create the module of the `:module` expression `ex` as native evaluation does: always a fresh
 # module, replacing an existing binding of the same name in `parentmod`. Return it with the
 # `:block` of body statements, to be evaluated before `end_module`.
 function begin_module(parentmod::Module, ex::Expr)
-    parts = ModuleExprParts(ex)
-    body = parts.body
+    (; std_imports, name, body) = ModuleExprParts(ex)
     # Like native evaluation, take the module's location from the first body statement.
     lnn = isempty(body.args) ? nothing : body.args[1]
     lnn isa LineNumberNode || (lnn = nothing)
     @static if has_module_c_api
         filename = (lnn === nothing || !isa(lnn.file, Symbol)) ? "none" : String(lnn.file)
         lineno = lnn === nothing ? 0 : lnn.line
+        # Until JuliaLang/julia#65070, the first step also takes the syntax version, which it ignores.
         @static if isdefinedglobal(Base, :_setup_module!)
             newmod = ccall(:jl_begin_new_module, Any, (Any, Any, Any, Cint, Cstring, Cint),
-                           parentmod, parts.name, parts.syntax_version, parts.std_imports, filename, lineno)
+                           parentmod, name, nothing, std_imports, filename, lineno)
         else
             newmod = ccall(:jl_begin_new_module, Any, (Any, Any, Cint, Cstring, Cint),
-                           parentmod, parts.name, parts.std_imports, filename, lineno)
+                           parentmod, name, std_imports, filename, lineno)
         end
     else
         # Evaluate an empty module natively and interpret the body into it afterwards. The
         # module is then already closed natively, so `end_module` emulates the deferred
         # initialization (imprecisely if the parent is itself being evaluated natively).
-        newmod = Core.eval(parentmod, Expr(:module, parts.std_imports, parts.name,
+        newmod = Core.eval(parentmod, Expr(:module, std_imports, name,
                                            lnn === nothing ? Expr(:block) : Expr(:block, lnn)))
         @lock module_init_lock push!(open_modules, newmod)
     end

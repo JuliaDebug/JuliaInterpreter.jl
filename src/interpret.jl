@@ -276,10 +276,34 @@ eval_in_frame(mod::Module, @nospecialize(ex)) = Core.eval(mod, ex)
         isdefinedglobal(Base.JuliaLowering, :at_eval_hook)
     is_at_eval_hook(@nospecialize(f)) = f === Base.JuliaLowering.at_eval_hook
     const Syntax = Base.Syntax
+    is_syntax(@nospecialize(x), head::Symbol) = x isa Syntax && Base.head(x) === head
+    jl_lowering_active() = Core._lower === Base.JuliaLowering.core_lowering_hook
+
+    Frame(mod::Module, st::Syntax; kwargs...) =
+        toplevel_frame(mod, is_toplevel_stmt(st) ? stmt_args(st) : Any[st]; kwargs...)
+    stmt_args(st::Syntax) = Any[Base.children(st)...]
+    function firstline(st::Syntax)
+        lnn = Base.first_linenode(st)
+        return lnn.line == 0 ? nothing : lnn
+    end
+    function begin_module(parentmod::Module, st::Syntax)
+        args = Base.children(st)
+        # Until JuliaLang/julia#65070, a 4-arg form starts with the syntax version.
+        length(args) == 4 && (args = args[2:end])
+        std_imports, name, body = args
+        ex = Expr(:module, std_imports.value::Bool, Symbol(name.value::String),
+                  Expr(:block, Base.first_linenode(st)))
+        return begin_module(parentmod, ex)[1], body
+    end
 else
     is_at_eval_hook(@nospecialize(f)) = false
     const Syntax = Union{}
+    is_syntax(@nospecialize(x), head::Symbol) = false
+    jl_lowering_active() = false
 end
+stmt_args(ex::Expr) = ex.args
+is_toplevel_stmt(@nospecialize(x)) = isexpr(x, :toplevel) || is_syntax(x, :toplevel)
+is_module_stmt(@nospecialize(x)) = isexpr(x, :module) || is_syntax(x, :module)
 
 function evaluate_eval!(interp::Interpreter, frame::Frame, mod::Module, @nospecialize(ex))
     # Non-expressions have no calls to recurse into. In particular, IR nodes supplied
@@ -704,11 +728,11 @@ function step_toplevel!(interp::Interpreter, frame::Frame, @nospecialize(node))
             # nothing to do; just advance
         elseif isa(node, Core.ReturnNode) && pc == nstatements(frame.framecode)
             return nothing
-        elseif isa(node, Expr) && node.head === :module
-            newmod, modbody = begin_module(mod, node)
+        elseif is_module_stmt(node)
+            newmod, modbody = begin_module(mod, node::Union{Expr,Syntax})
             # Completed by `toplevel_child_returned!`, also when a debugger resumes the body.
             data.ssavalues[pc] = OpenModule(newmod)
-            newframe = toplevel_frame(newmod, modbody.args; world=frame.world,
+            newframe = toplevel_frame(newmod, stmt_args(modbody); world=frame.world,
                                       caller_will_catch_err=will_catch_err(frame))
             link_caller_callee!(frame, newframe)
             ret = finish_latestworld!(interp, newframe)
@@ -716,8 +740,8 @@ function step_toplevel!(interp::Interpreter, frame::Frame, @nospecialize(node))
             return_from(newframe)
             toplevel_child_returned!(frame, ret)
             rhs = newmod
-        elseif isa(node, Expr) && node.head === :toplevel
-            newframe = toplevel_frame(mod, node.args; world=frame.world,
+        elseif is_toplevel_stmt(node)
+            newframe = toplevel_frame(mod, stmt_args(node::Union{Expr,Syntax}); world=frame.world,
                                       caller_will_catch_err=will_catch_err(frame))
             link_caller_callee!(frame, newframe)
             ret = finish_latestworld!(interp, newframe)
@@ -751,7 +775,7 @@ end
 function toplevel_child_returned!(frame::Frame, @nospecialize(val))
     pc = frame.pc
     ssavals = frame.framedata.ssavalues
-    if isexpr(pc_expr(frame, pc), :module) && isassigned(ssavals, pc)
+    if is_module_stmt(pc_expr(frame, pc)) && isassigned(ssavals, pc)
         open = ssavals[pc]
         isa(open, OpenModule) || return nothing # already completed
         # Record the completion first: `end_module` may throw from `__init__`.
@@ -787,10 +811,10 @@ function interpret_toplevel_stmt!(interp::Interpreter, frame::Frame, @nospeciali
     elseif isexpr(lwr, (:error, :incomplete))
         # Raise Julia's syntax error, without repeating macro expansion.
         return Core.eval(mod, lwr)
-    elseif isexpr(lwr, (:toplevel, :module))
+    elseif is_toplevel_stmt(lwr) || is_module_stmt(lwr)
         # Macro expansion surfaced a nested toplevel/module; interpret it in a driver frame of
         # its own, which evaluates a module expression to the module.
-        newframe = Frame(mod, lwr::Expr;
+        newframe = Frame(mod, lwr::Union{Expr,Syntax};
             world=frame.world, caller_will_catch_err=will_catch_err(frame))
         link_caller_callee!(frame, newframe)
         ret = finish_latestworld!(interp, newframe)
