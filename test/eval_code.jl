@@ -52,11 +52,8 @@ function f()
     x
 end
 frame = JuliaInterpreter.enter_call(f)
+JuliaInterpreter.next_call!(frame) # `setfield!`
 JuliaInterpreter.step_expr!(frame)
-JuliaInterpreter.step_expr!(frame)
-@static if VERSION >= v"1.11-"
-    JuliaInterpreter.step_expr!(frame)
-end
 @test eval_code(frame, "x") == 1
 eval_code(frame, "x = 3")
 @test eval_code(frame, "x") == 3

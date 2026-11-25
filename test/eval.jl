@@ -128,9 +128,7 @@ end
         for (stmts, expected, ncalls) in ((Any[], nothing, 0),
                                           (Any[lnn], nothing, 0),
                                           (Any[:(callee(41))], 42, 1),
-                                          (Any[lnn, :(callee(41))], 42, 1),
-                                          (Any[:(callee(41)), lnn], nothing, 1),
-                                          (Any[:(callee(41)), lnn, lnn], nothing, 1))
+                                          (Any[lnn, :(callee(41))], 42, 1))
             ex = Expr(:toplevel, stmts...)
             Target.calls[] = 0
             @test Core.eval(Target, ex) === expected

@@ -8,3 +8,4 @@ Manifest.toml
 Manifest-*.toml
 !/test/code_coverage/coverage_example.jl.cov
 !/test/code_coverage/coverage_example.jl.toplevel.cov
+!/test/code_coverage/coverage_example.jl.julialowering.cov
