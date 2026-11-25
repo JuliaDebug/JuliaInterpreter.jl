@@ -299,7 +299,8 @@ function f(x)
     return x*x
 end
 frame = JuliaInterpreter.enter_call(f, 3)
-@test whereis(frame, 1)[2] == defline + 1
+# JuliaLowering locates the copy of the reassigned argument `x` at the signature
+@test whereis(frame, 1)[2] == (JuliaInterpreter.jl_lowering_active() ? defline : defline + 1)
 @test whereis(frame, (length(frame.framecode.src.code) + 1) ÷ 2)[2] == defline + 4
 @test whereis(frame, length(frame.framecode.src.code) - 1)[2] == defline + 6
 m = which(iterate, Tuple{Dict}) # this method has `nothing` as its first statement and codeloc == 0
@@ -1002,8 +1003,15 @@ end
 end
 
 @testset "#476 isdefined QuoteNode" begin
-    @eval function issue476()
+    ex = :(function issue476()
         return $(Expr(:isdefined, QuoteNode(Float64)))
+    end)
+    if JuliaInterpreter.jl_lowering_active()
+        # JuliaLowering rejects the form, which flisp keeps in the lowered code
+        lwr = Base.fl_lower(@__MODULE__, ex, typemax(Csize_t), false, LineNumberNode(0, :none))[1]
+        Core.eval(@__MODULE__, lwr)
+    else
+        Core.eval(@__MODULE__, ex)
     end
     @test (true === @interpret issue476())
 end

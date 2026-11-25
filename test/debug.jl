@@ -154,7 +154,7 @@ end
             sin(2.0)
             cos(2.0)
             for i in 1:100
-                s += i
+                s + i
             end
             sin(2.0)
         end
@@ -674,8 +674,8 @@ end
     h(x) = x
     function z(x)
         a = h(f(x) + g(x) - 3)
-        x = 3
-        b = h(g(x))
+        y = 3
+        b = h(g(y))
     end
     frame = JuliaInterpreter.enter_call(z, 5)
     frame, pc = JuliaInterpreter.debug_command(frame, :sl)

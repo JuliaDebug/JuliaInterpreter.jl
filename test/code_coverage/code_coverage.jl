@@ -1,6 +1,7 @@
 module test_code_coverage
 
 using Test
+import JuliaInterpreter
 
 function cleanup_coverage_files(pid)
     # clean up coverage files for source code
@@ -45,9 +46,16 @@ let
             i === nothing && error("no coverage files found in $dir: $files")
             cov_file = joinpath(dir, files[i])
             cov_data = read(cov_file, String)
-            # JuliaLang/julia#62514 added coverage for top-level statements.
-            expected = @static VERSION >= v"1.14.0-DEV.2943" ?
-                "coverage_example.jl.toplevel.cov" : "coverage_example.jl.cov"
+            # JuliaLang/julia#62514 added coverage for top-level statements. JuliaLowering locates
+            # the loop's `iterate` at the `for` line and the jump out of the `if` branch at the
+            # `if` line.
+            expected = if JuliaInterpreter.jl_lowering_active()
+                "coverage_example.jl.julialowering.cov"
+            elseif VERSION >= v"1.14.0-DEV.2943"
+                "coverage_example.jl.toplevel.cov"
+            else
+                "coverage_example.jl.cov"
+            end
             expected = read(joinpath(dir, expected), String)
             if Sys.iswindows()
                 cov_data = replace(cov_data, "\r\n" => "\n")
