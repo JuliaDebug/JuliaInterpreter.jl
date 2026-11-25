@@ -279,6 +279,21 @@ eval_in_frame(mod::Module, @nospecialize(ex)) = Core.eval(mod, ex)
     is_syntax(@nospecialize(x), head::Symbol) = x isa Syntax && Base.head(x) === head
     jl_lowering_active() = Core._lower === Base.JuliaLowering.core_lowering_hook
 
+    # `Meta.lower` rejects a macro call that expands to a module, which native evaluation accepts, so
+    # expand the call first. Only the outermost macro: fully expanded syntax can't be lowered.
+    function lower_toplevel(mod::Module, @nospecialize(stmt))
+        jl_lowering_active() || return Meta.lower(mod, stmt)
+        st = stmt isa Expr ? Base.expr_to_syntax(stmt) : stmt
+        while is_syntax(st, :macrocall)
+            st = try
+                Base.JuliaLowering.macroexpand(mod, st; recursive=false)
+            catch err
+                rethrow(Base.JuliaLowering.to_compatible_exception(err))
+            end
+        end
+        return Meta.lower(mod, st)
+    end
+
     Frame(mod::Module, st::Syntax; kwargs...) =
         toplevel_frame(mod, is_toplevel_stmt(st) ? stmt_args(st) : Any[st]; kwargs...)
     stmt_args(st::Syntax) = Any[Base.children(st)...]
@@ -300,6 +315,7 @@ else
     const Syntax = Union{}
     is_syntax(@nospecialize(x), head::Symbol) = false
     jl_lowering_active() = false
+    lower_toplevel(mod::Module, @nospecialize(stmt)) = Meta.lower(mod, stmt)
 end
 stmt_args(ex::Expr) = ex.args
 is_toplevel_stmt(@nospecialize(x)) = isexpr(x, :toplevel) || is_syntax(x, :toplevel)
@@ -794,8 +810,8 @@ function interpret_toplevel_stmt!(interp::Interpreter, frame::Frame, @nospeciali
         stmt  # already lowered; lowering again wraps it in another thunk
     elseif isa(stmt, Union{Expr,Syntax})
         # Macros run natively during lowering and must see interpreted dynamic scopes.
-        ret = maybe_eval_with_scope(Meta.lower, Any[mod, stmt], frame)
-        ret === nothing ? Meta.lower(mod, stmt) : ret.value
+        ret = maybe_eval_with_scope(lower_toplevel, Any[mod, stmt], frame)
+        ret === nothing ? lower_toplevel(mod, stmt) : ret.value
     else
         stmt
     end
@@ -810,6 +826,8 @@ function interpret_toplevel_stmt!(interp::Interpreter, frame::Frame, @nospeciali
         return rhs
     elseif isexpr(lwr, (:error, :incomplete))
         # Raise Julia's syntax error, without repeating macro expansion.
+        # JuliaLowering's message already has the `syntax: ` that evaluating it would add.
+        jl_lowering_active() && error((lwr::Expr).args[1]::String)
         return Core.eval(mod, lwr)
     elseif is_toplevel_stmt(lwr) || is_module_stmt(lwr)
         # Macro expansion surfaced a nested toplevel/module; interpret it in a driver frame of
