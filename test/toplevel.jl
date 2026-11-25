@@ -869,12 +869,28 @@ module DirectSurface end
         Frame(DirectSurface, Expr(:toplevel, :(error("boom")))), true)
 
     # Lowering failures preserve the syntax error raised by native eval.
-    @test_throws "syntax: invalid assignment location" JuliaInterpreter.finish_and_return!(
+    @test_throws (JuliaInterpreter.jl_lowering_active() ?
+                  "syntax: invalid syntax in left-hand side of assignment" :
+                  "syntax: invalid assignment location") JuliaInterpreter.finish_and_return!(
         Frame(DirectSurface, Expr(:toplevel, :(1 = 2))), true)
 
     # A bare literal statement is evaluated and returned.
     @test JuliaInterpreter.finish_and_return!(
         Frame(DirectSurface, Expr(:toplevel, 42)), true) == 42
+
+    # A macro call that expands to an empty `:toplevel` evaluates to `nothing`.
+    Core.eval(DirectSurface, :(macro empty_toplevel() Expr(:toplevel) end))
+    @test JuliaInterpreter.finish_and_return!(
+        Frame(DirectSurface, :(@empty_toplevel)), true) === nothing
+    @test JuliaInterpreter.finish_and_return!(
+        Frame(DirectSurface, Expr(:toplevel, :(@empty_toplevel))), true) === nothing
+
+    # The code of a macro call that expands to `:toplevel` code has a location.
+    let frame = Frame(DirectSurface, Meta.parse("@enum DirectPalette Red Blue"))
+        @test JuliaInterpreter.whereis(frame) !== nothing
+        JuliaInterpreter.finish_and_return!(frame, true)
+        @test invokelatest(getglobal, DirectSurface, :DirectPalette) isa Type
+    end
 
     # Re-evaluating a module: like native evaluation, the second `:module` declaration
     # replaces the module with a fresh one rather than reopening it.
@@ -1015,6 +1031,15 @@ end
         @test made isa Module && nameof(made) === :MacroMade
         @test invokelatest(getglobal, made, :value) == 42
 
+        # The macro is expanded once.
+        expansions = Ref(0)
+        Core.eval(host, :(macro counted_module()
+            $expansions[] += 1
+            esc(:(module CountedModule end))
+        end))
+        @test evaluate(host, :(@counted_module)) isa Module
+        @test expansions[] == 1
+
         # Malformed module expressions throw errors.
         @test_throws "module expression" evaluate(host, Expr(:module, true, :Malformed, :notablock))
         @test_throws "module expression third argument must be a block" evaluate(host, Expr(:module, true, :Malformed, Expr(:tuple)))
@@ -1125,6 +1150,8 @@ end
             frame = Frame(host, Expr(:toplevel, :(@paused_module)))
             @test JuliaInterpreter.finish_and_return!(frame, true) isa BreakpointRef
             @test JuliaInterpreter.finish_stack!(frame, true) === invokelatest(getglobal, host, :MacroPaused)
+            # the module statement has the location of the module for the debugger
+            @test JuliaInterpreter.whereis(Frame(host, :(@paused_module))) !== nothing
 
             # JuliaLowering lowers the `:toplevel` from a macro called in a block, and a module
             # passed to `@eval`, to calls evaluating their syntax

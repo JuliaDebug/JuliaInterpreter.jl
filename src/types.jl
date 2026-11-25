@@ -453,7 +453,7 @@ function Frame(mod::Module, ex::Expr; world::UInt=Base.get_world_counter(), call
         # The module is created when the frame evaluates the expression, not here.
         return toplevel_frame(mod, Any[ex]; world, caller_will_catch_err)
     end
-    lwr = Meta.lower(mod, ex)
+    lwr = lower_toplevel(mod, ex)
     isexpr(lwr, :thunk, 1) && return Frame(mod, (lwr.args[1])::CodeInfo; world, caller_will_catch_err)
     if isexpr(lwr, :error) || isexpr(lwr, :incomplete)
         if isexpr(ex, :block)

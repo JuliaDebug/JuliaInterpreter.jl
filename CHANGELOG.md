@@ -49,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A module passed to `@eval`, and a `:toplevel` expression that a macro
     called in a block expands to, are interpreted instead of being evaluated
     natively.
+  - A macro call at top level that expands to a module evaluates the module
+    instead of failing to lower.
+  - Syntax errors no longer start with `syntax: ` twice.
 
 ## [0.12.3]
 
