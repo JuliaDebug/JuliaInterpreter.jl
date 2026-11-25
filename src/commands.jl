@@ -232,6 +232,16 @@ function is_next_line_stop(frame::Frame)
     return false
 end
 
+# The binding `err = the_exception` at the start of a handler is plumbing. JuliaLowering binds the
+# exception in two statements (`%n = the_exception; err = %n`).
+function is_exception_binding(frame::Frame)
+    stmt = pc_expr(frame)
+    isexpr(stmt, :(=)) || return false
+    rhs = (stmt::Expr).args[2]
+    isa(rhs, SSAValue) && (rhs = pc_expr(frame, rhs.id))
+    return isexpr(rhs, :the_exception)
+end
+
 """
     pc = until_line!(interp::Interpreter, frame, line=nothing istoplevel=false)
     pc = until_line!(frame, line=nothing, istoplevel=false)
@@ -779,17 +789,9 @@ function debug_command(interp::Interpreter, frame::Frame, cmd::Symbol, rootistop
             # body's assignments (e.g. `y = -1`), so single-stepping never
             # displayed the error path.
             handleristoplevel = rootistoplevel && is_toplevel_frame(frame)
-            stmt = pc_expr(frame)
-            if isexpr(stmt, :leave)
-                # Julia 1.10 starts the handler with a `:leave` ahead of the binding
-                step_expr!(interp, frame, handleristoplevel)
-                stmt = pc_expr(frame)
+            pc = maybe_next_until!(interp, frame, handleristoplevel) do fr
+                is_next_line_stop(fr) && !is_exception_binding(fr)
             end
-            if isexpr(stmt, :(=)) && isexpr((stmt::Expr).args[2], :the_exception)
-                # the exception binding (`err = the_exception`) is plumbing
-                step_expr!(interp, frame, handleristoplevel)
-            end
-            pc = maybe_next_until!(is_next_line_stop, interp, frame, handleristoplevel)
             return maybe_reset_frame!(interp, frame, pc, rootistoplevel)
         end
     end
