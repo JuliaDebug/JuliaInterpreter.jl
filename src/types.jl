@@ -468,8 +468,8 @@ function Frame(mod::Module, ex::Expr; world::UInt=Base.get_world_counter(), call
         throw(ArgumentError("lowering returned an error, $lwr"))
     end
     # `macroexpand` inside lowering can surface a `:toplevel`/`:module` (lowering leaves these intact)
-    if isexpr(lwr, (:toplevel, :module))
-        return Frame(mod, lwr::Expr; world, caller_will_catch_err)
+    if is_toplevel_stmt(lwr) || is_module_stmt(lwr)
+        return Frame(mod, lwr::Union{Expr,Syntax}; world, caller_will_catch_err)
     end
     # Lowering is the identity on bare declarations (`global x`, `public x`, `using`/
     # `import`/`export`, ...) and returns a literal (e.g. `nothing`) for expressions

@@ -45,6 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   elements of `f` as the arguments of the call.
 - `@interpret world=:latest f(args...)` in top-level code no longer throws a
   `MethodError` for the anonymous function it creates.
+- With JuliaLowering as the active lowering, as by default on Julia 1.15:
+  - A module passed to `@eval`, and a `:toplevel` expression that a macro
+    called in a block expands to, are interpreted instead of being evaluated
+    natively.
 
 ## [0.12.3]
 
