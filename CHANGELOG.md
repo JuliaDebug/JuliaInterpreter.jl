@@ -43,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   throws the same error as native `invoke` instead of running the method.
 - `invoke(f, ...)` where `f` is a callable `AbstractArray` no longer passes the
   elements of `f` as the arguments of the call.
+- `@interpret world=:latest f(args...)` in top-level code no longer throws a
+  `MethodError` for the anonymous function it creates.
 
 ## [0.12.3]
 

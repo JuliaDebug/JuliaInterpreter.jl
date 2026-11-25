@@ -1484,6 +1484,11 @@ invoke_callable_vector(cv, x) = invoke(cv, Tuple{Number}, x)
     @test 4.5 == @interpret interp=OverlayInterpreter() invoke_callable_vector(cv, 1.5)
 end
 
+# Directly in top-level code, the method of the closure that resolves the call is defined
+# where the closure is created, after the code before it has run.
+interpreted_latest = @interpret world=:latest func_overlay(42.0)
+@test interpreted_latest == sin(42.0)
+
 dispatch_cache_func(x::T) where {T} = x
 dispatch_cache_caller(f, x) = f(x)
 function dispatch_cache_hit_allocations(
